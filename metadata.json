@@ -1,5 +1,5 @@
 {
-  "uuid": "gridgets@rohan.local",
+  "uuid": "gridgets@rebatnaath.local",
   "name": "Gridgets",
   "description": "A grid-based desktop widget extension for GNOME Shell.\n* Place image, GIF, weather, time, and music widgets on a configurable desktop grid.\n* Drag, resize, and customise each widget independently.",
   "shell-version": [
@@ -8,9 +8,7 @@
     "47",
     "48",
     "49",
-    "50",
-    "51",
-    "52"
+    "50"
   ],
   "url": ""
 }
