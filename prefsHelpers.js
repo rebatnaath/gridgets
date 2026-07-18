@@ -731,7 +731,7 @@ function buildCommandSettings(grid, rowIdx, widget, settings, saveHandlers) {
                     imgLabelDisplay.set_text(selectedImagePath.split('/').pop());
                 }
             } catch (e) {
-                console.log('File selection cancelled:', e.message);
+                console.debug('File selection cancelled:', e.message);
             }
         });
     });
@@ -931,7 +931,7 @@ export function openAddCommandDialog(parentWindow, settings) {
                     imgLabelDisplay.set_text(selectedImagePath.split('/').pop());
                 }
             } catch (e) {
-                console.log('File selection cancelled:', e.message);
+                console.debug('File selection cancelled:', e.message);
             }
         });
     });
@@ -1039,7 +1039,7 @@ export function openAddImageDialog(parentWindow, settings) {
                     imgLabelDisplay.set_text(selectedImagePath.split('/').pop());
                 }
             } catch (e) {
-                console.log('File selection cancelled:', e.message);
+                console.debug('File selection cancelled:', e.message);
             }
         });
     });
@@ -1111,7 +1111,7 @@ export function openAddSlideshowDialog(parentWindow, settings) {
                     folderLabelDisplay.set_text(selectedFolderPath.split('/').pop());
                 }
             } catch (e) {
-                console.log('Folder selection cancelled:', e.message);
+                console.debug('Folder selection cancelled:', e.message);
             }
         });
     });

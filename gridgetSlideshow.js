@@ -67,7 +67,6 @@ function createImageLayer(imagePath, borderRadius, width, height, animateGif) {
         style: `
             background-image: url("file://${imagePath}");
             background-size: cover;
-            background-position: center;
             border-radius: ${borderRadius}px;
         `,
         x_expand: true,
@@ -148,8 +147,12 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
             duration: CROSSFADE_DURATION_MS,
             mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
             onComplete: () => {
-                if (outgoingLayer && !outgoingLayer.is_destroyed()) {
-                    outgoingLayer.destroy();
+                try {
+                    if (outgoingLayer) {
+                        outgoingLayer.destroy();
+                    }
+                } catch (e) {
+                    // Ignore if already finalized
                 }
             }
         });

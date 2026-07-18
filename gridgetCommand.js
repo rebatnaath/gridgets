@@ -78,7 +78,7 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
     let commandImage;
     if (imagePath) {
         commandImage = new St.Widget({
-            style: `background-image: url("file://${imagePath}"); background-size: cover; background-position: center; background-repeat: no-repeat; border-radius: ${borderRadius}px; margin: ${imageMargin}px;`,
+            style: `background-image: url("file://${imagePath}"); background-size: cover; background-repeat: no-repeat; border-radius: ${borderRadius}px; margin: ${imageMargin}px;`,
             x_expand: true,
             y_expand: true,
             x_align: Clutter.ActorAlign.FILL,
@@ -184,8 +184,12 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
 
             subprocess.wait_async(null, (proc, res) => {
                 isCommandRunning = false;
-                if (executionOverlay && !executionOverlay.is_destroyed()) {
-                    executionOverlay.hide();
+                try {
+                    if (executionOverlay) {
+                        executionOverlay.hide();
+                    }
+                } catch (err) {
+                    // Ignore if already finalized
                 }
                 try {
                     proc.wait_finish(res);
@@ -196,8 +200,12 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
             });
         } catch (e) {
             isCommandRunning = false;
-            if (executionOverlay && !executionOverlay.is_destroyed()) {
-                executionOverlay.hide();
+            try {
+                if (executionOverlay) {
+                    executionOverlay.hide();
+                }
+            } catch (err) {
+                // Ignore if already finalized
             }
             Main.notify('Command Error', `Failed to start ${commandName}: ${e.message}`);
         }

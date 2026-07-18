@@ -42,7 +42,7 @@ function createBackgroundLayer(config) {
     const borderRadius = config.appliedBorderRadius || 0;
     const backgroundColor = resolveWidgetBackgroundColor(config);
     return new St.Widget({
-        style: `background-color: ${backgroundColor}; background-size: cover; background-position: center; border-radius: ${borderRadius}px;`,
+        style: `background-color: ${backgroundColor}; background-size: cover; border-radius: ${borderRadius}px;`,
         x_expand: true,
         y_expand: true,
         x_align: Clutter.ActorAlign.FILL,
@@ -54,7 +54,7 @@ function createIconButton(iconName, iconSize, buttonMargin, textColor) {
     const button = new St.Button({
         reactive: true,
         can_focus: true,
-        style: `margin: 0 ${buttonMargin}px; border-radius: 50%;`,
+        style: `margin: 0px ${buttonMargin}px; border-radius: 99px;`,
     });
 
     const icon = new St.Icon({
@@ -170,7 +170,7 @@ function applyArtworkToBackground(backgroundLayer, artUrl, config) {
         imageUrl = `file://${imageUrl}`;
     }
 
-    backgroundLayer.style = `background-image: url("${imageUrl}"); background-size: cover; background-position: center; border-radius: ${radius};`;
+    backgroundLayer.style = `background-image: url("${imageUrl}"); background-size: cover; border-radius: ${radius};`;
 }
 
 function resetWidgetState(state) {

@@ -360,7 +360,6 @@ function updateWidgetStyle(widgetNode, bgImageActor, widgetData, assets, isDynam
         bgImageActor.style = `
             background-image: url("file://${assets.bgImagePath}");
             background-size: cover;
-            background-position: center;
             opacity: 1;
             border-radius: ${innerRadius}px;
         `;

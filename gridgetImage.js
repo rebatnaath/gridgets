@@ -15,7 +15,7 @@ import { createCaptionOverlay } from './widgetUIUtils.js';
 
 export function createStaticImageNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
-    const widgetStyle = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; background-position: center; ${baseStyle}`;
+    const widgetStyle = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
 
     const widgetNode = new St.Widget({
         style: widgetStyle,
@@ -41,7 +41,7 @@ export function createStaticImageNode(widgetData, width, height, xPosition, yPos
 
 export function createColorBlockNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
-    const widgetStyle = `background-color: rgba(0, 255, 0, 0.4); ${baseStyle}`;
+    const widgetStyle = `background-color: ${widgetData.color || 'rgba(0, 255, 0, 0.4)'}; ${baseStyle}`;
 
     const widgetNode = new St.Widget({
         style: widgetStyle,

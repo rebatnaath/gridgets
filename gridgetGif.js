@@ -91,7 +91,7 @@ export function createAnimatedGifNode(widgetData, width, height, xPosition, yPos
     try {
         const animation = GdkPixbuf.PixbufAnimation.new_from_file(widgetData.imagePath);
         if (animation.is_static_image()) {
-            widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; background-position: center; ${baseStyle}`;
+            widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
             return widgetNode;
         }
         
@@ -156,7 +156,10 @@ export function createAnimatedGifNode(widgetData, width, height, xPosition, yPos
                 applyCornerMask(pixels, renderPixbuf.get_width(), renderPixbuf.get_height(), textureRadius, renderPixbuf.get_rowstride());
             }
             
-            const frameImage = new St.ImageContent();
+            const frameImage = new St.ImageContent({
+                preferred_width: renderPixbuf.get_width(),
+                preferred_height: renderPixbuf.get_height(),
+            });
             const coglContext = global.stage.context.get_backend().get_cogl_context();
             
             try {
@@ -209,7 +212,7 @@ export function createAnimatedGifNode(widgetData, width, height, xPosition, yPos
         
     } catch(e) {
         console.error('Failed to load GIF animation:', e);
-        widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; background-position: center; ${baseStyle}`;
+        widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
     }
 
     const showText = widgetData.appliedShowText !== false;

@@ -124,7 +124,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
 
     for (let i = 0; i < SESSIONS_BEFORE_LONG_BREAK; i++) {
         const dot = new St.Widget({
-            style: `background-color: ${textColor}; opacity: 0.2; width: 8px; height: 8px; border-radius: 4px; margin: 0 3px;`,
+            style: `background-color: ${textColor}; opacity: 0.2; width: 8px; height: 8px; border-radius: 4px; margin: 0px 3px;`,
         });
         sessionDotsBox.add_child(dot);
     }
@@ -137,7 +137,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
     const playPauseBtn = new St.Button({
         reactive: true,
         can_focus: true,
-        style: 'border-radius: 50%; margin: 0 6px;',
+        style: 'border-radius: 99px; margin: 0px 6px;',
     });
     const playPauseIcon = new St.Icon({
         icon_name: 'media-playback-start-symbolic',
@@ -149,7 +149,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
     const resetBtn = new St.Button({
         reactive: true,
         can_focus: true,
-        style: 'border-radius: 50%; margin: 0 6px;',
+        style: 'border-radius: 99px; margin: 0px 6px;',
     });
     const resetIcon = new St.Icon({
         icon_name: 'view-refresh-symbolic',
@@ -161,7 +161,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
     const skipBtn = new St.Button({
         reactive: true,
         can_focus: true,
-        style: 'border-radius: 50%; margin: 0 6px;',
+        style: 'border-radius: 99px; margin: 0px 6px;',
     });
     const skipIcon = new St.Icon({
         icon_name: 'media-skip-forward-symbolic',
@@ -187,7 +187,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         let child = sessionDotsBox.get_first_child();
         while (child) {
             const isCompleted = dotIndex < state.completedSessions;
-            child.style = `background-color: ${isCompleted ? getPhaseColor(PHASE_WORK) : textColor}; opacity: ${isCompleted ? '1.0' : '0.2'}; width: 8px; height: 8px; border-radius: 4px; margin: 0 3px;`;
+            child.style = `background-color: ${isCompleted ? getPhaseColor(PHASE_WORK) : textColor}; opacity: ${isCompleted ? '1.0' : '0.2'}; width: 8px; height: 8px; border-radius: 4px; margin: 0px 3px;`;
             child = child.get_next_sibling();
             dotIndex++;
         }
