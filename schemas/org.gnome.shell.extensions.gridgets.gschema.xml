@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.gridgets" path="/org/gnome/shell/extensions/gridgets/">
+    <key name="widgets" type="s">
+      <default>"[]"</default>
+      <summary>Widgets JSON data</summary>
+      <description>Stores the JSON representation of all active widgets.</description>
+    </key>
+    <key name="border-radius" type="i">
+      <default>16</default>
+      <summary>Border Radius</summary>
+      <description>The corner rounding radius of the widgets.</description>
+    </key>
+    <key name="global-border-width" type="i">
+      <default>0</default>
+      <summary>Global Border Width</summary>
+      <description>Default border width for all widgets.</description>
+    </key>
+    <key name="global-border-color" type="s">
+      <default>'rgb(255,255,255)'</default>
+      <summary>Global Border Color</summary>
+      <description>Default border color for all widgets.</description>
+    </key>
+    <key name="global-background-color" type="s">
+      <default>'#1a1b26'</default>
+      <summary>Global Background Color</summary>
+      <description>Default background color for all widgets.</description>
+    </key>
+    <key name="global-foreground-color" type="s">
+      <default>'#ffffff'</default>
+      <summary>Global Foreground/Text Color</summary>
+      <description>Default foreground/text color for all widgets.</description>
+    </key>
+    <key name="show-grid" type="b">
+      <default>false</default>
+      <summary>Show Grid</summary>
+      <description>Visualize the underlying widget placement grid.</description>
+    </key>
+    <key name="global-font-family" type="s">
+      <default>"'Poppins', sans-serif"</default>
+      <summary>Global Font Family</summary>
+      <description>The font family to use across widgets.</description>
+    </key>
+    <key name="weather-api-key" type="s">
+      <default>''</default>
+      <summary>Weather API Key</summary>
+      <description>API Key for WeatherAPI.com</description>
+    </key>
+    <key name="weather-dynamic-color" type="b">
+      <default>true</default>
+      <summary>Dynamic Weather Color</summary>
+      <description>Change the background color of weather widgets based on the current condition and time of day.</description>
+    </key>
+    <key name="weather-dynamic-image" type="b">
+      <default>true</default>
+      <summary>Dynamic Weather Image Overlay</summary>
+      <description>Show a weather-specific overlay image based on the current condition.</description>
+    </key>
+    <key name="image-animate-gif" type="b">
+      <default>true</default>
+      <summary>Animate GIFs</summary>
+      <description>If true, animated GIFs will play. If false, only their first frame is rendered.</description>
+    </key>
+    <key name="weather-city" type="s">
+      <default>"London"</default>
+      <summary>Global Weather City</summary>
+      <description>The configured default city for weather widgets.</description>
+    </key>
+    <key name="weather-use-fahrenheit" type="b">
+      <default>false</default>
+      <summary>Use Fahrenheit</summary>
+      <description>If true, weather widgets will display temperatures in Fahrenheit instead of Celsius by default.</description>
+    </key>
+    <key name="time-format-24h" type="b">
+      <default>false</default>
+      <summary>24-Hour Time Format</summary>
+      <description>If true, time widgets will display the time in 24-hour format instead of 12-hour format.</description>
+    </key>
+    <key name="image-show-caption" type="b">
+      <default>false</default>
+      <summary>Show Image Caption</summary>
+      <description>If true, show captions on image widgets.</description>
+    </key>
+    <key name="slideshow-show-caption" type="b">
+      <default>false</default>
+      <summary>Show Slideshow Caption</summary>
+      <description>If true, show captions on slideshow widgets.</description>
+    </key>
+  </schema>
+</schemalist>
