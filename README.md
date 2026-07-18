@@ -21,14 +21,14 @@ If you are testing this extension, you can easily install it manually without go
 2. Copy the entire folder into your GNOME Shell extensions directory:
    ```bash
    mkdir -p ~/.local/share/gnome-shell/extensions
-   cp -r gridgets ~/.local/share/gnome-shell/extensions/gridgets@rohan.local
+   cp -r gridgets ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.local
    ```
 3. Restart GNOME Shell:
    - **X11:** Press `Alt` + `F2`, type `r`, and hit `Enter`.
    - **Wayland:** Log out and log back in.
 4. Enable the extension using the **Extensions** app or via the terminal:
    ```bash
-   gnome-extensions enable gridgets@rohan.local
+   gnome-extensions enable gridgets@rebatnaath.local
    ```
 
 ### Option 2: Build and Install via Zip
