@@ -348,7 +348,7 @@ export default class GridgetsPreferences extends ExtensionPreferences {
         const cards = [];
 
         // Add 1. Image
-        const addImageCard = createStoreCard(extPath, 'Image / GIF', 'Display an image or animated GIF directly on your desktop.', '2x2', 'gradient-purple', 'image-x-generic-symbolic', 'pictures/pictures.svg', () => {
+        const addImageCard = createStoreCard(extPath, 'Image / GIF', 'Display an image or animated GIF directly on your desktop.', '2x2', 'gradient-purple', 'image-x-generic-symbolic', 'pictures/pictures.jpg', () => {
             openAddImageDialog(window, settings);
         });
         cards.push(addImageCard);
@@ -358,42 +358,42 @@ export default class GridgetsPreferences extends ExtensionPreferences {
             const city = settings.get_string('weather-city');
             addWeatherWidget(settings, city, w, h);
         };
-        cards.push(createStoreCard(extPath, 'Weather Forecast', 'A beautiful Cupertino-style weather forecast widget.', '3x3', 'gradient-blue', null, 'weathers/3x3.svg', () => addWeather(3, 3)));
-        cards.push(createStoreCard(extPath, 'Weather Minimal', 'A clean and simple weather condition and temperature display.', '4x2', 'gradient-blue', null, 'weathers/4x2.svg', () => addWeather(4, 2)));
-        cards.push(createStoreCard(extPath, 'Weather Detailed', 'Advanced forecast layout with hourly condition reports.', '6x4', 'gradient-blue', null, 'weathers/6x3.svg', () => addWeather(6, 4)));
+        cards.push(createStoreCard(extPath, 'Weather Forecast', 'A beautiful Cupertino-style weather forecast widget.', '3x3', 'gradient-blue', null, 'weathers/3x3.jpg', () => addWeather(3, 3)));
+        cards.push(createStoreCard(extPath, 'Weather Minimal', 'A clean and simple weather condition and temperature display.', '4x2', 'gradient-blue', null, 'weathers/4x2.jpg', () => addWeather(4, 2)));
+        cards.push(createStoreCard(extPath, 'Weather Detailed', 'Advanced forecast layout with hourly condition reports.', '6x4', 'gradient-blue', null, 'weathers/6x3.jpg', () => addWeather(6, 4)));
 
         // Add 5. Time
-        cards.push(createStoreCard(extPath, 'Time & Date', 'A beautiful and simple time and date widget.', '3x2', 'gradient-emerald', 'preferences-system-time-symbolic', 'dateAndTime/dateAndTime.svg', () => addTimeWidget(settings, 3, 2)));
+        cards.push(createStoreCard(extPath, 'Time & Date', 'A beautiful and simple time and date widget.', '3x2', 'gradient-emerald', 'preferences-system-time-symbolic', 'dateAndTime/dateAndTime.jpg', () => addTimeWidget(settings, 3, 2)));
 
         // Add 6. Music 4x4
-        cards.push(createStoreCard(extPath, 'Music Player', 'Displays the currently playing media album art.', '4x4', 'gradient-pink', 'audio-x-generic-symbolic', 'musicPlayer/square.svg', () => addMusicWidget(settings, 4, 4)));
+        cards.push(createStoreCard(extPath, 'Music Player', 'Displays the currently playing media album art.', '4x4', 'gradient-pink', 'audio-x-generic-symbolic', 'musicPlayer/square.jpg', () => addMusicWidget(settings, 4, 4)));
 
         // Add 7. Music 8x4
-        cards.push(createStoreCard(extPath, 'Music Player (Wide)', 'Wide layout displaying album art and player controls.', '8x4', 'gradient-pink', 'audio-x-generic-symbolic', 'musicPlayer/rectangle.svg', () => addMusicWidget(settings, 8, 4)));
+        cards.push(createStoreCard(extPath, 'Music Player (Wide)', 'Wide layout displaying album art and player controls.', '8x4', 'gradient-pink', 'audio-x-generic-symbolic', 'musicPlayer/rectangle.jpg', () => addMusicWidget(settings, 8, 4)));
 
         // Add 8. Pomodoro
-        cards.push(createStoreCard(extPath, 'Pomodoro Timer', 'A focus timer with work/break cycles and session tracking.', '4x4', 'gradient-red', 'alarm-symbolic', 'pomodoro/pomodoro.svg', () => addPomodoroWidget(settings, 4, 4)));
+        cards.push(createStoreCard(extPath, 'Pomodoro Timer', 'A focus timer with work/break cycles and session tracking.', '4x4', 'gradient-red', 'alarm-symbolic', 'pomodoro/pomodoro.jpg', () => addPomodoroWidget(settings, 4, 4)));
 
         // Add 9. Slideshow
-        const addSlideshowCard = createStoreCard(extPath, 'Image Slideshow', 'Cycle through images in a folder with crossfade transitions.', '4x4', 'gradient-purple', 'view-paged-symbolic', 'pictures/pictures.svg', () => {
+        const addSlideshowCard = createStoreCard(extPath, 'Image Slideshow', 'Cycle through images in a folder with crossfade transitions.', '4x4', 'gradient-purple', 'view-paged-symbolic', 'pictures/pictures.jpg', () => {
             openAddSlideshowDialog(window, settings);
         });
         cards.push(addSlideshowCard);
 
         // Add 10. CPU/RAM
-        cards.push(createStoreCard(extPath, 'System Monitor', 'Monitor your CPU and RAM resource usage in real-time.', '4x2', 'gradient-amber', 'utilities-system-monitor-symbolic', 'cpuAndRam/cpuAndRam.svg', () => addCpuRamWidget(settings, 4, 2)));
+        cards.push(createStoreCard(extPath, 'System Monitor', 'Monitor your CPU and RAM resource usage in real-time.', '4x2', 'gradient-amber', 'utilities-system-monitor-symbolic', 'cpuAndRam/cpuAndRam.jpg', () => addCpuRamWidget(settings, 4, 2)));
 
         // Add 11. Network
-        cards.push(createStoreCard(extPath, 'Network Speed', 'A live tracker for upload and download speeds.', '3x2', 'gradient-amber', 'network-workgroup-symbolic', 'networkSpeed/networkSpeed.svg', () => addNetworkSpeedWidget(settings, 3, 2)));
+        cards.push(createStoreCard(extPath, 'Network Speed', 'A live tracker for upload and download speeds.', '3x2', 'gradient-amber', 'network-workgroup-symbolic', 'networkSpeed/networkSpeed.jpg', () => addNetworkSpeedWidget(settings, 3, 2)));
 
         // Add 12. Notes
-        cards.push(createStoreCard(extPath, 'Quick Notes', 'A markdown sticky note to quickly write down notes.', '4x4', 'gradient-gray', 'text-editor-symbolic', 'quicknotes/quicknotes.svg', () => addNotesWidget(settings, 4, 4)));
+        cards.push(createStoreCard(extPath, 'Quick Notes', 'A markdown sticky note to quickly write down notes.', '4x4', 'gradient-gray', 'text-editor-symbolic', 'quicknotes/quicknotes.jpg', () => addNotesWidget(settings, 4, 4)));
 
         // Add 13. Clipboard
-        cards.push(createStoreCard(extPath, 'Clipboard History', 'Access a history of your recently copied text items.', '4x4', 'gradient-gray', 'edit-copy-symbolic', 'clipboard/clipboard.svg', () => addClipboardWidget(settings, 4, 4)));
+        cards.push(createStoreCard(extPath, 'Clipboard History', 'Access a history of your recently copied text items.', '4x4', 'gradient-gray', 'edit-copy-symbolic', 'clipboard/clipboard.jpg', () => addClipboardWidget(settings, 4, 4)));
 
         // Add 14. Command Launcher
-        cards.push(createStoreCard(extPath, 'Command Launcher', 'Run custom bash scripts and commands from your desktop.', '2x2', 'gradient-indigo', 'system-run-symbolic', 'commands/commands.svg', () => openAddCommandDialog(window, settings)));
+        cards.push(createStoreCard(extPath, 'Command Launcher', 'Run custom bash scripts and commands from your desktop.', '2x2', 'gradient-indigo', 'system-run-symbolic', 'commands/commands.jpg', () => openAddCommandDialog(window, settings)));
 
         cards.forEach((card, index) => {
             const col = index % 3;
