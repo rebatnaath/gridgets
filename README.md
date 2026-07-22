@@ -17,7 +17,7 @@ It lets you place widgets directly onto your desktop using a clean grid system. 
 
 | Grid Layout | Widget Preferences |
 |-------------|--------------------|
-| ![Desktop Grid](assets/github/desktop.png) | ![Preferences UI](assets/github/screenshott.png) |
+| ![Desktop Grid](assets/github/desktop.png) | ![Preferences UI](assets/github/screenshot.png) |
 
 ## 🚀 Installation
 
