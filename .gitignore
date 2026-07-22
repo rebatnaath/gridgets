@@ -1,3 +1,4 @@
 documents/
 run-nested.sh
 shell.nix
+venv/
