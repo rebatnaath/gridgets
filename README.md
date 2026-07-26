@@ -21,52 +21,66 @@ It lets you place widgets directly onto your desktop using a clean grid system. 
 
 ## 🚀 Installation
 
-### 1. From extensions.gnome.org (Recommended)
-*Coming soon! Once it finishes the official GNOME review process, you will be able to install it directly from the Extensions website.*
+### Option A: From GitHub Releases (Easiest)
 
-### 2. Manual Installation
-
-If you want to test it early or build from source:
-
-**Option A: Direct Copy (Quickest)**
-
-1. Clone or download this repository.
-2. Copy the extension folder to your local GNOME directory:
+1. Download the latest release `.zip` file (`gridgets@rebatnaath.github.com.shell-extension.zip`) from the [Releases](https://github.com/rebatnaath/gridgets/releases) page.
+2. Install it using the `gnome-extensions` CLI command:
    ```bash
-   mkdir -p ~/.local/share/gnome-shell/extensions
-   cp -r gridgets ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
+   gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
+   ```
+   *(Note: The `--force` flag automatically overwrites any existing installation).*
+3. Restart GNOME Shell:
+   * **Wayland:** Log out and log back in.
+   * **X11:** Press `Alt` + `F2`, type `r`, and press `Enter`.
+4. Enable the extension:
+   ```bash
+   gnome-extensions enable gridgets@rebatnaath.github.com
    ```
 
-3. Restart GNOME Shell:
-* **X11:** Press `Alt` + `F2`, type `r`, and hit `Enter`.
-* **Wayland:** Log out and log back in.
+---
 
+### Option B: Manual Directory Copy (From Source)
 
+If you cloned or downloaded the raw repository source:
+
+1. Remove any previous installation directory to prevent leftover file conflicts:
+   ```bash
+   rm -rf ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
+   ```
+2. Copy the extension files into your GNOME extensions directory:
+   ```bash
+   mkdir -p ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
+   cp -r . ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
+   ```
+3. Restart GNOME Shell (Log out/in on Wayland, or `Alt` + `F2` -> `r` on X11).
 4. Enable the extension:
-```bash
-gnome-extensions enable gridgets@rebatnaath.github.com
+   ```bash
+   gnome-extensions enable gridgets@rebatnaath.github.com
+   ```
 
-```
+---
 
+### Option C: Build and Install Zip Package
 
-
-**Option B: Build and Install via Zip**
-
-1. Inside the project folder, package the extension into a zip:
-```bash
-gnome-extensions pack --extra-source=assets/ --extra-source=desktopGrid.js --extra-source=gridgetClipboard.js --extra-source=gridgetCommand.js --extra-source=gridgetCpuRam.js --extra-source=gridgetGif.js --extra-source=gridgetImage.js --extra-source=gridgetMusic.js --extra-source=gridgetNetworkSpeed.js --extra-source=gridgetNotes.js --extra-source=gridgetPomodoro.js --extra-source=gridgetSlideshow.js --extra-source=gridgetTime.js --extra-source=gridgetWeather.js --extra-source=prefsHelpers.js --extra-source=systemMonitorEngine.js --extra-source=widgetEditUtils.js --extra-source=widgetUIUtils.js --extra-source=widgetUtils.js
-
-```
-
-
-2. Install the zip file:
-```bash
-gnome-extensions install gridgets.zip
-
-```
-
-
-3. Restart GNOME Shell (Log out/in on Wayland, or `Alt+F2` -> `r` on X11) and enable it.
+1. Package the extension inside the project directory:
+   ```bash
+   gnome-extensions pack \
+     --extra-source=desktopGrid.js \
+     --extra-source=assets \
+     --extra-source=prefs \
+     --extra-source=schemas \
+     --extra-source=utils \
+     --extra-source=widgets \
+     --force
+   ```
+2. Install the zip file (automatically overwriting previous versions):
+   ```bash
+   gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
+   ```
+3. Restart GNOME Shell and enable:
+   ```bash
+   gnome-extensions enable gridgets@rebatnaath.github.com
+   ```
 
 ## ⚙️ Configuration
 
