@@ -2,64 +2,43 @@
  * ============================================================================
  * IMAGE SLIDESHOW WIDGET
  * 
- * This module cycles through a directory of images at a user-defined interval.
- * It manages transitions, directory reading, and handles invalid image formats.
+ * Image slideshow widget cycling through images in a target directory with
+ * smooth crossfade transitions.
  * ============================================================================
  */
 
 import St from 'gi://St';
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { createAnimatedGifNode } from './gridgetGif.js';
-import { resolveWidgetBackgroundColor, buildBaseWidgetStyle } from './widgetUtils.js';
-import { createCaptionOverlay, connectTimerCleanup } from './widgetUIUtils.js';
+import { createAnimatedGifNode } from './gif.js';
+import { listImagesInFolder, attachCaptionOverlay } from './mediaCommon.js';
+import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveWidgetFontFamily, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
+import { connectTimerCleanup } from '../../utils/widgetUIUtils.js';
 
+/** Default slide interval and transition metrics */
 const DEFAULT_SLIDE_INTERVAL_SECONDS = 10;
+const MILLISECONDS_PER_SECOND = 1000;
 const CROSSFADE_DURATION_MS = 800;
-const SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.svg', '.gif'];
 
-function isSupportedImage(filename) {
-    const lower = filename.toLowerCase();
-    return SUPPORTED_EXTENSIONS.some(ext => lower.endsWith(ext));
-}
+/** Opacity constants */
+const CLUTTER_OPACITY_OPAQUE = 255;
+const CLUTTER_OPACITY_TRANSPARENT = 0;
 
-function listImagesInFolder(folderPath) {
-    const dir = Gio.File.new_for_path(folderPath);
-    if (!dir.query_exists(null)) return [];
-
-    const enumerator = dir.enumerate_children(
-        'standard::name,standard::type',
-        Gio.FileQueryInfoFlags.NONE, null
-    );
-
-    const images = [];
-    let fileInfo;
-    while ((fileInfo = enumerator.next_file(null)) !== null) {
-        if (fileInfo.get_file_type() === Gio.FileType.REGULAR && isSupportedImage(fileInfo.get_name())) {
-            images.push(dir.get_child(fileInfo.get_name()).get_path());
-        }
-    }
-
-    images.sort();
-    return images;
-}
-
+/** Creates an image or GIF layer actor for slideshow transition. */
 function createImageLayer(imagePath, borderRadius, width, height, animateGif) {
     if (imagePath.toLowerCase().endsWith('.gif')) {
-        const gifWidget = createAnimatedGifNode({ 
-            imagePath: imagePath, 
+        const gifWidget = createAnimatedGifNode({
+            imagePath: imagePath,
             appliedBorderRadius: borderRadius,
             appliedBorderWidth: 0,
             appliedBorderColor: 'transparent'
         }, width, height, 0, 0, animateGif);
-        
-        // Ensure the returned widget behaves identically in layout
+
         gifWidget.x_expand = true;
         gifWidget.y_expand = true;
         gifWidget.x_align = Clutter.ActorAlign.FILL;
         gifWidget.y_align = Clutter.ActorAlign.FILL;
-        gifWidget.opacity = 255;
+        gifWidget.opacity = CLUTTER_OPACITY_OPAQUE;
         return gifWidget;
     }
 
@@ -73,16 +52,16 @@ function createImageLayer(imagePath, borderRadius, width, height, animateGif) {
         y_expand: true,
         x_align: Clutter.ActorAlign.FILL,
         y_align: Clutter.ActorAlign.FILL,
-        opacity: 255,
+        opacity: CLUTTER_OPACITY_OPAQUE,
     });
 }
 
+/** Creates an image slideshow widget node. */
 export function createSlideshowNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
     const borderRadius = widgetData.appliedBorderRadius || 0;
-    const slideInterval = (widgetData.slideIntervalSeconds || DEFAULT_SLIDE_INTERVAL_SECONDS) * 1000;
+    const slideInterval = (widgetData.intervalSeconds || widgetData.slideIntervalSeconds || DEFAULT_SLIDE_INTERVAL_SECONDS) * MILLISECONDS_PER_SECOND;
     const folderPath = widgetData.slideshowFolder || '';
-
     const backgroundColor = resolveWidgetBackgroundColor(widgetData);
 
     const container = new St.Widget({
@@ -96,16 +75,27 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
     });
     container.set_clip_to_allocation(true);
 
+    const state = {
+        timerId: null,
+        isDestroyed: false,
+    };
+
+    container.connect('destroy', () => {
+        state.isDestroyed = true;
+    });
+
     const images = listImagesInFolder(folderPath);
 
     if (images.length === 0) {
+        const fontFamily = resolveWidgetFontFamily(widgetData);
+        const textColor = resolveWidgetForegroundColor(widgetData);
         const emptyLabel = new St.Label({
-            text: 'No images found',
+            text: 'No images found in folder',
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
             y_expand: true,
-            style: 'color: white; font-size: 14px; opacity: 0.6;',
+            style: `font-family: ${fontFamily}; color: ${textColor}; font-size: 14px; opacity: 0.6;`,
         });
         container.add_child(emptyLabel);
         return container;
@@ -118,61 +108,53 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
     });
     container.add_child(imageContainer);
 
-    // Single current layer to start
+    const shouldAnimateGif = widgetData.animateGif !== undefined ? widgetData.animateGif : (widgetData.globalAnimateGif !== false);
+
     let currentIndex = 0;
-    let currentLayer = createImageLayer(images[0], borderRadius, width, height, widgetData.animateGif !== false);
+    let currentLayer = createImageLayer(images[0], borderRadius, width, height, shouldAnimateGif);
     imageContainer.add_child(currentLayer);
 
     const advanceSlide = () => {
-        if (images.length <= 1) return;
+        if (state.isDestroyed || images.length <= 1) return;
 
         currentIndex = (currentIndex + 1) % images.length;
         const nextImage = images[currentIndex];
 
-        const incomingLayer = createImageLayer(nextImage, borderRadius, width, height, widgetData.animateGif !== false);
-        incomingLayer.set_opacity(0);
+        const incomingLayer = createImageLayer(nextImage, borderRadius, width, height, shouldAnimateGif);
+        incomingLayer.set_opacity(CLUTTER_OPACITY_TRANSPARENT);
         imageContainer.add_child(incomingLayer);
-        
+
         const outgoingLayer = currentLayer;
         currentLayer = incomingLayer;
 
         incomingLayer.ease({
-            opacity: 255,
+            opacity: CLUTTER_OPACITY_OPAQUE,
             duration: CROSSFADE_DURATION_MS,
             mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
         });
 
         outgoingLayer.ease({
-            opacity: 0,
+            opacity: CLUTTER_OPACITY_TRANSPARENT,
             duration: CROSSFADE_DURATION_MS,
             mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
             onComplete: () => {
                 try {
-                    if (outgoingLayer) {
-                        outgoingLayer.destroy();
-                    }
+                    if (outgoingLayer) outgoingLayer.destroy();
                 } catch (e) {
-                    // Ignore if already finalized
+                    console.error('Error destroying slideshow outgoing layer:', e);
                 }
             }
         });
     };
 
-    const state = { timerId: null };
-
     state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, slideInterval, () => {
+        if (state.isDestroyed) return GLib.SOURCE_REMOVE;
         advanceSlide();
         return GLib.SOURCE_CONTINUE;
     });
 
     connectTimerCleanup(container, state);
-
-    const showText = widgetData.appliedShowText !== false;
-    const caption = widgetData.caption || '';
-    if (showText && caption.length > 0) {
-        container.add_child(createCaptionOverlay(widgetData, caption));
-    }
+    attachCaptionOverlay(container, widgetData, width, height);
 
     return container;
 }
-

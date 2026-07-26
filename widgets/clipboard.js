@@ -1,10 +1,9 @@
 /**
  * ============================================================================
- * CLIPBOARD WIDGET 
+ * CLIPBOARD HISTORY WIDGET
  * 
- * This module provides a widget for viewing and managing clipboard history.
- * It periodically polls the system clipboard and displays recent entries,
- * allowing users to click and restore previous clipboard content.
+ * Manages system clipboard history by polling the default St.Clipboard.
+ * Displays recent entries and lets users click items to restore text.
  * ============================================================================
  */
 
@@ -12,22 +11,50 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import {
-    loadJsonFromFile, saveJsonToFile,
-    resolveWidgetForegroundColor, DEFAULT_FONT_FAMILY
-} from './widgetUtils.js';
+    loadJsonFromFile,
+    saveJsonToFile,
+    resolveWidgetForegroundColor,
+    resolveWidgetFontFamily
+} from '../utils/widgetUtils.js';
 import {
-    createWidgetContainer, connectTimerCleanup, startPollingTimer
-} from './widgetUIUtils.js';
+    createWidgetContainer,
+    connectTimerCleanup,
+    startPollingTimer
+} from '../utils/widgetUIUtils.js';
 
+/** Polling and history limits */
 const TICK_INTERVAL_MS = 1000;
 const MAX_HISTORY_LENGTH = 10;
 const PREVIEW_TEXT_MAX_LENGTH = 40;
+const PREVIEW_TEXT_MIN_LENGTH = 20;
 
+/** Layout metrics */
+const BASE_CONTAINER_WIDTH = 240;
+const BASE_CONTAINER_HEIGHT = 160;
+const BASE_TITLE_FONT_SIZE = 14;
+const MIN_TITLE_FONT_SIZE = 11;
+const BASE_ITEM_FONT_SIZE = 12;
+const MIN_ITEM_FONT_SIZE = 10;
+const BASE_ICON_SIZE = 16;
+const MIN_ICON_SIZE = 13;
+
+/** Mouse button constants */
+const BUTTON_PRIMARY = 1;
+
+/** Standard item box styling constants */
+const ITEM_STYLE_NORMAL = 'padding: 6px; border-radius: 4px; margin-bottom: 4px; background-color: transparent;';
+const ITEM_STYLE_HOVER = 'padding: 6px; border-radius: 4px; margin-bottom: 4px; background-color: rgba(255,255,255,0.1);';
+
+/** Creates a clipboard history widget node. */
 export function createClipboardNode(config, width, height, xPosition, yPosition) {
-    const fontFamily = config.fontFamily || DEFAULT_FONT_FAMILY;
+    const fontFamily = resolveWidgetFontFamily(config);
     const textColor = resolveWidgetForegroundColor(config);
-
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
+
+    const scale = Math.max(0.5, Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT));
+    const titleFontSize = Math.max(MIN_TITLE_FONT_SIZE, Math.round(BASE_TITLE_FONT_SIZE * scale));
+    const itemFontSize = Math.max(MIN_ITEM_FONT_SIZE, Math.round(BASE_ITEM_FONT_SIZE * scale));
+    const iconSize = Math.max(MIN_ICON_SIZE, Math.round(BASE_ICON_SIZE * scale));
 
     const contentBox = new St.BoxLayout({
         vertical: true,
@@ -40,16 +67,19 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         vertical: false,
         style: 'margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px;',
     });
+
     const headerIcon = new St.Icon({
         icon_name: 'edit-copy-symbolic',
-        icon_size: 16,
+        icon_size: iconSize,
         style: `color: ${textColor}; margin-right: 6px;`,
     });
+
     const headerLabel = new St.Label({
         text: 'Clipboard History',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: 14px;`,
+        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${titleFontSize}px;`,
         y_align: Clutter.ActorAlign.CENTER,
     });
+
     headerBox.add_child(headerIcon);
     headerBox.add_child(headerLabel);
     contentBox.add_child(headerBox);
@@ -69,59 +99,70 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
     contentBox.add_child(scrollView);
     container.add_child(contentBox);
 
-    const clipboardFilePath = `${config.extensionPath}/clipboard-${config.id}.json`;
+    const clipboardFilePath = GLib.build_filenamev([
+        config.extensionPath || '',
+        `clipboard-${config.id}.json`
+    ]);
 
     const savedData = loadJsonFromFile(clipboardFilePath);
     const state = {
         clipboardHistory: (savedData && Array.isArray(savedData.history)) ? savedData.history : [],
         timerId: null,
+        isDestroyed: false,
     };
+
+    container.connect('destroy', () => {
+        state.isDestroyed = true;
+    });
 
     const systemClipboard = St.Clipboard.get_default();
 
     const renderClipboardItems = () => {
+        if (state.isDestroyed) return;
         itemContainer.destroy_all_children();
 
         if (state.clipboardHistory.length === 0) {
-            const emptyStateLabel = new St.Label({
+            const emptyLabel = new St.Label({
                 text: 'No history yet.',
-                style: `font-family: ${fontFamily}; color: ${textColor}; opacity: 0.5; font-size: 12px;`,
+                style: `font-family: ${fontFamily}; color: ${textColor}; opacity: 0.5; font-size: ${itemFontSize}px;`,
             });
-            itemContainer.add_child(emptyStateLabel);
+            itemContainer.add_child(emptyLabel);
             return;
         }
+
+        const maxLen = Math.max(PREVIEW_TEXT_MIN_LENGTH, Math.round(PREVIEW_TEXT_MAX_LENGTH * scale));
 
         state.clipboardHistory.forEach((clipboardText) => {
             const itemBox = new St.BoxLayout({
                 vertical: false,
                 reactive: true,
-                style: 'padding: 6px; border-radius: 4px; margin-bottom: 4px;',
+                style: ITEM_STYLE_NORMAL,
             });
 
             itemBox.connect('enter-event', () => {
-                itemBox.style = 'padding: 6px; border-radius: 4px; margin-bottom: 4px; background-color: rgba(255,255,255,0.1);';
+                itemBox.style = ITEM_STYLE_HOVER;
                 return Clutter.EVENT_PROPAGATE;
             });
             itemBox.connect('leave-event', () => {
-                itemBox.style = 'padding: 6px; border-radius: 4px; margin-bottom: 4px; background-color: transparent;';
+                itemBox.style = ITEM_STYLE_NORMAL;
                 return Clutter.EVENT_PROPAGATE;
             });
 
             const singleLinePreview = clipboardText.replace(/\n/g, ' ');
-            const truncatedPreview = singleLinePreview.length > PREVIEW_TEXT_MAX_LENGTH
-                ? singleLinePreview.substring(0, PREVIEW_TEXT_MAX_LENGTH) + '...'
+            const truncatedPreview = singleLinePreview.length > maxLen
+                ? `${singleLinePreview.substring(0, maxLen)}...`
                 : singleLinePreview;
 
             const textLabel = new St.Label({
                 text: truncatedPreview,
-                style: `font-family: ${fontFamily}; color: ${textColor}; font-size: 12px;`,
+                style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${itemFontSize}px;`,
                 y_align: Clutter.ActorAlign.CENTER,
                 x_expand: true,
             });
             itemBox.add_child(textLabel);
 
             itemBox.connect('button-press-event', (actor, event) => {
-                if (event.get_button() === 1) {
+                if (event.get_button() === BUTTON_PRIMARY) {
                     systemClipboard.set_text(St.ClipboardType.CLIPBOARD, clipboardText);
                     return Clutter.EVENT_STOP;
                 }
@@ -133,25 +174,26 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
     };
 
     const pollSystemClipboard = () => {
+        if (state.isDestroyed) return;
         systemClipboard.get_text(St.ClipboardType.CLIPBOARD, (cb, newClipboardText) => {
-            if (newClipboardText && newClipboardText.trim() !== '') {
-                const isAlreadyLatest = state.clipboardHistory.length > 0
-                    && state.clipboardHistory[0] === newClipboardText;
+            if (state.isDestroyed || !newClipboardText || newClipboardText.trim() === '') return;
 
-                if (!isAlreadyLatest) {
-                    const existingIndex = state.clipboardHistory.indexOf(newClipboardText);
-                    if (existingIndex > -1) {
-                        state.clipboardHistory.splice(existingIndex, 1);
-                    }
+            const isAlreadyLatest = state.clipboardHistory.length > 0
+                && state.clipboardHistory[0] === newClipboardText;
 
-                    state.clipboardHistory.unshift(newClipboardText);
-                    if (state.clipboardHistory.length > MAX_HISTORY_LENGTH) {
-                        state.clipboardHistory.pop();
-                    }
-
-                    saveJsonToFile(clipboardFilePath, { history: state.clipboardHistory });
-                    renderClipboardItems();
+            if (!isAlreadyLatest) {
+                const existingIndex = state.clipboardHistory.indexOf(newClipboardText);
+                if (existingIndex > -1) {
+                    state.clipboardHistory.splice(existingIndex, 1);
                 }
+
+                state.clipboardHistory.unshift(newClipboardText);
+                if (state.clipboardHistory.length > MAX_HISTORY_LENGTH) {
+                    state.clipboardHistory.pop();
+                }
+
+                saveJsonToFile(clipboardFilePath, { history: state.clipboardHistory });
+                renderClipboardItems();
             }
         });
     };

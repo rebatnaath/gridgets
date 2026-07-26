@@ -41,11 +41,6 @@
       <summary>Global Font Family</summary>
       <description>The font family to use across widgets.</description>
     </key>
-    <key name="weather-api-key" type="s">
-      <default>''</default>
-      <summary>Weather API Key</summary>
-      <description>API Key for WeatherAPI.com</description>
-    </key>
     <key name="weather-dynamic-color" type="b">
       <default>true</default>
       <summary>Dynamic Weather Color</summary>
@@ -85,6 +80,27 @@
       <default>false</default>
       <summary>Show Slideshow Caption</summary>
       <description>If true, show captions on slideshow widgets.</description>
+    </key>
+    <key name="global-monitor" type="s">
+    <key name="music-ignore-browsers" type="b">
+      <default>true</default>
+      <summary>Ignore Browsers in Music Widget</summary>
+      <description>If true, browser MPRIS players (Firefox, Chromium, etc.) will be ignored by default.</description>
+    </key>
+    <key name="open-edit-widget-id" type="s">
+      <default>''</default>
+      <summary>Widget ID to Edit</summary>
+      <description>Internal key set when right-clicking a widget to open its edit dialog in preferences.</description>
+    </key>
+    <key name="grid-custom-size" type="b">
+      <default>false</default>
+      <summary>Custom Grid Size</summary>
+      <description>If true, use custom grid column dimensions.</description>
+    </key>
+    <key name="grid-columns" type="i">
+      <default>28</default>
+      <summary>Grid Columns</summary>
+      <description>Number of columns across the desktop grid.</description>
     </key>
   </schema>
 </schemalist>

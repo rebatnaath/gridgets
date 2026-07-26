@@ -1,9 +1,9 @@
 /**
  * ============================================================================
- * COMMAND LAUNCHER WIDGET 
+ * COMMAND LAUNCHER WIDGET
  * 
- * This module implements a widget that executes user-defined shell commands.
- * It provides a clickable interface with visual feedback during execution 
+ * Executes user-defined shell commands on click, supporting dynamic scaling,
+ * icon/image rendering, and visual overlay feedback during execution.
  * ============================================================================
  */
 
@@ -12,23 +12,30 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import {
-    resolveWidgetForegroundColor, DEFAULT_FONT_FAMILY
-} from './widgetUtils.js';
-import {
-    createWidgetContainer
-} from './widgetUIUtils.js';
+import { resolveWidgetForegroundColor, resolveWidgetFontFamily } from '../utils/widgetUtils.js';
+import { createWidgetContainer } from '../utils/widgetUIUtils.js';
 
+/** Default widget configuration fallbacks */
 const DEFAULT_ICON = 'system-run-symbolic';
 const DEFAULT_COMMAND = 'echo "Hello World"';
+const DEFAULT_COMMAND_NAME = 'Quick Launch';
 
+/** Layout & interaction metrics */
 const DRAG_THRESHOLD_PIXELS = 10;
 const CENTER_CLICK_MARGIN_RATIO = 0.20;
-const DEFAULT_ICON_SIZE = 48;
+const DEFAULT_ICON_SIZE = 68;
+const MIN_SCALED_ICON_SIZE = 14;
+const BASE_TITLE_FONT_SIZE = 14;
+const MIN_TITLE_FONT_SIZE = 8;
 const LOADING_ICON_SIZE = 32;
 const UI_PADDING_PIXELS = 12;
 const OVERLAY_BACKGROUND_COLOR = 'rgba(0, 0, 0, 0.5)';
+const BASE_CONTAINER_SIZE = 160;
 
+/** Mouse button constants */
+const BUTTON_PRIMARY = 1;
+
+/** Builds a cross-terminal launcher shell script payload string. */
 function buildTerminalScript(commandString) {
     const escapedCommand = commandString.replace(/'/g, "'\\''");
     return `
@@ -48,26 +55,38 @@ bash -c '${escapedCommand}'
 `;
 }
 
+/** Checks if relative click coordinates land in the interactive central region. */
 function isWithinClickableCenter(relativeX, relativeY, containerWidth, containerHeight) {
     const marginX = containerWidth * CENTER_CLICK_MARGIN_RATIO;
     const marginY = containerHeight * CENTER_CLICK_MARGIN_RATIO;
-
     return relativeX >= marginX && relativeX <= containerWidth - marginX
         && relativeY >= marginY && relativeY <= containerHeight - marginY;
 }
 
+/** Creates a command launcher widget node. */
 export function createCommandNode(config, width, height, xPosition, yPosition) {
-    const borderRadius = config.appliedBorderRadius || 0;
-    const fontFamily = config.fontFamily || DEFAULT_FONT_FAMILY;
+    const fontFamily = resolveWidgetFontFamily(config);
     const textColor = resolveWidgetForegroundColor(config);
 
     const commandString = config.commandString || DEFAULT_COMMAND;
-    const imagePath = config.imagePath || '';
-    const commandName = config.commandName || 'Quick Launch';
+    const iconName = config.iconName || DEFAULT_ICON;
+    const cleanImagePath = (config.imagePath || '').replace(/^file:\/\//, '');
+    const commandName = config.commandName || DEFAULT_COMMAND_NAME;
     const showText = config.showText !== false;
-    const imageMargin = config.imageMargin || 0;
+    const hasValidImage = cleanImagePath.length > 0 && GLib.file_test(cleanImagePath, GLib.FileTest.EXISTS);
 
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
+
+    let isDestroyed = false;
+    let idleSourceId = null;
+
+    container.connect('destroy', () => {
+        isDestroyed = true;
+        if (idleSourceId) {
+            GLib.Source.remove(idleSourceId);
+            idleSourceId = null;
+        }
+    });
 
     const wrapper = new St.Widget({
         layout_manager: new Clutter.BinLayout(),
@@ -75,29 +94,29 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
         y_expand: true,
     });
 
-    let commandImage;
-    if (imagePath) {
-        commandImage = new St.Widget({
-            style: `background-image: url("file://${imagePath}"); background-size: cover; background-repeat: no-repeat; border-radius: ${borderRadius}px; margin: ${imageMargin}px;`,
+    const commandImage = hasValidImage
+        ? new St.Widget({
+            style: `background-image: url("file://${cleanImagePath}"); background-size: contain; background-repeat: no-repeat; background-position: center;`,
+            width: DEFAULT_ICON_SIZE,
+            height: DEFAULT_ICON_SIZE,
             x_expand: true,
             y_expand: true,
-            x_align: Clutter.ActorAlign.FILL,
-            y_align: Clutter.ActorAlign.FILL,
-        });
-    } else {
-        commandImage = new St.Icon({
-            icon_name: DEFAULT_ICON,
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+        })
+        : new St.Icon({
+            icon_name: iconName,
             icon_size: DEFAULT_ICON_SIZE,
-            style: `color: ${textColor}; margin: ${imageMargin}px;`,
+            style: `color: ${textColor};`,
             x_expand: true,
             y_expand: true,
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
-    }
 
     wrapper.add_child(commandImage);
 
+    let titleLabel = null;
     if (showText) {
         const contentBox = new St.BoxLayout({
             vertical: true,
@@ -108,15 +127,46 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
             style: `padding: ${UI_PADDING_PIXELS}px;`,
         });
 
-        const titleLabel = new St.Label({
+        titleLabel = new St.Label({
             text: commandName,
-            style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: 14px; text-align: center; text-shadow: 0px 2px 4px rgba(0,0,0,0.8);`,
+            style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${BASE_TITLE_FONT_SIZE}px; text-align: center; text-shadow: 0px 2px 4px rgba(0,0,0,0.8);`,
             x_align: Clutter.ActorAlign.CENTER,
         });
 
         contentBox.add_child(titleLabel);
         wrapper.add_child(contentBox);
     }
+
+    const updateScaling = () => {
+        if (isDestroyed) return;
+        const currentWidth = container.width || width || BASE_CONTAINER_SIZE;
+        const currentHeight = container.height || height || BASE_CONTAINER_SIZE;
+        const scale = Math.max(0.2, Math.min(currentWidth / BASE_CONTAINER_SIZE, currentHeight / BASE_CONTAINER_SIZE));
+
+        const userIconScale = config.iconScale !== undefined ? config.iconScale : 1.0;
+        const scaledIconSize = Math.max(MIN_SCALED_ICON_SIZE, Math.round(DEFAULT_ICON_SIZE * scale * userIconScale));
+        const scaledFontSize = Math.max(MIN_TITLE_FONT_SIZE, Math.round(BASE_TITLE_FONT_SIZE * scale));
+
+        if (hasValidImage) {
+            commandImage.set_width(scaledIconSize);
+            commandImage.set_height(scaledIconSize);
+        } else {
+            commandImage.set_icon_size(scaledIconSize);
+        }
+
+        if (titleLabel) {
+            titleLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${scaledFontSize}px; text-align: center; text-shadow: 0px 2px 4px rgba(0,0,0,0.8);`;
+        }
+    };
+
+    container.connect('notify::width', updateScaling);
+    container.connect('notify::height', updateScaling);
+
+    idleSourceId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        idleSourceId = null;
+        updateScaling();
+        return GLib.SOURCE_REMOVE;
+    });
 
     const executionOverlay = new St.BoxLayout({
         vertical: true,
@@ -128,7 +178,7 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
         visible: false,
     });
     const loadingIcon = new St.Icon({
-        icon_name: 'process-working-symbolic',
+        icon_name: 'emblem-synchronizing-symbolic',
         icon_size: LOADING_ICON_SIZE,
         style: `color: ${textColor};`,
     });
@@ -141,23 +191,20 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
     let pressY = 0;
 
     container.connect('button-press-event', (actor, event) => {
-        if (event.get_button() === 1) {
+        if (event.get_button() === BUTTON_PRIMARY) {
             [pressX, pressY] = event.get_coords();
         }
         return Clutter.EVENT_PROPAGATE;
     });
 
     container.connect('button-release-event', (actor, event) => {
-        if (event.get_button() === 1 && !isCommandRunning) {
-            if (container.editMode && container.editMode !== 0)
+        if (event.get_button() === BUTTON_PRIMARY && !isCommandRunning) {
+            if (container.actionOverlay)
                 return Clutter.EVENT_PROPAGATE;
 
             const [releaseX, releaseY] = event.get_coords();
-            const dragDistanceX = Math.abs(releaseX - pressX);
-            const dragDistanceY = Math.abs(releaseY - pressY);
-
-            const isClickNotDrag = dragDistanceX < DRAG_THRESHOLD_PIXELS
-                && dragDistanceY < DRAG_THRESHOLD_PIXELS;
+            const isClickNotDrag = Math.abs(releaseX - pressX) < DRAG_THRESHOLD_PIXELS
+                && Math.abs(releaseY - pressY) < DRAG_THRESHOLD_PIXELS;
 
             if (isClickNotDrag) {
                 const [success, relativeX, relativeY] = container.transform_stage_point(releaseX, releaseY);
@@ -170,12 +217,12 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
     });
 
     const executeCommand = () => {
+        if (isDestroyed) return;
         isCommandRunning = true;
         executionOverlay.show();
 
         try {
             const terminalScript = buildTerminalScript(commandString);
-
             const subprocess = new Gio.Subprocess({
                 argv: ['/bin/sh', '-c', terminalScript],
                 flags: Gio.SubprocessFlags.NONE
@@ -184,12 +231,12 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
 
             subprocess.wait_async(null, (proc, res) => {
                 isCommandRunning = false;
-                try {
-                    if (executionOverlay) {
+                if (!isDestroyed) {
+                    try {
                         executionOverlay.hide();
+                    } catch (err) {
+                        console.error('Error hiding execution overlay:', err);
                     }
-                } catch (err) {
-                    // Ignore if already finalized
                 }
                 try {
                     proc.wait_finish(res);
@@ -200,12 +247,12 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
             });
         } catch (e) {
             isCommandRunning = false;
-            try {
-                if (executionOverlay) {
+            if (!isDestroyed) {
+                try {
                     executionOverlay.hide();
+                } catch (err) {
+                    console.error('Error hiding execution overlay on start failure:', err);
                 }
-            } catch (err) {
-                // Ignore if already finalized
             }
             Main.notify('Command Error', `Failed to start ${commandName}: ${e.message}`);
         }

@@ -2,8 +2,8 @@
  * ============================================================================
  * SYSTEM MONITOR ENGINE
  * 
- * This module centralizes polling logic for system resources (CPU, RAM, Network).
- * It deduplicates timers and file reads, allowing multiple widgets to subscribe
+ * Centralized polling engine for system resources (CPU, RAM, Network).
+ * Deduplicates timers and file reads, allowing multiple widgets to subscribe
  * to a single data stream, significantly improving extension efficiency.
  * ============================================================================
  */
@@ -11,10 +11,20 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
+/** Polling engine metrics & file parsing constants */
+const DEFAULT_ENGINE_POLL_INTERVAL_MS = 2000;
+const PROC_NET_DEV_HEADER_LINES_COUNT = 2;
+const PROC_NET_DEV_RX_BYTES_INDEX = 0;
+const PROC_NET_DEV_TX_BYTES_INDEX = 8;
+const MIN_PROC_NET_DEV_FIELDS_COUNT = 8;
+const MILLISECONDS_PER_SECOND = 1000;
+const MICROSECONDS_TO_MILLISECONDS = 1000;
+
 export class PollingEngine {
-    constructor(intervalMs, fetchFn) {
+    constructor(intervalMs, fetchFn, resetFn = null) {
         this.intervalMs = intervalMs;
         this.fetchFn = fetchFn;
+        this.resetFn = resetFn;
         this.subscribers = [];
         this.timerId = null;
         this.lastData = null;
@@ -28,15 +38,16 @@ export class PollingEngine {
         }
 
         if (this.subscribers.length === 1) {
-            this.fetchFn((data) => {
-                this.lastData = data;
-                this.subscribers.forEach(cb => cb(data));
-            });
-            this.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intervalMs, () => {
+            const runFetch = () => {
                 this.fetchFn((data) => {
                     this.lastData = data;
                     this.subscribers.forEach(cb => cb(data));
                 });
+            };
+
+            runFetch();
+            this.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this.intervalMs, () => {
+                runFetch();
                 return GLib.SOURCE_CONTINUE;
             });
         }
@@ -48,13 +59,16 @@ export class PollingEngine {
             GLib.Source.remove(this.timerId);
             this.timerId = null;
             this.lastData = null;
+            if (this.resetFn) {
+                this.resetFn();
+            }
         }
     }
 }
 
 const decoder = new TextDecoder('utf-8');
 
-// CPU/RAM Engine 
+// CPU & RAM Data Source
 
 let prevCpuTotal = 0;
 let prevCpuIdle = 0;
@@ -71,7 +85,9 @@ function fetchCpuRamData(callback) {
                 const cpuLineMatch = text.match(/^cpu\s+(.+)$/m);
                 if (cpuLineMatch) {
                     const parts = cpuLineMatch[1].trim().split(/\s+/).map(Number);
-                    const idle = parts[3] + parts[4];
+                    const idleIndex = 3;
+                    const iowaitIndex = 4;
+                    const idle = parts[idleIndex] + parts[iowaitIndex];
                     const total = parts.reduce((a, b) => a + b, 0);
 
                     if (prevCpuTotal > 0) {
@@ -114,9 +130,16 @@ function fetchCpuRamData(callback) {
     });
 }
 
-export const cpuRamEngine = new PollingEngine(2000, fetchCpuRamData);
+function resetCpuRamState() {
+    prevCpuTotal = 0;
+    prevCpuIdle = 0;
+    lastCpuProgress = 0;
+    lastRamProgress = 0;
+}
 
-// Network Engine 
+export const cpuRamEngine = new PollingEngine(DEFAULT_ENGINE_POLL_INTERVAL_MS, fetchCpuRamData, resetCpuRamState);
+
+// Network Speed Data Source
 
 let prevRxBytes = 0;
 let prevTxBytes = 0;
@@ -135,27 +158,26 @@ function fetchNetworkData(callback) {
                 let totalRxBytes = 0;
                 let totalTxBytes = 0;
 
-                for (let i = 2; i < lines.length; i++) {
+                for (let i = PROC_NET_DEV_HEADER_LINES_COUNT; i < lines.length; i++) {
                     const line = lines[i].trim();
                     if (!line || line.startsWith('lo:')) continue;
                     const colonSplit = line.split(':');
                     if (colonSplit.length >= 2) {
                         const dataParts = colonSplit[1].trim().split(/\s+/);
-                        if (dataParts.length >= 8) {
-                            totalRxBytes += parseInt(dataParts[0], 10) || 0;
-                            totalTxBytes += parseInt(dataParts[8], 10) || 0;
+                        if (dataParts.length >= MIN_PROC_NET_DEV_FIELDS_COUNT) {
+                            totalRxBytes += parseInt(dataParts[PROC_NET_DEV_RX_BYTES_INDEX], 10) || 0;
+                            totalTxBytes += parseInt(dataParts[PROC_NET_DEV_TX_BYTES_INDEX], 10) || 0;
                         }
                     }
                 }
 
-                const nowMs = GLib.get_monotonic_time() / 1000;
+                const nowMs = GLib.get_monotonic_time() / MICROSECONDS_TO_MILLISECONDS;
                 if (prevTimeMs > 0 && totalRxBytes > 0) {
                     const deltaMs = nowMs - prevTimeMs;
                     const deltaRxBytes = totalRxBytes - prevRxBytes;
                     const deltaTxBytes = totalTxBytes - prevTxBytes;
 
                     if (deltaMs > 0) {
-                        const MILLISECONDS_PER_SECOND = 1000;
                         lastDownloadSpeed = Math.max(0, (deltaRxBytes / deltaMs) * MILLISECONDS_PER_SECOND);
                         lastUploadSpeed = Math.max(0, (deltaTxBytes / deltaMs) * MILLISECONDS_PER_SECOND);
                     }
@@ -171,4 +193,12 @@ function fetchNetworkData(callback) {
     });
 }
 
-export const networkEngine = new PollingEngine(2000, fetchNetworkData);
+function resetNetworkState() {
+    prevRxBytes = 0;
+    prevTxBytes = 0;
+    prevTimeMs = 0;
+    lastDownloadSpeed = 0;
+    lastUploadSpeed = 0;
+}
+
+export const networkEngine = new PollingEngine(DEFAULT_ENGINE_POLL_INTERVAL_MS, fetchNetworkData, resetNetworkState);

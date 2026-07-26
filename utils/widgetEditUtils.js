@@ -2,63 +2,44 @@
  * ============================================================================
  * WIDGET EDIT UTILITIES
  * 
- * This file contains the logic for handling the edit modes of widgets
- * (resize and delete). It toggles the edit overlays, handles drag-to-resize
- * events, calculates new dimensions, and triggers the necessary callbacks
- * when resizing or deleting actions occur.
+ * Logic for handling widget resize operations. Toggles the resize handle
+ * overlay (resize.svg), handles drag-to-resize events, calculates new grid
+ * dimensions, and triggers callbacks when resizing completes.
  * ============================================================================
  */
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { calculateResizedDimensions } from './widgetUtils.js';
+import { calculateResizedDimensions, GRID_GAP_PX, GRID_MARGIN_PX } from './widgetUtils.js';
 
-export const EDIT_MODE_NONE = 0;
-export const EDIT_MODE_RESIZE = 1;
-export const EDIT_MODE_DELETE = 2;
-export const TOTAL_EDIT_MODES = 3;
+/** Overlay dimension metrics */
 export const RESIZE_HANDLE_OFFSET = 32;
+export const OVERLAY_SIZE_PX = 24;
+export const OVERLAY_RADIUS_PX = 12;
+
+/** Clutter mouse button constants */
+const BUTTON_PRIMARY = 1;
 
 /**
- * Toggles a widget's edit mode between normal, resize, and delete/close,
- * rendering the appropriate overlay handle.
- *
- * @param {Clutter.Actor} widgetNode     - widget's main actor
- * @param {Object} widgetData            - widget configuration
- * @param {number} cellTotalWidth        - Grid column width + gap
- * @param {number} cellTotalHeight       - Grid row height + gap
- * @param {string} extensionPath         - Path to the extension folder
- * @param {function} onResizeEnd         - Callback triggered when resizing ends
- * @param {function} onDelete            - Callback triggered when close/delete is clicked
+ * Toggles the interactive resize handle overlay (resize.svg) on a widget node.
+ * If the resize handle is already visible, calling this destroys/removes it.
  */
-export function toggleWidgetEditMode(widgetNode, widgetData, cellTotalWidth, cellTotalHeight, extensionPath, onResizeEnd, onDelete) {
-    if (widgetNode.editMode === undefined)
-        widgetNode.editMode = EDIT_MODE_NONE;
-
-    widgetNode.editMode = (widgetNode.editMode + 1) % TOTAL_EDIT_MODES;
-
-    // Weather widgets use server-determined sizes, so skip resize mode
-    if ((widgetData.type === 'weather') && widgetNode.editMode === EDIT_MODE_RESIZE)
-        widgetNode.editMode = EDIT_MODE_DELETE;
-
+export function toggleWidgetResizeHandle(widgetNode, widgetData, cellTotalWidth, cellTotalHeight, extensionPath, onResizeEnd, allWidgets = []) {
     if (widgetNode.actionOverlay) {
         widgetNode.actionOverlay.destroy();
         widgetNode.actionOverlay = null;
+        return;
     }
 
-    if (widgetNode.editMode === EDIT_MODE_NONE)
-        return;
-
-    const iconName = widgetNode.editMode === EDIT_MODE_RESIZE ? 'resize.svg' : 'close.svg';
-    const iconPath = `${extensionPath}/assets/${iconName}`;
+    const iconPath = `${extensionPath}/assets/resize.svg`;
 
     const overlay = new St.Widget({
         style: `
             background-image: url("file://${iconPath}"); 
             background-size: cover; 
-            width: 24px; 
-            height: 24px; 
-            border-radius: 12px;
+            width: ${OVERLAY_SIZE_PX}px; 
+            height: ${OVERLAY_SIZE_PX}px; 
+            border-radius: ${OVERLAY_RADIUS_PX}px;
             background-color: rgba(255, 255, 255, 0.9);
             border: 1px solid rgba(0, 0, 0, 0.2);
             box-shadow: 0px 2px 4px rgba(0,0,0,0.3);
@@ -79,26 +60,27 @@ export function toggleWidgetEditMode(widgetNode, widgetData, cellTotalWidth, cel
     const endResize = () => {
         if (!isResizing) return;
         isResizing = false;
+        if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(false);
         if (resizeMotionId) { global.stage.disconnect(resizeMotionId); resizeMotionId = 0; }
         if (resizeReleaseId) { global.stage.disconnect(resizeReleaseId); resizeReleaseId = 0; }
 
-        const proposedGridX = Math.round(widgetNode.x / cellTotalWidth);
-        const proposedCols = Math.max(1, Math.round(widgetNode.width / cellTotalWidth));
-        const proposedRows = Math.max(1, Math.round(widgetNode.height / cellTotalHeight));
+        const proposedGridX = Math.round((widgetNode.x - GRID_MARGIN_PX) / cellTotalWidth);
+        const proposedCols = Math.max(1, Math.round((widgetNode.width + GRID_GAP_PX) / cellTotalWidth));
+        const proposedRows = Math.max(1, Math.round((widgetNode.height + GRID_GAP_PX) / cellTotalHeight));
 
         const { validCols, validRows, validX } = calculateResizedDimensions(
-            widgetData, proposedCols, proposedRows, proposedGridX
+            widgetData, proposedCols, proposedRows, proposedGridX, allWidgets
         );
 
         onResizeEnd(validCols, validRows, validX);
     };
 
     overlay.connect('button-press-event', (actor, event) => {
-        const isResizeAction = widgetNode.editMode === EDIT_MODE_RESIZE && event.get_button() === 1;
-        if (isResizeAction) {
+        if (event.get_button() === BUTTON_PRIMARY) {
             if (resizeMotionId) { global.stage.disconnect(resizeMotionId); resizeMotionId = 0; }
             if (resizeReleaseId) { global.stage.disconnect(resizeReleaseId); resizeReleaseId = 0; }
             isResizing = true;
+            if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(true);
             const [stageX, stageY] = event.get_coords();
             resizeStartX = stageX;
             resizeStartY = stageY;
@@ -116,8 +98,22 @@ export function toggleWidgetEditMode(widgetNode, widgetData, cellTotalWidth, cel
                 const dx = x - resizeStartX;
                 const dy = y - resizeStartY;
 
-                const newWidth = Math.max(cellTotalWidth, resizeStartWidth + dx);
-                const newHeight = Math.max(cellTotalHeight, resizeStartHeight + dy);
+                const rawWidth = Math.max(cellTotalWidth, resizeStartWidth + dx);
+                const rawHeight = Math.max(cellTotalHeight, resizeStartHeight + dy);
+
+                const proposedCols = Math.max(1, Math.round((rawWidth + GRID_GAP_PX) / cellTotalWidth));
+                const proposedRows = Math.max(1, Math.round((rawHeight + GRID_GAP_PX) / cellTotalHeight));
+                const proposedGridX = Math.round((widgetNode.x - GRID_MARGIN_PX) / cellTotalWidth);
+
+                const { validCols, validRows } = calculateResizedDimensions(
+                    widgetData, proposedCols, proposedRows, proposedGridX, allWidgets
+                );
+
+                const maxAllowedWidth = (validCols * cellTotalWidth) - GRID_GAP_PX;
+                const maxAllowedHeight = (validRows * cellTotalHeight) - GRID_GAP_PX;
+
+                const newWidth = Math.min(rawWidth, maxAllowedWidth);
+                const newHeight = Math.min(rawHeight, maxAllowedHeight);
 
                 widgetNode.set_size(newWidth, newHeight);
                 overlay.set_position(newWidth - RESIZE_HANDLE_OFFSET, newHeight - RESIZE_HANDLE_OFFSET);
@@ -125,7 +121,7 @@ export function toggleWidgetEditMode(widgetNode, widgetData, cellTotalWidth, cel
             });
 
             resizeReleaseId = global.stage.connect('button-release-event', (stage, ev) => {
-                if (ev.get_button() === 1) {
+                if (ev.get_button() === BUTTON_PRIMARY) {
                     endResize();
                     return Clutter.EVENT_STOP;
                 }
@@ -138,12 +134,6 @@ export function toggleWidgetEditMode(widgetNode, widgetData, cellTotalWidth, cel
     overlay.connect('destroy', () => {
         if (resizeMotionId) global.stage.disconnect(resizeMotionId);
         if (resizeReleaseId) global.stage.disconnect(resizeReleaseId);
-    });
-
-    overlay.connect('button-release-event', (actor, event) => {
-        if (widgetNode.editMode === EDIT_MODE_DELETE && event.get_button() === 1)
-            onDelete(widgetData.id);
-        return Clutter.EVENT_STOP;
     });
 
     widgetNode.actionOverlay = overlay;

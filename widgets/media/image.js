@@ -1,18 +1,18 @@
 /**
  * ============================================================================
- * STATIC IMAGE & COLOR BLOCK WIDGET 
- * 
- * This module provides simple rendering for static images and solid color
- * blocks on the desktop grid. It supports captions, custom scaling, and
- * standard corner rounding.
+ * STATIC IMAGE & COLOR BLOCK WIDGETS
  * ============================================================================
  */
 
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { buildBaseWidgetStyle } from './widgetUtils.js';
-import { createCaptionOverlay } from './widgetUIUtils.js';
+import { buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
+import { attachCaptionOverlay } from './mediaCommon.js';
 
+/** Fallback color for color block widget */
+const DEFAULT_COLOR_BLOCK_FALLBACK = 'rgba(0, 255, 0, 0.4)';
+
+/** Creates a static image widget node. */
 export function createStaticImageNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
     const widgetStyle = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
@@ -28,20 +28,16 @@ export function createStaticImageNode(widgetData, width, height, xPosition, yPos
     });
 
     widgetNode.set_clip_to_allocation(true);
-
-    const showText = widgetData.appliedShowText !== false;
-    const caption = widgetData.caption || '';
-
-    if (showText && caption.length > 0) {
-        widgetNode.add_child(createCaptionOverlay(widgetData, caption));
-    }
+    attachCaptionOverlay(widgetNode, widgetData, width, height);
 
     return widgetNode;
 }
 
+/** Creates a solid color block widget node. */
 export function createColorBlockNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
-    const widgetStyle = `background-color: ${widgetData.color || 'rgba(0, 255, 0, 0.4)'}; ${baseStyle}`;
+    const fillColor = widgetData.color || DEFAULT_COLOR_BLOCK_FALLBACK;
+    const widgetStyle = `background-color: ${fillColor}; ${baseStyle}`;
 
     const widgetNode = new St.Widget({
         style: widgetStyle,

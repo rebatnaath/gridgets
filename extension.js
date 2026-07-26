@@ -1,60 +1,53 @@
 /**
- * ============================================================================
- * EXTENSION ENTRY POINT 
- * 
- * This file is the main entry point for the GNOME Shell extension. It handles
- * the initialization, enabling, and disabling of the extension, as well as
- * listening to monitor changes to adjust the desktop grid dynamically.
- * ============================================================================
+ * GRIDGETS EXTENSION MAIN ENTRY POINT
+ * Subclasses GNOME Shell 45+ Extension class to manage DesktopGrid lifecycle.
  */
 
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { DesktopGrid } from './desktopGrid.js';
 
 export default class GridgetsExtension extends Extension {
-    constructor(metadata) {
-        super(metadata);
-        this.desktopGrid = null;
-        this.monitorsChangedId = null;
-        this.settings = null;
-    }
-
     enable() {
-        this.settings = this.getSettings('org.gnome.shell.extensions.gridgets');
-        this.createAndShowGrid();
+        this._desktopGrid = null;
+        this._monitorsChangedId = 0;
 
-        this.monitorsChangedId = Main.layoutManager.connect(
-            'monitors-changed',
-            () => this.rebuildGrid()
-        );
+        this._createAndShowGrid();
+
+        this._monitorsChangedId = Main.layoutManager.connect('monitors-changed', () => {
+            this._rebuildGrid();
+        });
     }
 
     disable() {
-        if (this.monitorsChangedId !== null) {
-            Main.layoutManager.disconnect(this.monitorsChangedId);
-            this.monitorsChangedId = null;
+        if (this._monitorsChangedId > 0) {
+            Main.layoutManager.disconnect(this._monitorsChangedId);
+            this._monitorsChangedId = 0;
         }
-        
-        this.removeGrid();
-        this.settings = null;
+
+        this._removeGrid();
     }
 
-    createAndShowGrid() {
-        this.desktopGrid = new DesktopGrid(this.settings, this.dir.get_path());
-        Main.layoutManager._backgroundGroup.add_child(this.desktopGrid.container);
+    _createAndShowGrid() {
+        if (this._desktopGrid)
+            return;
+
+        const settings = this.getSettings('org.gnome.shell.extensions.gridgets');
+        this._desktopGrid = new DesktopGrid(this.path, settings, this.metadata);
+        Main.layoutManager._backgroundGroup.add_child(this._desktopGrid);
     }
 
-    removeGrid() {
-        if (this.desktopGrid !== null) {
-            Main.layoutManager._backgroundGroup.remove_child(this.desktopGrid.container);
-            this.desktopGrid.destroy();
-            this.desktopGrid = null;
-        }
+    _removeGrid() {
+        if (!this._desktopGrid)
+            return;
+
+        Main.layoutManager._backgroundGroup.remove_child(this._desktopGrid);
+        this._desktopGrid.destroy();
+        this._desktopGrid = null;
     }
 
-    rebuildGrid() {
-        this.removeGrid();
-        this.createAndShowGrid();
+    _rebuildGrid() {
+        this._removeGrid();
+        this._createAndShowGrid();
     }
 }

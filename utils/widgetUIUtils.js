@@ -2,10 +2,10 @@
  * ============================================================================
  * WIDGET UI UTILITIES
  * 
- * This file contains common UI building blocks and functions used
- * by multiple widgets. It provides functions to create a standard
- * widget container, manage GLib polling timers, create caption
- * overlays, and draw circular progress arcs.
+ * Shared UI building blocks and functions used by multiple widgets.
+ * Provides functions to create standard widget containers, manage GLib polling
+ * timers, create caption overlays, draw circular progress arcs, and attach
+ * responsive scalers.
  * ============================================================================
  */
 
@@ -16,6 +16,7 @@ import {
     buildBaseWidgetStyle,
     resolveWidgetBackgroundColor,
     resolveWidgetForegroundColor,
+    resolveWidgetFontFamily,
     DEFAULT_FONT_FAMILY,
     parseHexColor,
     CAIRO_OPERATOR_CLEAR,
@@ -23,23 +24,20 @@ import {
     CAIRO_LINE_CAP_ROUND
 } from './widgetUtils.js';
 
-/**
- * Creates a standard widget container with background color, border, and BinLayout.
- * All widget `create*Node()` functions construct an almost identical root St.Widget;
- * this centralises that boilerplate.
- *
- * @param {Object}  config     - Widget configuration (must include applied styles)
- * @param {number}  width      - Widget pixel width
- * @param {number}  height     - Widget pixel height
- * @param {number}  xPosition  - Pixel X offset on the grid
- * @param {number}  yPosition  - Pixel Y offset on the grid
- * @returns {St.Widget}        - configured container widget
- */
+/** UI Layout & Drawing Constants */
+const CAPTION_PADDING_PIXELS = 12;
+const ARC_MARGIN_PIXELS = 4;
+const MIN_CIRCULAR_ARC_LINE_WIDTH = 4;
+const DEFAULT_LINE_WIDTH_RATIO = 0.1;
+const MIN_RESPONSIVE_SCALE = 0.4;
+const FULL_CIRCLE_RADIANS = Math.PI * 2;
+
+/** Creates a standard widget container with background color, border, and BinLayout. */
 export function createWidgetContainer(config, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(config);
     const backgroundColor = resolveWidgetBackgroundColor(config);
     const textColor = resolveWidgetForegroundColor(config);
-    const fontFamily = config.fontFamily || DEFAULT_FONT_FAMILY;
+    const fontFamily = resolveWidgetFontFamily(config);
 
     const container = new St.Widget({
         style: `background-color: ${backgroundColor}; color: ${textColor}; font-family: ${fontFamily}; ${baseStyle}`,
@@ -54,13 +52,7 @@ export function createWidgetContainer(config, width, height, xPosition, yPositio
     return container;
 }
 
-/**
- * Connects a 'destroy' signal to the container that cleans up a GLib timer.
- * Prevents leaked main-loop sources when the widget is removed.
- *
- * @param {St.Widget} container  - widget container
- * @param {Object}    state      - Mutable state object with a `timerId` property
- */
+/** Connects a 'destroy' signal to the container that cleans up a GLib timer. */
 export function connectTimerCleanup(container, state) {
     container.connect('destroy', () => {
         if (state.timerId) {
@@ -70,14 +62,7 @@ export function connectTimerCleanup(container, state) {
     });
 }
 
-/**
- * Runs a poll function immediately, then starts a recurring GLib timer.
- * Returns the timer ID via the provided state object.
- *
- * @param {Function} pollFunction  - function to call on each tick
- * @param {number}   intervalMs    - Milliseconds between ticks
- * @param {Object}   state         - Mutable state; `timerId` will be set
- */
+/** Runs a poll function immediately, then starts a recurring GLib timer. */
 export function startPollingTimer(pollFunction, intervalMs, state) {
     pollFunction();
     state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, intervalMs, () => {
@@ -86,17 +71,9 @@ export function startPollingTimer(pollFunction, intervalMs, state) {
     });
 }
 
-/**
- * Creates a bottom-anchored caption overlay for image-based widgets.
- * Shared by Image, GIF, and Slideshow widgets to avoid code duplication.
- *
- * @param {Object} config   - Widget config with fontFamily, textColor/fgColor
- * @param {string} caption  - caption text to display
- * @returns {St.BoxLayout}  - caption overlay container
- */
+/** Creates a bottom-anchored caption overlay for image-based widgets. */
 export function createCaptionOverlay(config, caption) {
-    const CAPTION_PADDING_PIXELS = 12;
-    const fontFamily = config.fontFamily || DEFAULT_FONT_FAMILY;
+    const fontFamily = resolveWidgetFontFamily(config);
     const textColor = config.textColor || config.fgColor || resolveWidgetForegroundColor(config);
 
     const contentBox = new St.BoxLayout({
@@ -118,33 +95,21 @@ export function createCaptionOverlay(config, caption) {
     return contentBox;
 }
 
-/**
- * Draws a circular progress arc on a Cairo context.
- * Shared between CPU/RAM and Pomodoro widgets.
- *
- * @param {Object}  context         - Cairo drawing context
- * @param {number}  width           - Canvas width
- * @param {number}  height          - Canvas height
- * @param {number}  progress        - Progress value from 0 to 1
- * @param {string}  colorHex        - Hex color for the progress arc
- * @param {number}  lineWidthRatio  - Thickness as a ratio of the smaller dimension
- */
-export function drawCircularArc(context, width, height, progress, colorHex, lineWidthRatio = 0.1) {
-    const TWO_PI = Math.PI * 2;
-
+/** Draws a circular progress arc on a Cairo context. */
+export function drawCircularArc(context, width, height, progress, colorHex, lineWidthRatio = DEFAULT_LINE_WIDTH_RATIO) {
     context.setOperator(CAIRO_OPERATOR_CLEAR);
     context.paint();
     context.setOperator(CAIRO_OPERATOR_OVER);
 
     const centerX = width / 2;
     const centerY = height / 2;
-    const lineWidth = Math.max(4, Math.min(width, height) * lineWidthRatio);
-    const radius = Math.min(centerX, centerY) - lineWidth - 4;
+    const lineWidth = Math.max(MIN_CIRCULAR_ARC_LINE_WIDTH, Math.min(width, height) * lineWidthRatio);
+    const radius = Math.min(centerX, centerY) - lineWidth - ARC_MARGIN_PIXELS;
 
     // Background track
     context.setSourceRGBA(1, 1, 1, 0.1);
     context.setLineWidth(lineWidth);
-    context.arc(centerX, centerY, radius, 0, TWO_PI);
+    context.arc(centerX, centerY, radius, 0, FULL_CIRCLE_RADIANS);
     context.stroke();
 
     // Progress arc
@@ -155,8 +120,28 @@ export function drawCircularArc(context, width, height, progress, colorHex, line
         context.setLineWidth(lineWidth);
         context.setLineCap(CAIRO_LINE_CAP_ROUND);
         const startAngle = -Math.PI / 2;
-        const endAngle = startAngle + TWO_PI * Math.min(Math.max(progress, 0), 1);
+        const endAngle = startAngle + FULL_CIRCLE_RADIANS * Math.min(Math.max(progress, 0), 1);
         context.arc(centerX, centerY, radius, startAngle, endAngle);
         context.stroke();
     }
+}
+
+/** Attaches responsive dimension listeners that compute a scale factor relative to baseline reference dimensions. */
+export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCallback) {
+    const update = () => {
+        const currentWidth = widgetNode.width || refWidth;
+        const currentHeight = widgetNode.height || refHeight;
+        const scale = Math.max(MIN_RESPONSIVE_SCALE, Math.min(currentWidth / refWidth, currentHeight / refHeight));
+        updateCallback(scale, currentWidth, currentHeight);
+    };
+
+    widgetNode.connect('notify::width', update);
+    widgetNode.connect('notify::height', update);
+
+    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        update();
+        return GLib.SOURCE_REMOVE;
+    });
+
+    return update;
 }
