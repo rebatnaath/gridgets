@@ -28,10 +28,10 @@ export function buildGlobalSettingsPage(settings) {
         title: 'Global Target Monitor',
         subtitle: 'Choose which monitor(s) display widgets by default.',
         model: new Gtk.StringList({
-            strings: ['Primary Monitor', 'All Monitors', 'Monitor 2', 'Monitor 3']
+            strings: ['Primary Monitor', 'All Monitors', 'Monitor 1', 'Monitor 2', 'Monitor 3']
         }),
     });
-    const monitorValues = ['primary', 'all', '1', '2'];
+    const monitorValues = ['primary', 'all', '0', '1', '2'];
     const currentGlobalMonitor = settings.get_string('global-monitor') || 'primary';
     const currentIdx = monitorValues.indexOf(currentGlobalMonitor);
     globalMonitorRow.set_selected(currentIdx >= 0 ? currentIdx : 0);

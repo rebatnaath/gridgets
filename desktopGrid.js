@@ -80,6 +80,7 @@ class DesktopGrid extends St.Widget {
         this.editOverlayBoxes = [];
         this.contextMenu = null;
         this._menuManager = null;
+        this._monitorsChangedId = Main.layoutManager.connect('monitors-changed', () => this._rebuildGrid());
 
         this._setupSettingsListeners();
 
@@ -91,6 +92,11 @@ class DesktopGrid extends St.Widget {
     }
 
     _cleanup() {
+        if (this._monitorsChangedId) {
+            Main.layoutManager.disconnect(this._monitorsChangedId);
+            this._monitorsChangedId = null;
+        }
+
         if (this.signalIds && this.settings) {
             this.signalIds.forEach(id => this.settings.disconnect(id));
             this.signalIds = [];
@@ -137,6 +143,7 @@ class DesktopGrid extends St.Widget {
         connectSetting('weather-dynamic-image', () => this._rebuildGrid());
         connectSetting('weather-city', () => this._rebuildGrid());
         connectSetting('time-format-24h', () => this._rebuildGrid());
+        connectSetting('global-monitor', () => this._rebuildGrid());
     }
 
     _getPanelHeight() {
@@ -149,13 +156,35 @@ class DesktopGrid extends St.Widget {
         return DEFAULT_PANEL_HEIGHT_PX;
     }
 
+    _getTargetMonitor() {
+        const monitorSetting = this.settings.get_string('global-monitor') || 'primary';
+        const monitors = Main.layoutManager.monitors || [];
+
+        if (monitorSetting === 'primary' || !monitors.length) {
+            return Main.layoutManager.primaryMonitor || monitors[0] || null;
+        }
+
+        if (monitorSetting === 'all') {
+            return null;
+        }
+
+        const monitorIndex = parseInt(monitorSetting, 10);
+        if (!isNaN(monitorIndex) && monitorIndex >= 0 && monitorIndex < monitors.length) {
+            return monitors[monitorIndex];
+        }
+
+        return Main.layoutManager.primaryMonitor || monitors[0] || null;
+    }
+
     _updateCanvasSize() {
-        const primaryMonitor = Main.layoutManager.primaryMonitor;
+        const targetMonitor = this._getTargetMonitor();
         const panelHeight = this._getPanelHeight();
 
-        if (primaryMonitor) {
-            this.set_position(primaryMonitor.x, primaryMonitor.y + panelHeight);
-            this.set_size(primaryMonitor.width, primaryMonitor.height - panelHeight);
+        if (targetMonitor) {
+            const isPrimary = targetMonitor === Main.layoutManager.primaryMonitor;
+            const topOffset = isPrimary ? panelHeight : 0;
+            this.set_position(targetMonitor.x, targetMonitor.y + topOffset);
+            this.set_size(targetMonitor.width, targetMonitor.height - topOffset);
         } else {
             this.set_position(0, panelHeight);
             this.set_size(global.stage.width || DEFAULT_STAGE_WIDTH, (global.stage.height || DEFAULT_STAGE_HEIGHT) - panelHeight);
