@@ -74,11 +74,14 @@ function createStoreCard(extensionPath, title, description, gridSize, imageName,
         margin_top: 4,
     });
 
+    const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeDesc = description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
     const titleLabel = new Gtk.Label({ xalign: 0, hexpand: true });
-    titleLabel.set_markup(`<b>${title}</b>`);
+    titleLabel.set_markup(`<b>${safeTitle}</b>`);
 
     const descLabel = new Gtk.Label({ xalign: 0, hexpand: true, wrap: true, max_width_chars: 24 });
-    descLabel.set_markup(`<span size='small' alpha='70%'>${description}</span>`);
+    descLabel.set_markup(`<span size='small' alpha='70%'>${safeDesc}</span>`);
 
     const sizeLabel = new Gtk.Label({ xalign: 0, hexpand: true });
     sizeLabel.set_markup(`<span size='x-small' weight='bold' alpha='50%'>GRID: ${gridSize}</span>`);

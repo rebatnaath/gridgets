@@ -129,6 +129,7 @@ export function drawCircularArc(context, width, height, progress, colorHex, line
 /** Attaches responsive dimension listeners that compute a scale factor relative to baseline reference dimensions. */
 export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCallback) {
     const update = () => {
+        if (!widgetNode || widgetNode.isDestroyed) return;
         const currentWidth = widgetNode.width || refWidth;
         const currentHeight = widgetNode.height || refHeight;
         const scale = Math.max(MIN_RESPONSIVE_SCALE, Math.min(currentWidth / refWidth, currentHeight / refHeight));
@@ -139,7 +140,9 @@ export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCa
     widgetNode.connect('notify::height', update);
 
     GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-        update();
+        if (widgetNode && !widgetNode.isDestroyed) {
+            update();
+        }
         return GLib.SOURCE_REMOVE;
     });
 
