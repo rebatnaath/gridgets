@@ -1,12 +1,3 @@
-/**
- * ============================================================================
- * WEATHER COMMON UTILITIES & DATA FETCHING
- * 
- * Provides condition code normalization, asset mapping, Open-Meteo fallback API integration,
- * WeatherAPI fetching, and common UI update utilities for weather widgets.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
@@ -229,7 +220,7 @@ export function updateHourlyForecastUi(json, uiElements, currentEpoch, extension
         allHours = allHours.concat(json.forecast.forecastday[1].hour);
 
     const refEpoch = currentEpoch || Math.floor(Date.now() / 1000);
-    let futureHours = allHours.filter(h => h.time_epoch > refEpoch);
+    let futureHours = allHours.filter(forecastHour => forecastHour.time_epoch > refEpoch);
 
     if (futureHours.length < HOURLY_FORECAST_COUNT && allHours.length >= HOURLY_FORECAST_COUNT) {
         futureHours = allHours.slice(0, HOURLY_FORECAST_COUNT);
@@ -243,9 +234,9 @@ export function updateHourlyForecastUi(json, uiElements, currentEpoch, extension
             const ampm = hours >= 12 ? 'PM' : 'AM';
             hours = hours % 12 || 12;
 
-            const temp = useFahrenheit ? hourData.temp_f : hourData.temp_c;
+            const displayTemperature = useFahrenheit ? hourData.temp_f : hourData.temp_c;
             uiElements.hourlyActors[i].timeLbl.text = `${hours} ${ampm}`;
-            uiElements.hourlyActors[i].tempLbl.text = `${Math.round(temp)}°`;
+            uiElements.hourlyActors[i].tempLbl.text = `${Math.round(displayTemperature)}°`;
 
             const condCode = resolveConditionCode(hourData.condition ? hourData.condition.code : null, hourData.condition ? hourData.condition.text : '');
             const isDay = hourData.is_day !== undefined ? (hourData.is_day === 1 || hourData.is_day === true) : true;

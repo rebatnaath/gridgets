@@ -7,21 +7,21 @@
  * ============================================================================
  */
 
-import { getWidgets, saveWidgets, findEmptySpot } from '../utils/widgetUtils.js';
+import {
+    getWidgets,
+    saveWidgets,
+    findEmptySpot,
+    addWidget,
+    normalizeAppLauncherApps,
+    getAppLauncherDefaultSize,
+} from '../utils/widgetUtils.js';
 
-export function addWidget(settings, widgetData, defaultWidth, defaultHeight) {
-    const widgets = getWidgets(settings);
-    const pos = findEmptySpot(widgets, defaultWidth, defaultHeight, settings);
-    widgetData.x = pos ? pos.x : 0;
-    widgetData.y = pos ? pos.y : 0;
-    widgetData.width = defaultWidth;
-    widgetData.height = defaultHeight;
-    widgets.push(widgetData);
-    saveWidgets(settings, widgets);
-}
-
-export function addTimeWidget(settings, width = 3, height = 2) {
-    addWidget(settings, { id: 'widget-time-' + Date.now(), type: 'time' }, width, height);
+export function addTimeWidget(settings, width = 3, height = 2, layout = 'digital', cities = null) {
+    const config = { id: 'widget-time-' + Date.now(), type: 'time', layout };
+    if (cities && Array.isArray(cities)) {
+        config.cities = cities;
+    }
+    addWidget(settings, config, width, height);
 }
 
 export function addWeatherWidget(settings, city = 'London', width = 3, height = 3, layout = 'standard') {
@@ -44,12 +44,24 @@ export function addNetworkSpeedWidget(settings, width = 3, height = 2) {
     addWidget(settings, { id: 'widget-network-speed-' + Date.now(), type: 'network-speed' }, width, height);
 }
 
+export function addSystemDashboardWidget(settings, width = 4, height = 4) {
+    addWidget(settings, { id: 'widget-system-dashboard-' + Date.now(), type: 'system-dashboard' }, width, height);
+}
+
 export function addNotesWidget(settings, width = 4, height = 4) {
     addWidget(settings, { id: 'widget-notes-' + Date.now(), type: 'notes' }, width, height);
 }
 
 export function addClipboardWidget(settings, width = 4, height = 4) {
     addWidget(settings, { id: 'widget-clipboard-' + Date.now(), type: 'clipboard' }, width, height);
+}
+
+export function addCalendarWidget(settings, width = 4, height = 3) {
+    addWidget(settings, { id: 'widget-calendar-' + Date.now(), type: 'calendar' }, width, height);
+}
+
+export function addQuotesWidget(settings, width = 3, height = 3) {
+    addWidget(settings, { id: 'widget-quotes-' + Date.now(), type: 'quotes' }, width, height);
 }
 
 export function addCommandWidget(settings, commandName, commandString, iconName, imagePath, showText = true, width = 2, height = 2) {
@@ -60,19 +72,51 @@ export function addCommandWidget(settings, commandName, commandString, iconName,
     }, width, height);
 }
 
-export function addSlideshowWidget(settings, folderPath, width = 4, height = 4, caption = '', showText = undefined) {
+export function addAppLauncherWidget(settings, apps) {
+    const normalizedApps = normalizeAppLauncherApps(apps);
+    if (normalizedApps.length === 0) {
+        return;
+    }
+
+    const defaultSize = getAppLauncherDefaultSize(normalizedApps.length);
     addWidget(settings, {
+        id: 'widget-app-launcher-' + Date.now(),
+        type: 'app-launcher',
+        apps: normalizedApps,
+    }, defaultSize.width, defaultSize.height);
+}
+
+export function addSlideshowWidget(settings, folderPath, intervalSeconds = 10, width = 4, height = 4, caption = 'My Slideshow', showCaption = true) {
+    const finalCaption = caption && caption.trim() !== '' ? caption.trim() : 'My Slideshow';
+    const widgetConfig = {
         id: 'widget-slideshow-' + Date.now(),
         type: 'slideshow',
         slideshowFolder: folderPath,
-        caption, showText
-    }, width, height);
+        intervalSeconds,
+        caption: finalCaption,
+    };
+
+    if (showCaption === false) {
+        widgetConfig.showCaption = false;
+        widgetConfig.showText = false;
+    }
+
+    addWidget(settings, widgetConfig, width, height);
 }
 
-export function addImageWidget(settings, imagePath, caption = '', showText = undefined, width = 2, height = 2) {
-    addWidget(settings, {
+export function addImageWidget(settings, imagePath, caption = 'My Image', showCaption = true, width = 2, height = 2) {
+    const finalCaption = caption && caption.trim() !== '' ? caption.trim() : 'My Image';
+    const widgetConfig = {
         id: 'widget-image-' + Date.now(),
         type: 'image',
-        imagePath, caption, showText
-    }, width, height);
+        imagePath,
+        caption: finalCaption,
+    };
+
+    if (showCaption === false) {
+        widgetConfig.showCaption = false;
+        widgetConfig.showText = false;
+    }
+
+    addWidget(settings, widgetConfig, width, height);
 }

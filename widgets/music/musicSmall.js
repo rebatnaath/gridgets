@@ -1,11 +1,3 @@
-/**
- * ============================================================================
- * MUSIC SMALL LAYOUT
- * 
- * Single-panel compact player layout.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { createBackgroundLayer, buildControlsColumn, updateControlButtonScaling } from './musicCommon.js';
@@ -20,7 +12,7 @@ const BASE_CONTAINER_HEIGHT = 140;
 const BASE_CONTAINER_MARGIN_PX = 12;
 const MIN_CONTAINER_MARGIN_PX = 4;
 
-/** Builds small single-panel music player UI layout. */
+/** Builds small single-panel music player UI layout (artwork and controls). */
 export function buildSmallLayout(config, state) {
     const backgroundLayer = createBackgroundLayer(config);
     state.backgroundLayer = backgroundLayer;
@@ -39,18 +31,21 @@ export function buildSmallLayout(config, state) {
         state.container.add_child(darkOverlay);
     }
 
+    state.titleLabel = null;
+    state.artistLabel = null;
+    state.albumLabel = null;
+
     const controlsBox = buildControlsColumn(config, state);
     state.container.add_child(controlsBox);
 
     attachResponsiveScaler(state.container, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT, (scale) => {
-        if (!state.controlsColumn) return;
-
         const textColor = resolveWidgetForegroundColor(config);
         const fontFamily = resolveWidgetFontFamily(config);
 
         updateControlButtonScaling(state, scale, fontFamily, textColor);
 
         const containerMargin = Math.max(MIN_CONTAINER_MARGIN_PX, Math.round(BASE_CONTAINER_MARGIN_PX * scale));
+
         if (state.controlsColumn) {
             state.controlsColumn.style = `margin: ${containerMargin}px;`;
         }

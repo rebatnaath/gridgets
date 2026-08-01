@@ -1,21 +1,12 @@
-/**
- * ============================================================================
- * MUSIC WIDGET PACKAGE ENTRY POINT
- * ============================================================================
- */
-
 import GLib from 'gi://GLib';
-import { createWidgetContainer, connectTimerCleanup } from '../../utils/widgetUIUtils.js';
+import { connectTimerCleanup, createWidgetContainer } from '../../utils/widgetUIUtils.js';
 import { DBUS_POLL_INTERVAL_MS, fetchMusicDataForConfig, applyPlayerState, resetWidgetState, updateTimerLabel, registerMusicWidgetInstance, unregisterMusicWidgetInstance } from './musicCommon.js';
 import { buildSmallLayout } from './musicSmall.js';
 import { buildLargeLayout } from './musicLarge.js';
 
-/** Layout ratio and scaling constants */
 const LARGE_LAYOUT_ASPECT_RATIO = 2;
 const LARGE_LAYOUT_BASE_HEIGHT = 4;
 const ONE_SECOND_MICROSECONDS = 1000000;
-
-/** Creates a music player widget instance (supporting small and large 2-panel layouts). */
 export function createMusicNode(config, width, height, xPosition, yPosition) {
     const playerContainer = createWidgetContainer(config, width, height, xPosition, yPosition);
 
@@ -35,12 +26,10 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
         trackLengthMicro: 0,
         playbackStatus: 'Stopped',
         lastSeekTimestamp: 0,
-        isDestroyed: false,
     };
 
     registerMusicWidgetInstance(state);
     playerContainer.connect('destroy', () => {
-        state.isDestroyed = true;
         unregisterMusicWidgetInstance(state);
     });
 
@@ -55,7 +44,7 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
     }
 
     const onMusicData = (data) => {
-        if (state.isDestroyed) return;
+        if (playerContainer.isDestroyed) return;
         if (data.properties) {
             state.currentPlayer = data.activePlayer;
             applyPlayerState(data.properties, state);
@@ -68,7 +57,7 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
     };
 
     const updateMusicData = () => {
-        if (state.isDestroyed) return;
+        if (playerContainer.isDestroyed) return;
         fetchMusicDataForConfig(config, onMusicData);
     };
 
@@ -76,7 +65,7 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
     updateMusicData();
 
     state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DBUS_POLL_INTERVAL_MS, () => {
-        if (state.isDestroyed) return GLib.SOURCE_REMOVE;
+        if (playerContainer.isDestroyed) return GLib.SOURCE_REMOVE;
         if (state.playbackStatus === 'Playing') {
             const len = state.trackLengthMicro || 0;
             const nextPos = (state.currentPositionMicro || 0) + ONE_SECOND_MICROSECONDS;

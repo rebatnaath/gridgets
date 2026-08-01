@@ -74,8 +74,12 @@ export function buildGlobalAestheticsGroup(settings) {
         subtitle: 'Choose the default font used across all widgets.',
     });
     const fontBtn = new Gtk.FontButton({ valign: Gtk.Align.CENTER });
-    const currentFont = settings.get_string('global-font-family');
-    fontBtn.set_font(currentFont.replace(/'/g, '').replace(/, sans-serif/, '') + ' 11');
+    const currentFont = settings.get_string('global-font-family') || "'Poppins', sans-serif";
+    const fontDesc = Pango.FontDescription.from_string(currentFont.replace(/'/g, '').replace(/, sans-serif/i, '').trim());
+    if (fontDesc.get_size() === 0) {
+        fontDesc.set_size(11 * Pango.SCALE);
+    }
+    fontBtn.set_font(fontDesc.to_string());
     fontBtn.connect('font-set', () => {
         const desc = Pango.FontDescription.from_string(fontBtn.get_font());
         const family = desc.get_family();
@@ -83,90 +87,6 @@ export function buildGlobalAestheticsGroup(settings) {
     });
     fontRow.add_suffix(fontBtn);
     group.add(fontRow);
-
-    return group;
-}
-
-/**
- * Builds per-widget aesthetic override controls for edit dialogs.
- */
-export function buildWidgetAestheticOverridesGroup(widget, onWidgetUpdated) {
-    const group = new Adw.PreferencesGroup({
-        title: 'Appearance Overrides',
-        description: 'Override global default aesthetic styles for this specific widget.',
-    });
-
-    // 1. Border Radius Override
-    const radiusRow = new Adw.ActionRow({
-        title: 'Override Corner Rounding',
-        subtitle: 'Set custom corner rounding for this widget.',
-    });
-    const radiusSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, active: !!widget.overrideBorderRadius });
-    const radiusScale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 50, 1);
-    radiusScale.set_size_request(160, -1);
-    radiusScale.set_valign(Gtk.Align.CENTER);
-    radiusScale.set_draw_value(true);
-    radiusScale.set_value(widget.borderRadius !== undefined ? widget.borderRadius : 16);
-    radiusScale.set_sensitive(!!widget.overrideBorderRadius);
-
-    radiusSwitch.connect('notify::active', () => {
-        const active = radiusSwitch.get_active();
-        widget.overrideBorderRadius = active;
-        radiusScale.set_sensitive(active);
-        onWidgetUpdated();
-    });
-    radiusScale.connect('value-changed', () => {
-        widget.borderRadius = Math.round(radiusScale.get_value());
-        onWidgetUpdated();
-    });
-
-    radiusRow.add_suffix(radiusScale);
-    radiusRow.add_suffix(radiusSwitch);
-    group.add(radiusRow);
-
-    // 2. Border Width Override
-    const borderRow = new Adw.ActionRow({
-        title: 'Override Border Width',
-        subtitle: 'Set custom border width for this widget.',
-    });
-    const borderSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, active: !!widget.overrideBorderWidth });
-    const borderScale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 10, 1);
-    borderScale.set_size_request(160, -1);
-    borderScale.set_valign(Gtk.Align.CENTER);
-    borderScale.set_draw_value(true);
-    borderScale.set_value(widget.borderWidth !== undefined ? widget.borderWidth : 0);
-    borderScale.set_sensitive(!!widget.overrideBorderWidth);
-
-    borderSwitch.connect('notify::active', () => {
-        const active = borderSwitch.get_active();
-        widget.overrideBorderWidth = active;
-        borderScale.set_sensitive(active);
-        onWidgetUpdated();
-    });
-    borderScale.connect('value-changed', () => {
-        widget.borderWidth = Math.round(borderScale.get_value());
-        onWidgetUpdated();
-    });
-
-    borderRow.add_suffix(borderScale);
-    borderRow.add_suffix(borderSwitch);
-    group.add(borderRow);
-
-    // 3. Border Color Override
-    const borderColorRow = new Adw.ActionRow({
-        title: 'Custom Border Color',
-        subtitle: 'Specific border color for this widget.',
-    });
-    const borderColorBtn = new Gtk.ColorButton({ valign: Gtk.Align.CENTER });
-    const bColor = new Gdk.RGBA();
-    bColor.parse(widget.borderColor || 'rgba(255,255,255,0.2)');
-    borderColorBtn.set_rgba(bColor);
-    borderColorBtn.connect('color-set', () => {
-        widget.borderColor = borderColorBtn.get_rgba().to_string();
-        onWidgetUpdated();
-    });
-    borderColorRow.add_suffix(borderColorBtn);
-    group.add(borderColorRow);
 
     return group;
 }

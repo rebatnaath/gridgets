@@ -12,7 +12,15 @@ import Gio from 'gi://Gio';
 /**
  * Helper to open GTK FileDialog for selecting image files.
  */
-export function openImageFileDialog(parentWindow, title, callback) {
+export function openImageFileDialog(parentWindow, titleOrCallback, maybeCallback) {
+    let title = 'Select Image';
+    let callback = maybeCallback;
+    if (typeof titleOrCallback === 'function') {
+        callback = titleOrCallback;
+    } else if (typeof titleOrCallback === 'string') {
+        title = titleOrCallback;
+    }
+
     const fileDialog = new Gtk.FileDialog({ title });
     const filter = new Gtk.FileFilter();
     filter.set_name('Images');
@@ -35,12 +43,12 @@ export function openImageFileDialog(parentWindow, title, callback) {
     fileDialog.open(parentWindow, null, (dialog, result) => {
         try {
             const file = dialog.open_finish(result);
-            if (file) {
+            if (file && typeof callback === 'function') {
                 const path = file.get_path() || (file.get_uri() ? file.get_uri().replace(/^file:\/\//, '') : '');
                 callback(path);
             }
-        } catch (e) {
-            console.debug('Image selection cancelled:', e.message);
+        } catch (_error) {
+            // Ignore dialog cancellation.
         }
     });
 }
@@ -48,16 +56,24 @@ export function openImageFileDialog(parentWindow, title, callback) {
 /**
  * Helper to open GTK FileDialog for selecting folders.
  */
-export function openFolderFileDialog(parentWindow, title, callback) {
+export function openFolderFileDialog(parentWindow, titleOrCallback, maybeCallback) {
+    let title = 'Select Folder';
+    let callback = maybeCallback;
+    if (typeof titleOrCallback === 'function') {
+        callback = titleOrCallback;
+    } else if (typeof titleOrCallback === 'string') {
+        title = titleOrCallback;
+    }
+
     const fileDialog = new Gtk.FileDialog({ title });
     fileDialog.select_folder(parentWindow, null, (dialog, result) => {
         try {
             const folder = dialog.select_folder_finish(result);
-            if (folder) {
+            if (folder && typeof callback === 'function') {
                 callback(folder.get_path());
             }
-        } catch (e) {
-            console.debug('Folder selection cancelled:', e.message);
+        } catch (_error) {
+            // Ignore dialog cancellation.
         }
     });
 }

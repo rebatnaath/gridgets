@@ -1,31 +1,24 @@
-/**
- * ============================================================================
- * WEATHER STANDARD LAYOUT (3x3 or standard square card layouts)
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { FALLBACK_LOCATION, createFallbackIcon, configureWrappingLabel } from './weatherCommon.js';
 import { attachResponsiveScaler } from '../../utils/widgetUIUtils.js';
 
-/** Reference scaling dimensions */
+
 const BASE_LAYOUT_SIZE = 180;
 
-/** Baseline font and icon sizes */
+
 const BASE_CITY_FONT_SIZE = 16;
 const BASE_TEMP_FONT_SIZE = 42;
 const BASE_ICON_SIZE = 27;
 const BASE_CONDITION_FONT_SIZE = 14;
 const BASE_HIGHLOW_FONT_SIZE = 12;
 
-/** Baseline margin metrics */
 const CITY_MARGIN_BOTTOM_PX = 4;
 const TEMP_MARGIN_BOTTOM_PX = 12;
 const CONDITION_ICON_MARGIN_RIGHT_PX = 6;
 const HIGHLOW_MARGIN_TOP_PX = 4;
 
-/** Builds standard square weather card layout structure and UI elements. */
+
 export function buildStandardLayout(layout, widgetData, extensionPath) {
     const uiElements = {};
     uiElements.cityLabel = new St.Label({
@@ -68,7 +61,7 @@ export function buildStandardLayout(layout, widgetData, extensionPath) {
     return uiElements;
 }
 
-/** Attaches responsive scaling behavior to standard square card layout. */
+
 export function attachStandardScaler(widgetNode, uiElements) {
     return attachResponsiveScaler(widgetNode, BASE_LAYOUT_SIZE, BASE_LAYOUT_SIZE, (scale) => {
         if (!uiElements || !uiElements.cityLabel) return;
@@ -79,11 +72,11 @@ export function attachStandardScaler(widgetNode, uiElements) {
         const condSize = Math.max(10, Math.round(BASE_CONDITION_FONT_SIZE * scale));
         const highLowSize = Math.max(8, Math.round(BASE_HIGHLOW_FONT_SIZE * scale));
 
-        uiElements.cityLabel.style = `font-weight: bold; font-size: ${citySize}px; margin-bottom: ${Math.round(CITY_MARGIN_BOTTOM_PX * scale)}px;`;
-        uiElements.tempLabel.style = `font-size: ${tempSize}px; font-weight: 300; margin-bottom: ${Math.round(TEMP_MARGIN_BOTTOM_PX * scale)}px;`;
+        uiElements.cityLabel.style = `font-weight: bold; font-size: ${citySize}px; margin-bottom: ${Math.round(CITY_MARGIN_BOTTOM_PX * scale)}px; color: inherit;`;
+        uiElements.tempLabel.style = `font-size: ${tempSize}px; font-weight: 300; margin-bottom: ${Math.round(TEMP_MARGIN_BOTTOM_PX * scale)}px; color: inherit;`;
         uiElements.conditionIcon.icon_size = iconSize;
         uiElements.conditionIcon.style = `margin-right: ${Math.round(CONDITION_ICON_MARGIN_RIGHT_PX * scale)}px;`;
-        uiElements.conditionLabel.style = `font-size: ${condSize}px; font-weight: bold;`;
-        uiElements.highLowLabel.style = `font-size: ${highLowSize}px; opacity: 0.7; margin-top: ${Math.round(HIGHLOW_MARGIN_TOP_PX * scale)}px;`;
+        uiElements.conditionLabel.style = `font-size: ${condSize}px; font-weight: bold; color: inherit;`;
+        uiElements.highLowLabel.style = `font-size: ${highLowSize}px; opacity: 0.7; margin-top: ${Math.round(HIGHLOW_MARGIN_TOP_PX * scale)}px; color: inherit;`;
     });
 }

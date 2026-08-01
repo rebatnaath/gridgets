@@ -18,12 +18,12 @@ export default class GridgetsPreferences extends ExtensionPreferences {
         window.set_default_size(800, 600);
         window.set_search_enabled(true);
 
-        const settings = this.getSettings('org.gnome.shell.extensions.gridgets');
+        const settings = this.getSettings();
         const extensionPath = this.path || this.dir.get_path();
 
-        window.add(buildAppearancePage(settings));
         window.add(buildStorePage(window, settings, extensionPath));
+        window.add(buildAppearancePage(settings));
         window.add(buildGlobalSettingsPage(settings));
-        window.add(buildIndividualSettingsPage(window, settings, extensionPath));
+        window.add(buildIndividualSettingsPage(window, settings));
     }
 }

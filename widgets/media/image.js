@@ -1,9 +1,3 @@
-/**
- * ============================================================================
- * STATIC IMAGE & COLOR BLOCK WIDGETS
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { buildBaseWidgetStyle } from '../../utils/widgetUtils.js';

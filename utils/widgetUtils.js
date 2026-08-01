@@ -18,6 +18,7 @@ export const DEFAULT_FONT_FAMILY = "'Poppins', sans-serif";
 /** Default background and foreground colors */
 export const DEFAULT_BG_COLOR = '#1a1b26';
 export const DEFAULT_FG_COLOR = '#ffffff';
+export const MAX_APP_LAUNCHER_ITEMS = 8;
 
 /** Temperature conversion constants */
 const TEMPERATURE_FAHRENHEIT_MULTIPLIER = 9 / 5;
@@ -49,13 +50,67 @@ export const MIN_WIDGET_SIZES = Object.freeze({
     'notes': { minCols: 3, minRows: 3 },
     'clipboard': { minCols: 3, minRows: 3 },
     'command': { minCols: 1, minRows: 1 },
+    'app-launcher': { minCols: 3, minRows: 2 },
     'slideshow': { minCols: 2, minRows: 2 },
     'image': { minCols: 2, minRows: 2 },
+    'calendar': { minCols: 3, minRows: 3 },
+    'quotes': { minCols: 3, minRows: 3 },
 });
+
+/** Checks if a filename has an extension that supports animation (.gif, .webp). */
+export function isAnimatedImageFile(filename) {
+    if (!filename) return false;
+    const lower = filename.toLowerCase();
+    return lower.endsWith('.gif') || lower.endsWith('.webp');
+}
 
 /** Converts a Celsius temperature value to Fahrenheit. */
 export function celsiusToFahrenheit(celsius) {
     return (celsius * TEMPERATURE_FAHRENHEIT_MULTIPLIER) + TEMPERATURE_FAHRENHEIT_OFFSET;
+}
+
+/** Normalizes launcher app entries to a unique, capped list of desktop IDs and names. */
+export function normalizeAppLauncherApps(apps) {
+    if (!Array.isArray(apps)) {
+        return [];
+    }
+
+    const normalizedApps = [];
+    const seenIds = new Set();
+
+    for (const app of apps) {
+        if (!app || typeof app.id !== 'string') {
+            continue;
+        }
+
+        const appId = app.id.trim();
+        if (appId === '' || seenIds.has(appId)) {
+            continue;
+        }
+
+        seenIds.add(appId);
+        normalizedApps.push({
+            id: appId,
+            name: typeof app.name === 'string' && app.name.trim() !== ''
+                ? app.name.trim()
+                : appId.replace(/\.desktop$/i, ''),
+        });
+
+        if (normalizedApps.length >= MAX_APP_LAUNCHER_ITEMS) {
+            break;
+        }
+    }
+
+    return normalizedApps;
+}
+
+/** Returns the default grid size for an app launcher based on app count. */
+export function getAppLauncherDefaultSize(appCount) {
+    if (appCount > 4) {
+        return { width: 4, height: 4 };
+    }
+
+    return { width: 4, height: 3 };
 }
 
 /** Generates the CSS border declaration from a widget config's applied values. */
@@ -77,47 +132,75 @@ export function parseHexColor(hexString) {
     };
 }
 
-/** Reads a JSON file from disk and returns the parsed object. */
-export function loadJsonFromFile(filePath) {
-    const file = Gio.File.new_for_path(filePath);
-    if (!file.query_exists(null))
-        return null;
-
+/** Returns the canonical user data storage directory for Gridgets (~/.local/share/gridgets/<subFolder>). */
+export function getGridgetsDataDir(subFolder = '') {
+    const pathParts = [GLib.get_user_data_dir(), 'gridgets'];
+    if (subFolder) {
+        pathParts.push(subFolder);
+    }
+    const dataDir = GLib.build_filenamev(pathParts);
     try {
-        const [success, contents] = file.load_contents(null);
-        if (success && contents.length > 0) {
-            const text = new TextDecoder('utf-8').decode(contents);
-            return JSON.parse(text);
+        const file = Gio.File.new_for_path(dataDir);
+        if (!file.query_exists(null)) {
+            file.make_directory_with_parents(null);
         }
     } catch (e) {
-        console.error(`Error loading JSON from ${filePath}:`, e);
+        console.error(`Error creating data directory ${dataDir}:`, e);
     }
-    return null;
+    return dataDir;
 }
 
-/** Writes a JS object as JSON to the specified file path. */
+/** Reads a JSON file asynchronously from disk and invokes callback with parsed object. */
+export function loadJsonFromFileAsync(filePath, callback) {
+    const file = Gio.File.new_for_path(filePath);
+    file.load_contents_async(null, (fileObj, res) => {
+        try {
+            const [success, contents] = fileObj.load_contents_finish(res);
+            if (success && contents.length > 0) {
+                const text = new TextDecoder('utf-8').decode(contents);
+                callback(JSON.parse(text));
+                return;
+            }
+        } catch (e) {
+            // File does not exist or failed to parse
+        }
+        callback(null);
+    });
+}
+
+/** Writes a JS object as JSON to the specified file path atomically. */
 export function saveJsonToFile(filePath, data) {
     try {
-        const jsonString = JSON.stringify(data);
-        const file = Gio.File.new_for_path(filePath);
-        const outStream = file.replace(null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
-        const dataStream = new Gio.DataOutputStream({ base_stream: outStream });
-        dataStream.put_string(jsonString, null);
-        dataStream.close(null);
+        const parentDir = Gio.File.new_for_path(filePath).get_parent();
+        if (parentDir && !parentDir.query_exists(null)) {
+            parentDir.make_directory_with_parents(null);
+        }
+        const jsonString = JSON.stringify(data, null, 2);
+        GLib.file_set_contents(filePath, jsonString);
     } catch (e) {
         console.error(`Error saving JSON to ${filePath}:`, e);
     }
 }
 
-/** Deletes the cache file associated with a widget. */
-export function deleteCacheFile(extensionPath, prefix, widgetId) {
+/** Deletes the cache file associated with a widget from storage. */
+export function deleteCacheFile(subFolder, widgetId) {
     try {
-        const filePath = `${extensionPath}/${prefix}-${widgetId}.json`;
+        if (!widgetId) return;
+        const safeSubFolder = subFolder || '';
+        const baseDir = getGridgetsDataDir(safeSubFolder);
+        const filePath = GLib.build_filenamev([baseDir, `${safeSubFolder}-${widgetId}.json`]);
         const file = Gio.File.new_for_path(filePath);
-        if (file.query_exists(null))
-            file.delete(null);
+        if (file.query_exists(null)) {
+            file.delete_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
+                try {
+                    f.delete_finish(res);
+                } catch (e) {
+                    // Ignored if file was already removed
+                }
+            });
+        }
     } catch (e) {
-        console.error(`Error deleting cache file for ${prefix}-${widgetId}:`, e);
+        console.error(`Error deleting cache file for ${subFolder}-${widgetId}:`, e);
     }
 }
 
@@ -125,8 +208,10 @@ export function deleteCacheFile(extensionPath, prefix, widgetId) {
 export function resolveWidgetBackgroundColor(config) {
     const defaultColor = config?.globalBackgroundColor || DEFAULT_BG_COLOR;
     if (!config) return defaultColor;
-    if (config.overrideBgColor) return config.bgColor || defaultColor;
-    if (config.overrideBgColor === false) return defaultColor;
+
+    const isColorsOverridden = config.overrideColors ?? config.overrideBgColor;
+    if (isColorsOverridden === false) return defaultColor;
+
     return config.bgColor || config.textBackgroundColor || defaultColor;
 }
 
@@ -141,16 +226,21 @@ export function buildBaseWidgetStyle(config) {
 export function resolveWidgetForegroundColor(config) {
     const defaultColor = config?.globalForegroundColor || DEFAULT_FG_COLOR;
     if (!config) return defaultColor;
-    if (config.overrideBgColor) return config.textColor || defaultColor;
-    if (config.overrideBgColor === false) return defaultColor;
-    return config.textColor || defaultColor;
+
+    const isColorsOverridden = config.overrideColors ?? config.overrideFgColor;
+    if (isColorsOverridden === false) return defaultColor;
+
+    return config.fgColor || config.textColor || defaultColor;
 }
 
 /** Resolves the effective font family for a widget from its configuration. */
 export function resolveWidgetFontFamily(config) {
     const defaultFont = config?.globalFontFamily || DEFAULT_FONT_FAMILY;
     if (!config) return defaultFont;
-    if (config.overrideColors && config.fontFamily) return config.fontFamily;
+
+    const isColorsOverridden = config.overrideColors ?? config.overrideFont;
+    if (isColorsOverridden === false) return defaultFont;
+
     return config.fontFamily || defaultFont;
 }
 
@@ -181,8 +271,9 @@ export function calculateResizedDimensions(widgetData, newCols, newRows, newGrid
     }
 
     if (widgets && widgets.length > 0) {
-        const otherWidgets = widgets.filter(w => w.id !== widgetData.id);
+        const otherWidgets = widgets.filter(widget => widget.id !== widgetData.id);
 
+        // Shrink width first, then height, so resize feedback stays predictable while avoiding overlap.
         while (validCols > minLimits.minCols && checkOverlap(validX, widgetData.y, validCols, validRows, otherWidgets)) {
             validCols--;
         }
@@ -219,8 +310,8 @@ export function checkOverlap(x, y, width, height, widgets) {
 export function getMinRequiredCols(widgets, canvasWidth = 1920, canvasHeight = 1080) {
     if (!widgets || widgets.length === 0) return 6;
 
-    const maxHorizCols = widgets.reduce((max, w) => Math.max(max, (w.x || 0) + (w.width || 1)), 6);
-    const maxVertRows = widgets.reduce((max, w) => Math.max(max, (w.y || 0) + (w.height || 1)), 4);
+    const maxHorizCols = widgets.reduce((max, widget) => Math.max(max, (widget.x || 0) + (widget.width || 1)), 6);
+    const maxVertRows = widgets.reduce((max, widget) => Math.max(max, (widget.y || 0) + (widget.height || 1)), 4);
 
     let minCols = Math.max(6, maxHorizCols);
 
@@ -294,4 +385,16 @@ export function saveWidgets(settings, widgets) {
     } catch (e) {
         console.error('Failed to save widgets to settings:', e);
     }
+}
+
+/** Finds an empty grid spot, assigns position/size, and persists the widget. */
+export function addWidget(settings, widgetData, defaultWidth, defaultHeight) {
+    const widgets = getWidgets(settings);
+    const emptySpot = findEmptySpot(widgets, defaultWidth, defaultHeight, settings);
+    widgetData.x = emptySpot ? emptySpot.x : 0;
+    widgetData.y = emptySpot ? emptySpot.y : 0;
+    widgetData.width = defaultWidth;
+    widgetData.height = defaultHeight;
+    widgets.push(widgetData);
+    saveWidgets(settings, widgets);
 }

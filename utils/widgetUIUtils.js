@@ -1,14 +1,3 @@
-/**
- * ============================================================================
- * WIDGET UI UTILITIES
- * 
- * Shared UI building blocks and functions used by multiple widgets.
- * Provides functions to create standard widget containers, manage GLib polling
- * timers, create caption overlays, draw circular progress arcs, and attach
- * responsive scalers.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
@@ -17,22 +6,21 @@ import {
     resolveWidgetBackgroundColor,
     resolveWidgetForegroundColor,
     resolveWidgetFontFamily,
-    DEFAULT_FONT_FAMILY,
     parseHexColor,
     CAIRO_OPERATOR_CLEAR,
     CAIRO_OPERATOR_OVER,
     CAIRO_LINE_CAP_ROUND
 } from './widgetUtils.js';
 
-/** UI Layout & Drawing Constants */
 const CAPTION_PADDING_PIXELS = 12;
 const ARC_MARGIN_PIXELS = 4;
 const MIN_CIRCULAR_ARC_LINE_WIDTH = 4;
 const DEFAULT_LINE_WIDTH_RATIO = 0.1;
 const MIN_RESPONSIVE_SCALE = 0.4;
 const FULL_CIRCLE_RADIANS = Math.PI * 2;
+const SECONDS_IN_MINUTE = 60;
+const MILLISECONDS_IN_SECOND = 1000;
 
-/** Creates a standard widget container with background color, border, and BinLayout. */
 export function createWidgetContainer(config, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(config);
     const backgroundColor = resolveWidgetBackgroundColor(config);
@@ -52,7 +40,6 @@ export function createWidgetContainer(config, width, height, xPosition, yPositio
     return container;
 }
 
-/** Connects a 'destroy' signal to the container that cleans up a GLib timer. */
 export function connectTimerCleanup(container, state) {
     container.connect('destroy', () => {
         if (state.timerId) {
@@ -62,7 +49,6 @@ export function connectTimerCleanup(container, state) {
     });
 }
 
-/** Runs a poll function immediately, then starts a recurring GLib timer. */
 export function startPollingTimer(pollFunction, intervalMs, state) {
     pollFunction();
     state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, intervalMs, () => {
@@ -71,7 +57,23 @@ export function startPollingTimer(pollFunction, intervalMs, state) {
     });
 }
 
-/** Creates a bottom-anchored caption overlay for image-based widgets. */
+export function startMinuteAlignedTimer(state, widgetNode, updateCallback) {
+    const now = GLib.DateTime.new_now_local();
+    const remainingMilliseconds = (SECONDS_IN_MINUTE - now.get_seconds()) * MILLISECONDS_IN_SECOND
+        - (now.get_microsecond() / MILLISECONDS_IN_SECOND);
+    const millisecondsUntilNextMinute = Math.max(100, Math.floor(remainingMilliseconds));
+
+    state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, millisecondsUntilNextMinute, () => {
+        if (widgetNode.isDestroyed)
+            return GLib.SOURCE_REMOVE;
+
+        updateCallback();
+        // After the first alignment tick, the widget can stay on a simple 60s cadence.
+        state.timerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, SECONDS_IN_MINUTE, () => updateCallback());
+        return GLib.SOURCE_REMOVE;
+    });
+}
+
 export function createCaptionOverlay(config, caption) {
     const fontFamily = resolveWidgetFontFamily(config);
     const textColor = config.textColor || config.fgColor || resolveWidgetForegroundColor(config);
@@ -95,8 +97,7 @@ export function createCaptionOverlay(config, caption) {
     return contentBox;
 }
 
-/** Draws a circular progress arc on a Cairo context. */
-export function drawCircularArc(context, width, height, progress, colorHex, lineWidthRatio = DEFAULT_LINE_WIDTH_RATIO) {
+export function drawCircularArc(context, width, height, progress, colorHex, lineWidthRatio = DEFAULT_LINE_WIDTH_RATIO, trackColorHex = null) {
     context.setOperator(CAIRO_OPERATOR_CLEAR);
     context.paint();
     context.setOperator(CAIRO_OPERATOR_OVER);
@@ -106,13 +107,16 @@ export function drawCircularArc(context, width, height, progress, colorHex, line
     const lineWidth = Math.max(MIN_CIRCULAR_ARC_LINE_WIDTH, Math.min(width, height) * lineWidthRatio);
     const radius = Math.min(centerX, centerY) - lineWidth - ARC_MARGIN_PIXELS;
 
-    // Background track
-    context.setSourceRGBA(1, 1, 1, 0.1);
+    if (trackColorHex) {
+        const { r, g, b } = parseHexColor(trackColorHex);
+        context.setSourceRGBA(r, g, b, 0.15);
+    } else {
+        context.setSourceRGBA(1, 1, 1, 0.1);
+    }
     context.setLineWidth(lineWidth);
     context.arc(centerX, centerY, radius, 0, FULL_CIRCLE_RADIANS);
     context.stroke();
 
-    // Progress arc
     if (progress > 0) {
         const { r, g, b } = parseHexColor(colorHex);
 
@@ -126,7 +130,6 @@ export function drawCircularArc(context, width, height, progress, colorHex, line
     }
 }
 
-/** Attaches responsive dimension listeners that compute a scale factor relative to baseline reference dimensions. */
 export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCallback) {
     const update = () => {
         if (!widgetNode || widgetNode.isDestroyed) return;

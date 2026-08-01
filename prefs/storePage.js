@@ -1,9 +1,11 @@
 /**
  * ============================================================================
  * PREFERENCES: STORE PAGE
- * 
- * Defines the "Gridgets Store" page, displaying grid cards for adding new
- * desktop widgets.
+ *
+ * Displays two sections:
+ *   1. Desktop Widgets  — cards that add a widget to the desktop grid.
+ *   2. Panel Widgets    — cards with a toggle switch that enable/disable a
+ *                         GNOME panel indicator.
  * ============================================================================
  */
 
@@ -17,17 +19,28 @@ import {
     addPomodoroWidget,
     addCpuRamWidget,
     addNetworkSpeedWidget,
+    addSystemDashboardWidget,
     addNotesWidget,
     addClipboardWidget,
+    addCalendarWidget,
+    addQuotesWidget,
 } from './widgetAdders.js';
 
 import {
     openAddCommandDialog,
+    openAddAppLauncherDialog,
     openAddImageDialog,
-    openAddSlideshowDialog
+    openAddSlideshowDialog,
+    openAddWorldClockDialog,
 } from './widgetAddDialogs.js';
 
-function createStoreCard(extensionPath, title, description, gridSize, imageName, onAddClick) {
+import { STORE_CATEGORIES, STORE_WIDGETS, PANEL_WIDGETS } from './widgetCatalog.js';
+
+// ── Desktop widget card ───────────────────────────────────────────────────────
+
+function createDesktopWidgetCard(extensionPath, widgetEntry, onAddClick) {
+    const { title, description, gridSize, thumbnail } = widgetEntry;
+
     const card = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 6,
@@ -46,14 +59,10 @@ function createStoreCard(extensionPath, title, description, gridSize, imageName,
     });
     previewArea.set_size_request(194, 194);
 
-    if (imageName) {
-        const imagePath = `${extensionPath}/assets/thumbnails/${imageName}`;
+    if (thumbnail) {
+        const imagePath = `${extensionPath}/assets/thumbnails/${thumbnail}`;
         const picture = Gtk.Picture.new_for_filename(imagePath);
-        if (Gtk.ContentFit) {
-            picture.set_content_fit(Gtk.ContentFit.CONTAIN);
-        } else {
-            picture.set_keep_aspect_ratio(true);
-        }
+        picture.set_content_fit(Gtk.ContentFit.CONTAIN);
         picture.set_can_shrink(true);
         picture.set_halign(Gtk.Align.FILL);
         picture.set_valign(Gtk.Align.FILL);
@@ -66,7 +75,7 @@ function createStoreCard(extensionPath, title, description, gridSize, imageName,
         previewArea.append(picture);
     }
 
-    const textVBox = new Gtk.Box({
+    const textBox = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 2,
         margin_start: 12,
@@ -86,9 +95,9 @@ function createStoreCard(extensionPath, title, description, gridSize, imageName,
     const sizeLabel = new Gtk.Label({ xalign: 0, hexpand: true });
     sizeLabel.set_markup(`<span size='x-small' weight='bold' alpha='50%'>GRID: ${gridSize}</span>`);
 
-    textVBox.append(titleLabel);
-    textVBox.append(descLabel);
-    textVBox.append(sizeLabel);
+    textBox.append(titleLabel);
+    textBox.append(descLabel);
+    textBox.append(sizeLabel);
 
     const addButton = new Gtk.Button({
         label: 'Add to Desktop',
@@ -102,24 +111,129 @@ function createStoreCard(extensionPath, title, description, gridSize, imageName,
     addButton.connect('clicked', onAddClick);
 
     card.append(previewArea);
-    card.append(textVBox);
+    card.append(textBox);
     card.append(addButton);
 
     return card;
 }
 
-export function buildStorePage(window, settings, extensionPath) {
-    const page = new Adw.PreferencesPage({
-        title: 'Gridgets Store',
-        icon_name: 'software-update-available-symbolic',
+// ── Panel widget card (toggle switch) ────────────────────────────────────────
+
+function createPanelWidgetCard(extensionPath, panelEntry, settings) {
+    const { title, description, settingKey, thumbnail, fallbackIconName } = panelEntry;
+
+    const card = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 6,
+        css_classes: ['card'],
+        margin_top: 8,
+        margin_bottom: 8,
+        margin_start: 8,
+        margin_end: 8,
+    });
+    card.set_size_request(210, 260);
+
+    // Preview area (thumbnail image if available, otherwise fallback icon)
+    const previewArea = new Gtk.Box({
+        halign: Gtk.Align.FILL,
+        valign: Gtk.Align.FILL,
+        hexpand: true,
+    });
+    previewArea.set_size_request(194, 130);
+
+    if (thumbnail) {
+        const imagePath = `${extensionPath}/assets/thumbnails/${thumbnail}`;
+        const picture = Gtk.Picture.new_for_filename(imagePath);
+        picture.set_content_fit(Gtk.ContentFit.CONTAIN);
+        picture.set_can_shrink(true);
+        picture.set_halign(Gtk.Align.FILL);
+        picture.set_valign(Gtk.Align.FILL);
+        picture.set_hexpand(true);
+        picture.set_vexpand(true);
+        picture.set_margin_top(4);
+        picture.set_margin_bottom(4);
+        picture.set_margin_start(4);
+        picture.set_margin_end(4);
+        previewArea.append(picture);
+    } else {
+        const icon = new Gtk.Image({
+            icon_name: fallbackIconName,
+            pixel_size: 64,
+            halign: Gtk.Align.CENTER,
+            valign: Gtk.Align.CENTER,
+            margin_top: 24,
+        });
+        previewArea.append(icon);
+    }
+
+    const textBox = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 2,
+        margin_start: 12,
+        margin_end: 12,
+        margin_top: 4,
     });
 
-    const storeGroup = new Adw.PreferencesGroup({
-        title: 'Widget Store',
-        description: 'Browse and add custom widgets directly onto your desktop grid.',
+    const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeDesc = description.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const titleLabel = new Gtk.Label({ xalign: 0, hexpand: true });
+    titleLabel.set_markup(`<b>${safeTitle}</b>`);
+
+    const descLabel = new Gtk.Label({ xalign: 0, hexpand: true, wrap: true, max_width_chars: 24 });
+    descLabel.set_markup(`<span size='small' alpha='70%'>${safeDesc}</span>`);
+
+    const panelBadge = new Gtk.Label({ xalign: 0, hexpand: true });
+    panelBadge.set_markup(`<span size='x-small' weight='bold' alpha='50%'>PANEL INDICATOR</span>`);
+
+    textBox.append(titleLabel);
+    textBox.append(descLabel);
+    textBox.append(panelBadge);
+
+    // Toggle row
+    const toggleRow = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        margin_start: 12,
+        margin_end: 12,
+        margin_bottom: 12,
+        margin_top: 8,
+        valign: Gtk.Align.END,
+        vexpand: true,
     });
 
-    const storeGrid = new Gtk.Grid({
+    const toggleLabel = new Gtk.Label({
+        label: 'Enable',
+        xalign: 0,
+        hexpand: true,
+        valign: Gtk.Align.CENTER,
+    });
+
+    const toggle = new Gtk.Switch({
+        active: settings.get_boolean(settingKey),
+        valign: Gtk.Align.CENTER,
+    });
+    toggle.connect('state-set', (_widget, state) => {
+        settings.set_boolean(settingKey, state);
+        return false;
+    });
+
+    toggleRow.append(toggleLabel);
+    toggleRow.append(toggle);
+
+    card.append(previewArea);
+    card.append(textBox);
+    card.append(toggleRow);
+
+    return card;
+}
+
+// ── Category group helper ─────────────────────────────────────────────────────
+
+function createCategoryGroup(title, cards) {
+    const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const group = new Adw.PreferencesGroup({ title: safeTitle });
+
+    const grid = new Gtk.Grid({
         column_spacing: 12,
         row_spacing: 12,
         halign: Gtk.Align.CENTER,
@@ -130,40 +244,88 @@ export function buildStorePage(window, settings, extensionPath) {
         margin_end: 8,
     });
 
-    const cards = [];
-
-    cards.push(createStoreCard(extensionPath, 'Image / GIF', 'Display an image or animated GIF directly on your desktop.', '2x2', 'pictures/pictures.jpg', () => {
-        openAddImageDialog(window, settings);
-    }));
-
-    const addWeather = (width, height, layout) => {
-        const city = settings.get_string('weather-city');
-        addWeatherWidget(settings, city, width, height, layout);
-    };
-    cards.push(createStoreCard(extensionPath, 'Weather Forecast', 'A beautiful Cupertino-style weather forecast widget.', '3x3', 'weathers/3x3.jpg', () => addWeather(3, 3, 'standard')));
-    cards.push(createStoreCard(extensionPath, 'Weather Minimal', 'A clean and simple weather condition and temperature display.', '4x2', 'weathers/4x2.jpg', () => addWeather(4, 2, 'simple')));
-    cards.push(createStoreCard(extensionPath, 'Weather Detailed', 'Advanced forecast layout with hourly condition reports.', '6x4', 'weathers/6x3.jpg', () => addWeather(6, 4, 'forecast')));
-
-    cards.push(createStoreCard(extensionPath, 'Time & Date', 'A beautiful and simple time and date widget.', '3x2', 'dateAndTime/dateAndTime.jpg', () => addTimeWidget(settings, 3, 2)));
-    cards.push(createStoreCard(extensionPath, 'Music Player', 'Displays the currently playing media album art.', '4x4', 'musicPlayer/square.jpg', () => addMusicWidget(settings, 4, 4)));
-    cards.push(createStoreCard(extensionPath, 'Music Player (Wide)', 'Wide layout displaying album art and player controls.', '8x4', 'musicPlayer/rectangle.jpg', () => addMusicWidget(settings, 8, 4)));
-    cards.push(createStoreCard(extensionPath, 'Pomodoro Timer', 'A focus timer with work/break cycles and session tracking.', '4x4', 'pomodoro/pomodoro.jpg', () => addPomodoroWidget(settings, 4, 4)));
-    cards.push(createStoreCard(extensionPath, 'Image Slideshow', 'Cycle through images in a folder with crossfade transitions.', '4x4', 'pictures/pictures.jpg', () => {
-        openAddSlideshowDialog(window, settings);
-    }));
-    cards.push(createStoreCard(extensionPath, 'System Monitor', 'Monitor your CPU and RAM resource usage in real-time.', '4x2', 'cpuAndRam/cpuAndRam.jpg', () => addCpuRamWidget(settings, 4, 2)));
-    cards.push(createStoreCard(extensionPath, 'Network Speed', 'A live tracker for upload and download speeds.', '3x2', 'networkSpeed/networkSpeed.jpg', () => addNetworkSpeedWidget(settings, 3, 2)));
-    cards.push(createStoreCard(extensionPath, 'Quick Notes', 'A markdown sticky note to quickly write down notes.', '4x4', 'quicknotes/quicknotes.jpg', () => addNotesWidget(settings, 4, 4)));
-    cards.push(createStoreCard(extensionPath, 'Clipboard History', 'Access a history of your recently copied text items.', '4x4', 'clipboard/clipboard.jpg', () => addClipboardWidget(settings, 4, 4)));
-    cards.push(createStoreCard(extensionPath, 'Command Launcher', 'Run custom bash scripts and commands from your desktop.', '2x2', 'commands/commands.jpg', () => openAddCommandDialog(window, settings)));
-
     cards.forEach((card, index) => {
-        const col = index % 3;
-        const row = Math.floor(index / 3);
-        storeGrid.attach(card, col, row, 1, 1);
+        grid.attach(card, index % 3, Math.floor(index / 3), 1, 1);
     });
 
-    storeGroup.add(storeGrid);
-    page.add(storeGroup);
+    group.add(grid);
+    return group;
+}
+
+// ── Section divider label ─────────────────────────────────────────────────────
+
+function createSectionBanner(labelText) {
+    const group = new Adw.PreferencesGroup();
+
+    const banner = new Gtk.Label({
+        label: labelText,
+        xalign: 0,
+        css_classes: ['title-3'],
+        margin_top: 8,
+        margin_bottom: 4,
+        margin_start: 4,
+    });
+
+    group.add(banner);
+    return group;
+}
+
+// ── Public builder ────────────────────────────────────────────────────────────
+
+export function buildStorePage(window, settings, extensionPath) {
+    const page = new Adw.PreferencesPage({
+        title: 'Gridgets Store',
+        icon_name: 'software-update-available-symbolic',
+    });
+
+    // ── Desktop Widgets banner ───────────────────────────────────────────────
+    page.add(createSectionBanner('Desktop Widgets'));
+
+    const addWeather = (width, height, layout) => {
+        addWeatherWidget(settings, settings.get_string('weather-city'), width, height, layout);
+    };
+
+    page.add(createCategoryGroup('Weather', [
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.weather[0]], () => addWeather(3, 3, 'standard')),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.weather[1]], () => addWeather(3, 3, 'simple')),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.weather[2]], () => addWeather(6, 4, 'forecast')),
+    ]));
+
+    page.add(createCategoryGroup('Music & Audio', [
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.music[0]], () => addMusicWidget(settings, 4, 4)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.music[1]], () => addMusicWidget(settings, 8, 4)),
+    ]));
+
+    page.add(createCategoryGroup('Time & Clock', [
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.time[0]], () => addTimeWidget(settings, 3, 2, 'digital')),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.time[1]], () => openAddWorldClockDialog(window, settings, extensionPath)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.time[2]], () => addCalendarWidget(settings)),
+    ]));
+
+    page.add(createCategoryGroup('Media & Photos', [
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.media[0]], () => openAddImageDialog(window, settings)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.media[1]], () => openAddSlideshowDialog(window, settings)),
+    ]));
+
+    page.add(createCategoryGroup('System & Utilities', [
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[0]], () => addSystemDashboardWidget(settings, 4, 4)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[1]], () => addPomodoroWidget(settings, 4, 4)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[2]], () => addCpuRamWidget(settings, 4, 2)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[3]], () => addNetworkSpeedWidget(settings, 3, 2)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[4]], () => addNotesWidget(settings, 4, 4)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[5]], () => addClipboardWidget(settings, 4, 4)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[6]], () => openAddCommandDialog(window, settings)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[7]], () => openAddAppLauncherDialog(window, settings)),
+        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.utilities[8]], () => addQuotesWidget(settings)),
+    ]));
+
+    // ── Panel Widgets banner ─────────────────────────────────────────────────
+    page.add(createSectionBanner('Panel Widgets'));
+
+    page.add(createCategoryGroup('Indicators', [
+        createPanelWidgetCard(extensionPath, PANEL_WIDGETS[STORE_CATEGORIES.panel[0]], settings),
+        createPanelWidgetCard(extensionPath, PANEL_WIDGETS[STORE_CATEGORIES.panel[1]], settings),
+    ]));
+
     return page;
 }

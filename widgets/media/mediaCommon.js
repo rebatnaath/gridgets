@@ -1,11 +1,3 @@
-/**
- * ============================================================================
- * MEDIA WIDGET COMMON UTILITIES
- * 
- * Shared utilities for Image, GIF, and Slideshow widgets.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
@@ -62,10 +54,14 @@ export function listImagesInFolder(folderPath) {
 
 /** Resolves caption visibility based on widget override or global GSettings. */
 function isCaptionVisible(widgetData) {
-    if (widgetData.showText !== undefined) return widgetData.showText;
-    if (widgetData.showCaption !== undefined) return widgetData.showCaption;
+    if (widgetData.showCaption === false || widgetData.showText === false) {
+        return false;
+    }
+
     const isSlideshow = widgetData.type === 'slideshow';
-    return isSlideshow ? (widgetData.globalSlideshowShowCaption !== false) : (widgetData.globalImageShowCaption !== false);
+    return isSlideshow
+        ? (widgetData.globalSlideshowShowCaption !== false)
+        : (widgetData.globalImageShowCaption !== false);
 }
 
 /** Attaches a caption overlay to a media widget container node. */

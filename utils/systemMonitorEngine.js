@@ -74,6 +74,9 @@ let prevCpuTotal = 0;
 let prevCpuIdle = 0;
 let lastCpuProgress = 0;
 let lastRamProgress = 0;
+let lastCpuTempC = 34;
+let lastCpuFreqGhz = 4.2;
+let lastTaskCount = 2135;
 
 function fetchCpuRamData(callback) {
     const statFile = Gio.File.new_for_path('/proc/stat');
@@ -88,7 +91,7 @@ function fetchCpuRamData(callback) {
                     const idleIndex = 3;
                     const iowaitIndex = 4;
                     const idle = parts[idleIndex] + parts[iowaitIndex];
-                    const total = parts.reduce((a, b) => a + b, 0);
+                    const total = parts.reduce((accumulator, value) => accumulator + value, 0);
 
                     if (prevCpuTotal > 0) {
                         const deltaTotal = total - prevCpuTotal;
@@ -125,7 +128,71 @@ function fetchCpuRamData(callback) {
             } catch (e) {
                 console.error('Error reading /proc/meminfo:', e);
             }
-            callback({ cpuProgress: lastCpuProgress, ramProgress: lastRamProgress });
+
+            // Async read CPU temperature from /sys/class/thermal
+            const thermalFile = Gio.File.new_for_path('/sys/class/thermal/thermal_zone0/temp');
+            thermalFile.load_contents_async(null, (tFile, tRes) => {
+                try {
+                    const [tSuccess, tContents] = tFile.load_contents_finish(tRes);
+                    if (tSuccess) {
+                        const tempVal = parseInt(decoder.decode(tContents).trim(), 10);
+                        if (!isNaN(tempVal) && tempVal > 0) {
+                            lastCpuTempC = Math.round(tempVal > 1000 ? tempVal / 1000 : tempVal);
+                        }
+                    }
+                } catch (_err) {
+                    // Fallback to default CPU temp
+                }
+
+                // Async read loadavg total task count
+                const loadFile = Gio.File.new_for_path('/proc/loadavg');
+                loadFile.load_contents_async(null, (lFile, lRes) => {
+                    try {
+                        const [lSuccess, lContents] = lFile.load_contents_finish(lRes);
+                        if (lSuccess) {
+                            const loadText = decoder.decode(lContents).trim();
+                            const parts = loadText.split(/\s+/);
+                            if (parts.length >= 4) {
+                                const taskParts = parts[3].split('/');
+                                if (taskParts.length >= 2) {
+                                    const total = parseInt(taskParts[1], 10);
+                                    if (!isNaN(total) && total > 0)
+                                        lastTaskCount = total;
+                                }
+                            }
+                        }
+                    } catch (_err) {
+                        // Fallback to default task count
+                    }
+
+                    // Async read CPU frequency in GHz
+                    const cpuInfoFile = Gio.File.new_for_path('/proc/cpuinfo');
+                    cpuInfoFile.load_contents_async(null, (cFile, cRes) => {
+                        try {
+                            const [cSuccess, cContents] = cFile.load_contents_finish(cRes);
+                            if (cSuccess) {
+                                const cpuInfoText = decoder.decode(cContents);
+                                const mhzMatch = cpuInfoText.match(/cpu MHz\s+:\s+([\d.]+)/i);
+                                if (mhzMatch) {
+                                    const mhz = parseFloat(mhzMatch[1]);
+                                    if (!isNaN(mhz) && mhz > 0)
+                                        lastCpuFreqGhz = parseFloat((mhz / 1000).toFixed(1));
+                                }
+                            }
+                        } catch (_err) {
+                            // Fallback to default CPU frequency
+                        }
+
+                        callback({
+                            cpuProgress: lastCpuProgress,
+                            ramProgress: lastRamProgress,
+                            cpuTempC: lastCpuTempC,
+                            cpuFreqGhz: lastCpuFreqGhz,
+                            taskCount: lastTaskCount,
+                        });
+                    });
+                });
+            });
         });
     });
 }
@@ -135,6 +202,9 @@ function resetCpuRamState() {
     prevCpuIdle = 0;
     lastCpuProgress = 0;
     lastRamProgress = 0;
+    lastCpuTempC = 34;
+    lastCpuFreqGhz = 4.2;
+    lastTaskCount = 2135;
 }
 
 export const cpuRamEngine = new PollingEngine(DEFAULT_ENGINE_POLL_INTERVAL_MS, fetchCpuRamData, resetCpuRamState);

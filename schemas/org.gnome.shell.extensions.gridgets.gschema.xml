@@ -82,6 +82,10 @@
       <description>If true, show captions on slideshow widgets.</description>
     </key>
     <key name="global-monitor" type="s">
+      <default>'primary'</default>
+      <summary>Global Target Monitor</summary>
+      <description>Choose default monitor display mode for widgets.</description>
+    </key>
     <key name="music-ignore-browsers" type="b">
       <default>true</default>
       <summary>Ignore Browsers in Music Widget</summary>
@@ -101,6 +105,21 @@
       <default>28</default>
       <summary>Grid Columns</summary>
       <description>Number of columns across the desktop grid.</description>
+    </key>
+    <key name="panel-screen-time" type="b">
+      <default>false</default>
+      <summary>Screen Time Panel Widget</summary>
+      <description>If true, show the Screen Time indicator in the GNOME panel.</description>
+    </key>
+    <key name="panel-store-button" type="b">
+      <default>false</default>
+      <summary>Store Panel Button</summary>
+      <description>If true, show a panel button that opens the widget store as a popup.</description>
+    </key>
+    <key name="theme" type="s">
+      <default>''</default>
+      <summary>Active Theme</summary>
+      <description>The currently selected theme preset ID. Empty means no theme has been applied.</description>
     </key>
   </schema>
 </schemalist>

@@ -1,12 +1,3 @@
-/**
- * ============================================================================
- * COMMAND LAUNCHER WIDGET
- * 
- * Executes user-defined shell commands on click, supporting dynamic scaling,
- * icon/image rendering, and visual overlay feedback during execution.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
@@ -15,12 +6,9 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { resolveWidgetForegroundColor, resolveWidgetFontFamily } from '../utils/widgetUtils.js';
 import { createWidgetContainer } from '../utils/widgetUIUtils.js';
 
-/** Default widget configuration fallbacks */
 const DEFAULT_ICON = 'system-run-symbolic';
 const DEFAULT_COMMAND = 'echo "Hello World"';
 const DEFAULT_COMMAND_NAME = 'Quick Launch';
-
-/** Layout & interaction metrics */
 const DRAG_THRESHOLD_PIXELS = 10;
 const CENTER_CLICK_MARGIN_RATIO = 0.20;
 const DEFAULT_ICON_SIZE = 68;
@@ -31,11 +19,7 @@ const LOADING_ICON_SIZE = 32;
 const UI_PADDING_PIXELS = 12;
 const OVERLAY_BACKGROUND_COLOR = 'rgba(0, 0, 0, 0.5)';
 const BASE_CONTAINER_SIZE = 160;
-
-/** Mouse button constants */
 const BUTTON_PRIMARY = 1;
-
-/** Builds a cross-terminal launcher shell script payload string. */
 function buildTerminalScript(commandString) {
     const escapedCommand = commandString.replace(/'/g, "'\\''");
     return `
@@ -55,7 +39,6 @@ bash -c '${escapedCommand}'
 `;
 }
 
-/** Checks if relative click coordinates land in the interactive central region. */
 function isWithinClickableCenter(relativeX, relativeY, containerWidth, containerHeight) {
     const marginX = containerWidth * CENTER_CLICK_MARGIN_RATIO;
     const marginY = containerHeight * CENTER_CLICK_MARGIN_RATIO;
@@ -63,7 +46,6 @@ function isWithinClickableCenter(relativeX, relativeY, containerWidth, container
         && relativeY >= marginY && relativeY <= containerHeight - marginY;
 }
 
-/** Creates a command launcher widget node. */
 export function createCommandNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveWidgetFontFamily(config);
     const textColor = resolveWidgetForegroundColor(config);
@@ -77,11 +59,9 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
 
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
-    let isDestroyed = false;
     let idleSourceId = null;
 
     container.connect('destroy', () => {
-        isDestroyed = true;
         if (idleSourceId) {
             GLib.Source.remove(idleSourceId);
             idleSourceId = null;
@@ -138,7 +118,7 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
     }
 
     const updateScaling = () => {
-        if (isDestroyed) return;
+        if (container.isDestroyed) return;
         const currentWidth = container.width || width || BASE_CONTAINER_SIZE;
         const currentHeight = container.height || height || BASE_CONTAINER_SIZE;
         const scale = Math.max(0.2, Math.min(currentWidth / BASE_CONTAINER_SIZE, currentHeight / BASE_CONTAINER_SIZE));
@@ -190,14 +170,14 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
     let pressX = 0;
     let pressY = 0;
 
-    container.connect('button-press-event', (actor, event) => {
+    container.connect('button-press-event', (_actor, event) => {
         if (event.get_button() === BUTTON_PRIMARY) {
             [pressX, pressY] = event.get_coords();
         }
         return Clutter.EVENT_PROPAGATE;
     });
 
-    container.connect('button-release-event', (actor, event) => {
+    container.connect('button-release-event', (_actor, event) => {
         if (event.get_button() === BUTTON_PRIMARY && !isCommandRunning) {
             if (container.actionOverlay)
                 return Clutter.EVENT_PROPAGATE;
@@ -217,7 +197,7 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
     });
 
     const executeCommand = () => {
-        if (isDestroyed) return;
+        if (container.isDestroyed) return;
         isCommandRunning = true;
         executionOverlay.show();
 
@@ -231,12 +211,8 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
 
             subprocess.wait_async(null, (proc, res) => {
                 isCommandRunning = false;
-                if (!isDestroyed) {
-                    try {
-                        executionOverlay.hide();
-                    } catch (err) {
-                        console.error('Error hiding execution overlay:', err);
-                    }
+                if (!container.isDestroyed) {
+                    executionOverlay.hide();
                 }
                 try {
                     proc.wait_finish(res);
@@ -247,12 +223,8 @@ export function createCommandNode(config, width, height, xPosition, yPosition) {
             });
         } catch (e) {
             isCommandRunning = false;
-            if (!isDestroyed) {
-                try {
-                    executionOverlay.hide();
-                } catch (err) {
-                    console.error('Error hiding execution overlay on start failure:', err);
-                }
+            if (!container.isDestroyed) {
+                executionOverlay.hide();
             }
             Main.notify('Command Error', `Failed to start ${commandName}: ${e.message}`);
         }

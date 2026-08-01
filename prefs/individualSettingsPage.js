@@ -1,59 +1,91 @@
 /**
  * ============================================================================
  * PREFERENCES: INDIVIDUAL SETTINGS PAGE
- * 
- * Defines the "Individual Settings" / "Manage Widgets" page, allowing users
- * to view active widgets on their desktop grid, remove widgets, and open
- * per-widget edit dialogs with custom aesthetic overrides.
+ *
+ * Defines the "Individual Settings" page and keeps its widget sections in sync
+ * with GSettings without rebuilding hidden content eagerly.
  * ============================================================================
  */
 
 import Adw from 'gi://Adw';
 import GLib from 'gi://GLib';
 import { populateActiveWidgets } from './activeWidgetsList.js';
-import { openWidgetEditDialog } from './widgetEditDialogs.js';
-import { getWidgets } from '../utils/widgetUtils.js';
 
-export function buildIndividualSettingsPage(window, settings, extensionPath) {
+export function buildIndividualSettingsPage(window, settings) {
     const page = new Adw.PreferencesPage({
         title: 'Individual Settings',
         icon_name: 'org.gnome.tweaks-symbolic',
+        name: 'individual-settings',
     });
 
-    const activeGroup = new Adw.PreferencesGroup({
-        title: 'Manage Widgets',
-        description: 'View, edit appearance overrides, and remove currently active desktop widgets.',
-    });
-    page.add(activeGroup);
+    let isListDirty = true;
 
-    populateActiveWidgets(window, settings, activeGroup, extensionPath);
+    const isPageVisible = () => window.get_visible_page() === page;
+    const refreshActiveWidgets = () => {
+        populateActiveWidgets(window, settings, page);
+        isListDirty = false;
+    };
+
+    if (isPageVisible()) {
+        refreshActiveWidgets();
+    }
 
     const widgetsChangedSignalId = settings.connect('changed::widgets', () => {
-        populateActiveWidgets(window, settings, activeGroup, extensionPath);
+        if (isPageVisible()) {
+            refreshActiveWidgets();
+            return;
+        }
+
+        isListDirty = true;
     });
 
-    window.connect('unrealize', () => {
+    const globalMonitorChangedSignalId = settings.connect('changed::global-monitor', () => {
+        if (isPageVisible()) {
+            refreshActiveWidgets();
+            return;
+        }
+
+        isListDirty = true;
+    });
+
+    const visiblePageChangedSignalId = window.connect('notify::visible-page', () => {
+        if (isPageVisible() && isListDirty) {
+            refreshActiveWidgets();
+        }
+    });
+
+    page.connect('unrealize', () => {
         if (widgetsChangedSignalId) {
             settings.disconnect(widgetsChangedSignalId);
+        }
+        if (globalMonitorChangedSignalId) {
+            settings.disconnect(globalMonitorChangedSignalId);
+        }
+        if (visiblePageChangedSignalId) {
+            window.disconnect(visiblePageChangedSignalId);
         }
     });
 
     const openEditWidgetId = settings.get_string('open-edit-widget-id');
     if (openEditWidgetId && openEditWidgetId.trim() !== '') {
         settings.set_string('open-edit-widget-id', '');
-        window.set_visible_page(page);
-        try {
-            const widgets = getWidgets(settings);
-            const targetWidget = widgets.find(w => w.id === openEditWidgetId);
-            if (targetWidget) {
-                GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                    openWidgetEditDialog(window, targetWidget, settings);
-                    return GLib.SOURCE_REMOVE;
-                });
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            try {
+                window.set_visible_page(page);
+                if (isListDirty) {
+                    refreshActiveWidgets();
+                }
+
+                const targetRow = page.activeRows?.find(row => row.widgetId === openEditWidgetId);
+                if (targetRow) {
+                    targetRow.set_expanded(true);
+                }
+            } catch (error) {
+                console.error('Error navigating to the target widget settings:', error);
             }
-        } catch (e) {
-            console.error('Error opening widget edit dialog:', e);
-        }
+
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     return page;

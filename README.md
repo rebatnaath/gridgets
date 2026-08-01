@@ -1,10 +1,16 @@
-# Gridgets
+# Gridgets — GNOME Shell Widgets
 
 ![Gridgets Showcase](assets/github/showcase.gif)
 
-Gridgets is a grid-based desktop widget extension for GNOME Shell.
+**Gridgets is a GNOME widgets extension for GNOME Shell.** It lets you place widgets directly onto your desktop using a clean, responsive grid system — think Rainmeter for Windows or macOS desktop widgets, built right into your GNOME desktop.
 
-It lets you place widgets directly onto your desktop using a clean grid system. You can add things like digital clocks, system monitors, weather forecasts, sticky notes, media controls, animated GIFs, and even custom bash command outputs. Each widget can be independently moved, resized, and styled to match your setup.
+> Keywords: `gnome widgets`, `gnome shell widgets`, `gnome widget extension`, `desktop widgets`, `linux desktop widgets`, `widget grid`, `desktop gadgets`
+
+You can add things like digital clocks, system monitors, weather forecasts, sticky notes, media controls, animated GIFs, and even custom bash command outputs. Each widget can be independently moved, resized, and styled to match your setup.
+
+## 📖 User Guide
+
+For a detailed walkthrough of all widgets, customization options, and desktop interactions, see the [User Guide](assets/github/user-guide/README.md).
 
 ## 🌟 Features
 

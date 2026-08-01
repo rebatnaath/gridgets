@@ -1,12 +1,3 @@
-/**
- * ============================================================================
- * IMAGE SLIDESHOW WIDGET
- * 
- * Image slideshow widget cycling through images in a target directory with
- * smooth crossfade transitions.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
@@ -15,16 +6,11 @@ import { listImagesInFolder, attachCaptionOverlay } from './mediaCommon.js';
 import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveWidgetFontFamily, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
 import { connectTimerCleanup } from '../../utils/widgetUIUtils.js';
 
-/** Default slide interval and transition metrics */
 const DEFAULT_SLIDE_INTERVAL_SECONDS = 10;
 const MILLISECONDS_PER_SECOND = 1000;
 const CROSSFADE_DURATION_MS = 800;
-
-/** Opacity constants */
 const CLUTTER_OPACITY_OPAQUE = 255;
 const CLUTTER_OPACITY_TRANSPARENT = 0;
-
-/** Creates an image or GIF layer actor for slideshow transition. */
 function createImageLayer(imagePath, borderRadius, width, height, animateGif) {
     if (imagePath.toLowerCase().endsWith('.gif')) {
         const gifWidget = createAnimatedGifNode({
@@ -56,7 +42,6 @@ function createImageLayer(imagePath, borderRadius, width, height, animateGif) {
     });
 }
 
-/** Creates an image slideshow widget node. */
 export function createSlideshowNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
     const borderRadius = widgetData.appliedBorderRadius || 0;
@@ -77,12 +62,7 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
 
     const state = {
         timerId: null,
-        isDestroyed: false,
     };
-
-    container.connect('destroy', () => {
-        state.isDestroyed = true;
-    });
 
     const images = listImagesInFolder(folderPath);
 
@@ -115,7 +95,7 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
     imageContainer.add_child(currentLayer);
 
     const advanceSlide = () => {
-        if (state.isDestroyed || images.length <= 1) return;
+        if (container.isDestroyed || images.length <= 1) return;
 
         currentIndex = (currentIndex + 1) % images.length;
         const nextImage = images[currentIndex];
@@ -138,17 +118,15 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
             duration: CROSSFADE_DURATION_MS,
             mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
             onComplete: () => {
-                try {
-                    if (outgoingLayer) outgoingLayer.destroy();
-                } catch (e) {
-                    console.error('Error destroying slideshow outgoing layer:', e);
-                }
+                if (outgoingLayer && !outgoingLayer.isDestroyed)
+                    outgoingLayer.destroy();
             }
         });
     };
 
-    state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, slideInterval, () => {
-        if (state.isDestroyed) return GLib.SOURCE_REMOVE;
+    const validInterval = Math.max(1000, Math.floor(slideInterval));
+    state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, validInterval, () => {
+        if (container.isDestroyed) return GLib.SOURCE_REMOVE;
         advanceSlide();
         return GLib.SOURCE_CONTINUE;
     });

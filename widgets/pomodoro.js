@@ -1,12 +1,3 @@
-/**
- * ============================================================================
- * POMODORO TIMER WIDGET
- * 
- * Manages productivity work and break intervals, rendering a circular arc progress
- * gauge and interactive session tracking dots.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
@@ -98,7 +89,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         const [canvasWidth, canvasHeight] = area.get_surface_size();
         const activeConfig = PHASE_CONFIG[state.phase];
         const progress = 1 - (state.secondsRemaining / activeConfig.duration);
-        drawCircularArc(ctx, canvasWidth, canvasHeight, progress, activeConfig.color, POMODORO_ARC_LINE_WIDTH_RATIO);
+        drawCircularArc(ctx, canvasWidth, canvasHeight, progress, activeConfig.color, POMODORO_ARC_LINE_WIDTH_RATIO, textColor);
     });
     canvasActor.queue_repaint();
     container.add_child(canvasActor);
@@ -224,7 +215,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         });
     };
 
-    playPauseBtn.connect('button-press-event', (actor, event) => {
+    playPauseBtn.connect('button-press-event', (_actor, event) => {
         if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
             return Clutter.EVENT_PROPAGATE;
         if (state.isRunning) stopTimer();
@@ -232,7 +223,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         return Clutter.EVENT_STOP;
     });
 
-    resetBtn.connect('button-press-event', (actor, event) => {
+    resetBtn.connect('button-press-event', (_actor, event) => {
         if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
             return Clutter.EVENT_PROPAGATE;
         stopTimer();
@@ -241,7 +232,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         return Clutter.EVENT_STOP;
     });
 
-    skipBtn.connect('button-press-event', (actor, event) => {
+    skipBtn.connect('button-press-event', (_actor, event) => {
         if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
             return Clutter.EVENT_PROPAGATE;
         stopTimer();

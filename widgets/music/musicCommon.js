@@ -1,12 +1,3 @@
-/**
- * ============================================================================
- * MUSIC WIDGET COMMON UTILITIES & DATA FETCHING
- * 
- * Provides MPRIS D-Bus communication, player property parsing, artwork handling,
- * and shared controls layout builders for music widgets.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -27,6 +18,15 @@ export const MICROSECONDS_PER_SECOND = 1000000;
 
 /** Styling constants */
 export const BORDER_RADIUS_PILL = 99;
+
+/** Cache directory for downloaded remote album art */
+const MUSIC_ART_CACHE_DIR = `${GLib.get_user_cache_dir()}/gridgets/music-art`;
+
+/** Local file paths for already-downloaded remote artwork URLs */
+const artworkFileCache = new Map();
+
+/** Queues of callbacks waiting on an in-flight download for each URL */
+const artworkDownloadQueue = new Map();
 
 /** Time thresholds for MPRIS position tracking */
 const RECENT_SEEK_WINDOW_MICROSECONDS = 1500000;
@@ -121,13 +121,12 @@ export async function getActiveMediaPlayer(config = {}) {
 
         for (const player of mediaPlayers) {
             const props = await fetchPlayerProperties(player);
-            const status = props?.['PlaybackStatus']?.unpack();
+            const status = unpackVariantValue(props?.['PlaybackStatus']);
             if (status === 'Playing') return player;
         }
 
         return mediaPlayers[0];
-    } catch (error) {
-        console.debug('Failed to query D-Bus media players:', error);
+    } catch (_error) {
         return null;
     }
 }
@@ -150,8 +149,7 @@ export async function fetchPlayerProperties(playerName) {
             Gio.DBusCallFlags.NONE, -1, null
         );
         return response.deep_unpack()[0];
-    } catch (error) {
-        console.debug(`Failed to fetch properties for player ${playerName}:`, error);
+    } catch (_error) {
         return null;
     }
 }
@@ -181,8 +179,7 @@ export async function fetchPlayerPosition(playerName) {
             if (!isNaN(pos) && pos >= 0) return pos;
         }
         return null;
-    } catch (error) {
-        console.debug(`Failed to fetch position for player ${playerName}:`, error);
+    } catch (_error) {
         return null;
     }
 }
@@ -226,8 +223,7 @@ export async function seekPlayer(playerName, offsetMicroseconds, trackId = '/org
                     Gio.DBusCallFlags.NONE, -1, null
                 );
                 return;
-            } catch (err) {
-                console.debug(`SetPosition fallback for ${playerName}:`, err);
+            } catch (_error) {
             }
         }
 
@@ -245,41 +241,131 @@ export async function seekPlayer(playerName, offsetMicroseconds, trackId = '/org
     }
 }
 
+/**
+ * Converts a GVariant value to a plain JS value.
+ * GJS's deep_unpack() leaves a{sv} dict values wrapped in GVariant, so each
+ * value must be unpacked individually. deep_unpack() is used (not unpack())
+ * because array-typed variants (e.g. xesam:artist as "as") only yield plain
+ * strings when deep-unpacked.
+ */
+export function unpackVariantValue(value) {
+    if (value && typeof value.deep_unpack === 'function')
+        return value.deep_unpack();
+    return value;
+}
+
 /** Extracts normalized track metadata object from D-Bus properties. */
 export function extractTrackMetadata(properties) {
     const rawMeta = properties['Metadata'];
     const metadata = (rawMeta && typeof rawMeta.deep_unpack === 'function') ? rawMeta.deep_unpack() : (rawMeta || {});
 
-    const title = metadata['xesam:title'] || 'Unknown Title';
-    const rawArtists = metadata['xesam:artist'] || [];
+    const title = unpackVariantValue(metadata['xesam:title']) || 'Unknown Title';
+    const rawArtists = unpackVariantValue(metadata['xesam:artist']) || [];
     const artistArray = Array.isArray(rawArtists) ? rawArtists : [rawArtists];
     const artist = artistArray.filter(Boolean).join(', ') || 'Unknown Artist';
-    const album = metadata['xesam:album'] || '';
-    const artUrl = metadata['mpris:artUrl'] || '';
-    const lengthMicro = Number(metadata['mpris:length']) || 0;
-    const trackId = metadata['mpris:trackid'] || '/org/mpris/MediaPlayer2/TrackList/NoTrack';
+    const album = unpackVariantValue(metadata['xesam:album']) || '';
+    const artUrl = unpackVariantValue(metadata['mpris:artUrl']) || '';
+    const lengthMicro = Number(unpackVariantValue(metadata['mpris:length'])) || 0;
+    const trackId = unpackVariantValue(metadata['mpris:trackid']) || '/org/mpris/MediaPlayer2/TrackList/NoTrack';
 
     return { title, artist, album, artUrl, lengthMicro, trackId };
 }
 
-/** Updates background layer artwork image or fallback background color. */
-export function applyArtworkToBackground(backgroundLayer, artUrl, config) {
-    const borderRadius = config.appliedBorderRadius !== undefined ? `${config.appliedBorderRadius}px` : '0px';
-    const backgroundColor = resolveWidgetBackgroundColor(config);
+/** Returns a stable cache file path for a remote artwork URL. */
+function getArtworkCachePath(artUrl) {
+    const urlHash = GLib.compute_checksum_for_string(GLib.ChecksumType.SHA1, artUrl, -1);
+    return GLib.build_filenamev([MUSIC_ART_CACHE_DIR, urlHash]);
+}
 
+/**
+ * Resolves an MPRIS artwork URL to a local file path.
+ * Remote http(s) URLs are downloaded once into the user cache directory since
+ * St CSS backgrounds cannot load remote URLs directly.
+ */
+export function ensureLocalArtwork(artUrl, callback) {
     if (!artUrl) {
-        backgroundLayer.style = `background-color: ${backgroundColor}; border-radius: ${borderRadius};`;
+        callback(null);
         return;
     }
 
-    let imageUrl = artUrl;
-    if (imageUrl.startsWith('file://')) {
-        imageUrl = `file://${imageUrl.replace('file://', '')}`;
-    } else if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
-        imageUrl = `file://${imageUrl}`;
+    if (!artUrl.startsWith('http://') && !artUrl.startsWith('https://')) {
+        callback(artUrl);
+        return;
     }
 
-    backgroundLayer.style = `background-image: url("${imageUrl}"); background-size: cover; border-radius: ${borderRadius};`;
+    if (artworkFileCache.has(artUrl)) {
+        callback(artworkFileCache.get(artUrl));
+        return;
+    }
+
+    const filePath = getArtworkCachePath(artUrl);
+    const localFile = Gio.File.new_for_path(filePath);
+    if (localFile.query_exists(null)) {
+        artworkFileCache.set(artUrl, filePath);
+        callback(filePath);
+        return;
+    }
+
+    const pending = artworkDownloadQueue.get(artUrl);
+    if (pending) {
+        pending.push(callback);
+        return;
+    }
+    artworkDownloadQueue.set(artUrl, [callback]);
+
+    try {
+        const cacheDir = Gio.File.new_for_path(MUSIC_ART_CACHE_DIR);
+        if (!cacheDir.query_exists(null)) {
+            cacheDir.make_directory_with_parents(null);
+        }
+    } catch (e) {
+        const queued = artworkDownloadQueue.get(artUrl);
+        artworkDownloadQueue.delete(artUrl);
+        queued?.forEach(cb => cb(null));
+        return;
+    }
+
+    Gio.File.new_for_uri(artUrl).copy_async(
+        localFile,
+        Gio.FileCopyFlags.OVERWRITE,
+        GLib.PRIORITY_DEFAULT,
+        null,
+        null,
+        (source, result) => {
+            const queued = artworkDownloadQueue.get(artUrl);
+            artworkDownloadQueue.delete(artUrl);
+            try {
+                source.copy_finish(result);
+                artworkFileCache.set(artUrl, filePath);
+                queued?.forEach(cb => cb(filePath));
+            } catch (e) {
+                queued?.forEach(cb => cb(null));
+            }
+        }
+    );
+}
+
+/** Updates background layer artwork image or fallback background color. */
+export function applyArtworkToBackground(backgroundLayer, artUrl, config, state) {
+    const borderRadius = config.appliedBorderRadius !== undefined ? `${config.appliedBorderRadius}px` : '0px';
+    const backgroundColor = resolveWidgetBackgroundColor(config);
+
+    const applyStyle = (localPath) => {
+        if (!state?.container || state.container.isDestroyed) return;
+        if (!localPath) {
+            backgroundLayer.style = `background-color: ${backgroundColor}; border-radius: ${borderRadius};`;
+            return;
+        }
+        const imageUrl = localPath.startsWith('file://') ? localPath : `file://${localPath}`;
+        backgroundLayer.style = `background-image: url("${imageUrl}"); background-size: cover; border-radius: ${borderRadius};`;
+    };
+
+    if (!artUrl) {
+        applyStyle(null);
+        return;
+    }
+
+    ensureLocalArtwork(artUrl, applyStyle);
 }
 
 /** Updates timer readout label text. */
@@ -308,7 +394,7 @@ export function resetWidgetState(state) {
 
 /** Applies fetched MPRIS player properties to update widget UI. */
 export function applyPlayerState(properties, state) {
-    const playbackStatus = properties['PlaybackStatus']?.unpack() || 'Stopped';
+    const playbackStatus = unpackVariantValue(properties['PlaybackStatus']) || 'Stopped';
     const isPlaying = playbackStatus === 'Playing';
     state.playbackStatus = playbackStatus;
     state.playPauseIcon.set_icon_name(isPlaying ? PAUSE_ICON : PLAY_ICON);
@@ -323,7 +409,7 @@ export function applyPlayerState(properties, state) {
     state.trackId = track.trackId;
     state.trackLengthMicro = track.lengthMicro;
 
-    const positionMicro = properties['Position']?.unpack();
+    const positionMicro = unpackVariantValue(properties['Position']);
     const now = GLib.get_monotonic_time();
     const recentSeek = state.lastSeekTimestamp && (now - state.lastSeekTimestamp < RECENT_SEEK_WINDOW_MICROSECONDS);
 
@@ -354,7 +440,7 @@ export function applyPlayerState(properties, state) {
     let resolvedArtUrl = track.artUrl || state.lastArtUrl;
     if (track.artUrl) state.lastArtUrl = track.artUrl;
 
-    applyArtworkToBackground(state.backgroundLayer, resolvedArtUrl, state.config);
+    applyArtworkToBackground(state.backgroundLayer, resolvedArtUrl, state.config, state);
 }
 
 /**
@@ -411,7 +497,7 @@ export function resolveControlsAlignment(position, isLargeLayout) {
  * @param {Function} action - Execution handler callback
  */
 export function connectControlButton(button, state, action) {
-    button.connect('button-press-event', (actor, event) => {
+    button.connect('button-press-event', (_actor, event) => {
         if (event.get_button() !== BUTTON_PRIMARY) return Clutter.EVENT_PROPAGATE;
         if (!state.container.editMode || state.container.editMode === 0) {
             action();
@@ -474,7 +560,7 @@ export function setupDbusSignalListeners() {
                 'Seeked',
                 null, null,
                 Gio.DBusSignalFlags.NONE,
-                (connection, senderName, objectPath, interfaceName, signalName, parameters) => {
+                (_connection, _senderName, _objectPath, _interfaceName, _signalName, parameters) => {
                     try {
                         const unpacked = parameters.deep_unpack();
                         let rawPos = unpacked[0];
@@ -490,13 +576,11 @@ export function setupDbusSignalListeners() {
                                 updateTimerLabel(state);
                             }
                         }
-                    } catch (e) {
-                        console.debug('Error processing D-Bus Seeked signal:', e);
+                    } catch (_error) {
                     }
                 }
             );
-        } catch (e) {
-            console.debug('Error subscribing to Seeked signal:', e);
+        } catch (_error) {
         }
     }
 }
@@ -513,8 +597,7 @@ export function unregisterMusicWidgetInstance(state) {
     if (activeMusicWidgetInstances.size === 0 && seekedSignalId !== 0) {
         try {
             Gio.DBus.session.signal_unsubscribe(seekedSignalId);
-        } catch (e) {
-            console.debug('Error unsubscribing Seeked signal:', e);
+        } catch (_error) {
         }
         seekedSignalId = 0;
     }

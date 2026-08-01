@@ -1,13 +1,3 @@
-/**
- * ============================================================================
- * ANIMATED GIF WIDGET
- * 
- * Animated GIF playback widget using GdkPixbuf animation iterators and Cogl
- * texture content streaming. Handles image cropping, aspect ratio fitting,
- * and corner masking.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Cogl from 'gi://Cogl';
 import GLib from 'gi://GLib';
@@ -16,8 +6,7 @@ import { buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
 import { connectTimerCleanup } from '../../utils/widgetUIUtils.js';
 import { ASPECT_RATIO_TOLERANCE, GIF_FRAME_INTERVAL_MS, applyCornerMask, attachCaptionOverlay } from './mediaCommon.js';
 
-/** Creates an animated GIF widget node. */
-export function createAnimatedGifNode(widgetData, width, height, xPosition, yPosition, animateGif = true) {
+export function createAnimatedImageNode(widgetData, width, height, xPosition, yPosition, animateGif = true) {
     const borderRadius = widgetData.appliedBorderRadius || 0;
     const borderWidth = widgetData.appliedBorderWidth || 0;
     const baseStyle = buildBaseWidgetStyle(widgetData);
@@ -34,12 +23,7 @@ export function createAnimatedGifNode(widgetData, width, height, xPosition, yPos
     widgetNode.set_clip_to_allocation(true);
     const state = {
         timerId: null,
-        isDestroyed: false,
     };
-
-    widgetNode.connect('destroy', () => {
-        state.isDestroyed = true;
-    });
 
     try {
         const animation = GdkPixbuf.PixbufAnimation.new_from_file(widgetData.imagePath);
@@ -53,7 +37,7 @@ export function createAnimatedGifNode(widgetData, width, height, xPosition, yPos
         widgetNode.add_child(imageActor);
 
         const updateImage = (pixbuf) => {
-            if (state.isDestroyed || !pixbuf) return;
+            if (widgetNode.isDestroyed || !pixbuf) return;
             let renderPixbuf = pixbuf;
             const bw = borderWidth;
             const containerWidth = widgetNode.width;
@@ -132,15 +116,17 @@ export function createAnimatedGifNode(widgetData, width, height, xPosition, yPos
 
         if (animateGif) {
             const scheduleNextFrame = (delayMs) => {
-                state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delayMs, () => {
+                const validDelay = Math.max(10, Math.floor(delayMs && delayMs > 0 ? delayMs : GIF_FRAME_INTERVAL_MS));
+                state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, validDelay, () => {
                     state.timerId = null;
-                    if (state.isDestroyed) return GLib.SOURCE_REMOVE;
+                    if (widgetNode.isDestroyed) return GLib.SOURCE_REMOVE;
 
                     try {
                         if (iter.advance(null)) {
                             updateImage(iter.get_pixbuf());
                         }
-                        const nextDelay = iter.get_delay_time() || GIF_FRAME_INTERVAL_MS;
+                        const rawDelay = iter.get_delay_time();
+                        const nextDelay = (rawDelay && rawDelay > 0) ? Math.floor(rawDelay) : GIF_FRAME_INTERVAL_MS;
                         scheduleNextFrame(nextDelay);
                     } catch (err) {
                         console.error(`GIF loop error: ${err.message}`);
@@ -149,15 +135,16 @@ export function createAnimatedGifNode(widgetData, width, height, xPosition, yPos
                 });
             };
 
-            const initialDelay = iter.get_delay_time() || GIF_FRAME_INTERVAL_MS;
-            scheduleNextFrame(initialDelay);
+            const initialDelay = iter.get_delay_time();
+            const validInitialDelay = (initialDelay && initialDelay > 0) ? Math.floor(initialDelay) : GIF_FRAME_INTERVAL_MS;
+            scheduleNextFrame(validInitialDelay);
         }
 
         widgetNode.connect('notify::width', () => {
-            if (!state.isDestroyed) updateImage(iter.get_pixbuf());
+            if (!widgetNode.isDestroyed) updateImage(iter.get_pixbuf());
         });
         widgetNode.connect('notify::height', () => {
-            if (!state.isDestroyed) updateImage(iter.get_pixbuf());
+            if (!widgetNode.isDestroyed) updateImage(iter.get_pixbuf());
         });
 
         connectTimerCleanup(widgetNode, state);
@@ -169,4 +156,8 @@ export function createAnimatedGifNode(widgetData, width, height, xPosition, yPos
 
     attachCaptionOverlay(widgetNode, widgetData, width, height, true);
     return widgetNode;
+}
+
+export function createAnimatedGifNode(widgetData, width, height, xPosition, yPosition, animateGif = true) {
+    return createAnimatedImageNode(widgetData, width, height, xPosition, yPosition, animateGif);
 }

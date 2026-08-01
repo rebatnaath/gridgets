@@ -8,15 +8,59 @@
  */
 
 import Gtk from 'gi://Gtk';
+import Gio from 'gi://Gio';
 import Adw from 'gi://Adw';
 import { buildGlobalAestheticsGroup, createSwitchRow } from './aestheticControls.js';
-import { getWidgets, getMinRequiredCols } from '../utils/widgetUtils.js';
+import { getWidgets, getMinRequiredCols, DEFAULT_BG_COLOR, DEFAULT_FG_COLOR } from '../utils/widgetUtils.js';
+import { THEMES, applyTheme } from './themes.js';
 
 export function buildAppearancePage(settings) {
     const page = new Adw.PreferencesPage({
         title: 'Appearance',
         icon_name: 'preferences-desktop-appearance-symbolic',
     });
+
+    const themeGroup = new Adw.PreferencesGroup({
+        title: 'Theme Presets',
+        description: 'Choose a built-in colour scheme. Themes set global defaults; per-widget overrides are preserved.',
+    });
+
+    const model = new Gtk.StringList();
+    model.append('No Theme');
+    THEMES.forEach(t => model.append(t.name));
+
+    const currentThemeId = settings.get_string('theme');
+    const currentIdx = currentThemeId
+        ? Math.max(0, THEMES.findIndex(t => t.id === currentThemeId)) + 1
+        : 0;
+
+    const themeRow = new Adw.ComboRow({
+        title: 'Color Theme',
+        subtitle: 'Select a preset theme to apply across all widgets.',
+        model,
+        selected: currentIdx,
+    });
+
+    themeRow.connect('notify::selected', () => {
+        const idx = themeRow.get_selected();
+        if (idx === 0) {
+            settings.set_string('theme', '');
+            settings.set_string('global-background-color', DEFAULT_BG_COLOR);
+            settings.set_string('global-foreground-color', DEFAULT_FG_COLOR);
+            settings.set_string('global-border-color', 'rgb(255,255,255)');
+            settings.set_int('border-radius', 16);
+            settings.set_int('global-border-width', 0);
+            return;
+        }
+        const theme = THEMES[idx - 1];
+        if (theme) {
+            applyTheme(settings, theme.id);
+            settings.set_string('theme', theme.id);
+        }
+    });
+
+    themeGroup.add(themeRow);
+    page.add(themeGroup);
 
     page.add(buildGlobalAestheticsGroup(settings));
 

@@ -1,30 +1,28 @@
-/**
- * ============================================================================
- * WIDGET EDIT UTILITIES
- * 
- * Logic for handling widget resize operations. Toggles the resize handle
- * overlay (resize.svg), handles drag-to-resize events, calculates new grid
- * dimensions, and triggers callbacks when resizing completes.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { calculateResizedDimensions, GRID_GAP_PX, GRID_MARGIN_PX } from './widgetUtils.js';
+import {
+    calculateResizedDimensions,
+    GRID_GAP_PX,
+    GRID_MARGIN_PX,
+    COLUMNS_COUNT,
+    ROWS_COUNT
+} from './widgetUtils.js';
 
-/** Overlay dimension metrics */
 export const RESIZE_HANDLE_OFFSET = 32;
 export const OVERLAY_SIZE_PX = 24;
 export const OVERLAY_RADIUS_PX = 12;
-
-/** Clutter mouse button constants */
 const BUTTON_PRIMARY = 1;
-
-/**
- * Toggles the interactive resize handle overlay (resize.svg) on a widget node.
- * If the resize handle is already visible, calling this destroys/removes it.
- */
-export function toggleWidgetResizeHandle(widgetNode, widgetData, cellTotalWidth, cellTotalHeight, extensionPath, onResizeEnd, allWidgets = []) {
+export function toggleWidgetResizeHandle(
+    widgetNode,
+    widgetData,
+    cellTotalWidth,
+    cellTotalHeight,
+    extensionPath,
+    onResizeEnd,
+    allWidgets = [],
+    maxCols = COLUMNS_COUNT,
+    maxRows = ROWS_COUNT
+) {
     if (widgetNode.actionOverlay) {
         widgetNode.actionOverlay.destroy();
         widgetNode.actionOverlay = null;
@@ -69,13 +67,13 @@ export function toggleWidgetResizeHandle(widgetNode, widgetData, cellTotalWidth,
         const proposedRows = Math.max(1, Math.round((widgetNode.height + GRID_GAP_PX) / cellTotalHeight));
 
         const { validCols, validRows, validX } = calculateResizedDimensions(
-            widgetData, proposedCols, proposedRows, proposedGridX, allWidgets
+            widgetData, proposedCols, proposedRows, proposedGridX, allWidgets, maxCols, maxRows
         );
 
         onResizeEnd(validCols, validRows, validX);
     };
 
-    overlay.connect('button-press-event', (actor, event) => {
+    overlay.connect('button-press-event', (_actor, event) => {
         if (event.get_button() === BUTTON_PRIMARY) {
             if (resizeMotionId) { global.stage.disconnect(resizeMotionId); resizeMotionId = 0; }
             if (resizeReleaseId) { global.stage.disconnect(resizeReleaseId); resizeReleaseId = 0; }
@@ -87,7 +85,7 @@ export function toggleWidgetResizeHandle(widgetNode, widgetData, cellTotalWidth,
             resizeStartWidth = widgetNode.width;
             resizeStartHeight = widgetNode.height;
 
-            resizeMotionId = global.stage.connect('motion-event', (stage, ev) => {
+            resizeMotionId = global.stage.connect('motion-event', (_stage, ev) => {
                 const state = ev.get_state();
                 if (!(state & Clutter.ModifierType.BUTTON1_MASK)) {
                     endResize();
@@ -106,7 +104,7 @@ export function toggleWidgetResizeHandle(widgetNode, widgetData, cellTotalWidth,
                 const proposedGridX = Math.round((widgetNode.x - GRID_MARGIN_PX) / cellTotalWidth);
 
                 const { validCols, validRows } = calculateResizedDimensions(
-                    widgetData, proposedCols, proposedRows, proposedGridX, allWidgets
+                    widgetData, proposedCols, proposedRows, proposedGridX, allWidgets, maxCols, maxRows
                 );
 
                 const maxAllowedWidth = (validCols * cellTotalWidth) - GRID_GAP_PX;
@@ -120,7 +118,7 @@ export function toggleWidgetResizeHandle(widgetNode, widgetData, cellTotalWidth,
                 return Clutter.EVENT_STOP;
             });
 
-            resizeReleaseId = global.stage.connect('button-release-event', (stage, ev) => {
+            resizeReleaseId = global.stage.connect('button-release-event', (_stage, ev) => {
                 if (ev.get_button() === BUTTON_PRIMARY) {
                     endResize();
                     return Clutter.EVENT_STOP;

@@ -1,27 +1,16 @@
-/**
- * ============================================================================
- * STICKY NOTES WIDGET
- * 
- * Sticky notes widget supporting basic Markdown rendering (bold, italic, checkboxes,
- * headers). Persists notes to JSON on disk and toggles viewing/editing states.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import {
-    loadJsonFromFile,
+    loadJsonFromFileAsync,
     saveJsonToFile,
+    getGridgetsDataDir,
     resolveWidgetForegroundColor,
     resolveWidgetFontFamily
 } from '../utils/widgetUtils.js';
 import { createWidgetContainer } from '../utils/widgetUIUtils.js';
 
-/** Default placeholder content */
 const DEFAULT_NOTE_TEXT = '📝 Quick Note\n- [ ] Task 1\n- [x] Task 2\n\n**Click the pen icon to edit**';
-
-/** Layout & scaling metrics */
 const BASE_CONTAINER_WIDTH = 240;
 const BASE_CONTAINER_HEIGHT = 160;
 const BASE_TITLE_FONT_SIZE = 14;
@@ -29,11 +18,7 @@ const BASE_CONTENT_FONT_SIZE = 14;
 const BASE_ICON_SIZE = 16;
 const MIN_FONT_SIZE = 11;
 const MIN_ICON_SIZE = 13;
-
-/** Mouse button constants */
 const BUTTON_PRIMARY = 1;
-
-/** Markdown replacement rules (Pattern -> Replacement) */
 const MARKDOWN_RULES = [
     [/\*\*(.*?)\*\*/g, '<b>$1</b>'],
     [/\*(.*?)\*/g, '<i>$1</i>'],
@@ -44,7 +29,6 @@ const MARKDOWN_RULES = [
     [/^# (.*$)/gm, '<span size="xx-large" weight="bold">$1</span>'],
 ];
 
-/** Converts plain text markdown into Pango markup XML string. */
 function convertMarkdownToPango(text) {
     if (!text) return '';
     let escaped = GLib.markup_escape_text(text, -1);
@@ -54,26 +38,23 @@ function convertMarkdownToPango(text) {
     return escaped;
 }
 
-/** Creates a sticky note widget node. */
 export function createNotesNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveWidgetFontFamily(config);
     const textColor = resolveWidgetForegroundColor(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
-
-    let isDestroyed = false;
 
     const scale = Math.max(0.5, Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT));
     const titleFontSize = Math.max(MIN_FONT_SIZE, Math.round(BASE_TITLE_FONT_SIZE * scale));
     const contentFontSize = Math.max(MIN_FONT_SIZE, Math.round(BASE_CONTENT_FONT_SIZE * scale));
     const iconSize = Math.max(MIN_ICON_SIZE, Math.round(BASE_ICON_SIZE * scale));
 
+    const baseDir = getGridgetsDataDir('notes');
     const notesFilePath = GLib.build_filenamev([
-        config.extensionPath || '',
+        baseDir,
         `notes-${config.id}.json`
     ]);
 
-    const savedData = loadJsonFromFile(notesFilePath);
-    let noteContent = (savedData && savedData.notes !== undefined) ? savedData.notes : DEFAULT_NOTE_TEXT;
+    let noteContent = DEFAULT_NOTE_TEXT;
 
     const contentBox = new St.BoxLayout({
         vertical: true,
@@ -152,17 +133,10 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     editorContainer.add_child(textEditor);
 
     const styleChangedSignalId = editorContainer.connect('style-changed', () => {
-        if (isDestroyed) return;
+        if (container.isDestroyed) return;
         const themeNode = editorContainer.get_theme_node();
         if (themeNode) {
             textEditor.set_color(themeNode.get_foreground_color());
-        }
-    });
-
-    container.connect('destroy', () => {
-        isDestroyed = true;
-        if (styleChangedSignalId) {
-            editorContainer.disconnect(styleChangedSignalId);
         }
     });
 
@@ -171,6 +145,9 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     scrollContent.add_child(editorContainer);
 
     const showNoteViewer = () => {
+        if (global.stage.get_key_focus() === textEditor) {
+            global.stage.set_key_focus(null);
+        }
         displayLabel.clutter_text.set_markup(convertMarkdownToPango(noteContent));
         editorContainer.hide();
         displayLabel.show();
@@ -182,12 +159,35 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
         textEditor.text = noteContent;
         displayLabel.hide();
         editorContainer.show();
-        textEditor.grab_key_focus();
+        global.stage.set_key_focus(textEditor);
         editIcon.set_icon_name('object-select-symbolic');
         isEditingActive = true;
     };
 
-    editButton.connect('button-press-event', (actor, event) => {
+    const textChangedSignalId = textEditor.connect('text-changed', () => {
+        if (isEditingActive) {
+            noteContent = textEditor.text;
+            saveJsonToFile(notesFilePath, { notes: noteContent });
+        }
+    });
+
+    container.connect('destroy', () => {
+        if (isEditingActive) {
+            noteContent = textEditor.text;
+            saveJsonToFile(notesFilePath, { notes: noteContent });
+            if (global.stage.get_key_focus() === textEditor) {
+                global.stage.set_key_focus(null);
+            }
+        }
+        if (styleChangedSignalId) {
+            editorContainer.disconnect(styleChangedSignalId);
+        }
+        if (textChangedSignalId) {
+            textEditor.disconnect(textChangedSignalId);
+        }
+    });
+
+    editButton.connect('button-press-event', (_actor, event) => {
         if (event.get_button() === BUTTON_PRIMARY) {
             if (isEditingActive) {
                 noteContent = textEditor.text;
@@ -203,6 +203,18 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
 
     showNoteViewer();
     container.add_child(contentBox);
+
+    loadJsonFromFileAsync(notesFilePath, (savedData) => {
+        if (container.isDestroyed) return;
+        if (savedData && savedData.notes !== undefined) {
+            noteContent = savedData.notes;
+            if (!isEditingActive) {
+                showNoteViewer();
+            }
+        } else {
+            saveJsonToFile(notesFilePath, { notes: noteContent });
+        }
+    });
 
     return container;
 }

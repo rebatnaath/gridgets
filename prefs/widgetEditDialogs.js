@@ -9,13 +9,74 @@
 import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
-import { getWidgets, saveWidgets } from '../utils/widgetUtils.js';
+import { getWidgets, saveWidgets, isAnimatedImageFile } from '../utils/widgetUtils.js';
+import { openImageFileDialog } from './fileDialogs.js';
+import { createLiveCitySearchRow, buildIconSelectionControls } from './widgetAddDialogs.js';
+import { getConnectedMonitorsCount } from './globalSettingsPage.js';
+
+
+export function buildWidgetEditPanel(parentWindow, widget, settings, onSavedCallback) {
+    const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 10,
+        margin_top: 10,
+        margin_bottom: 10,
+        margin_start: 12,
+        margin_end: 12,
+    });
+
+    const grid = new Gtk.Grid({ column_spacing: 12, row_spacing: 10 });
+    box.append(grid);
+
+    const saveHandlers = [];
+    let rowIdx = 0;
+
+    rowIdx = buildStandardSettings(grid, rowIdx, widget, settings, saveHandlers);
+
+    if (widget.type === 'weather') {
+        rowIdx = buildWeatherSettings(grid, rowIdx, widget, settings, saveHandlers);
+    } else if (widget.type === 'time') {
+        rowIdx = buildTimeSettings(grid, rowIdx, widget, settings, saveHandlers);
+    } else if (widget.type === 'music') {
+        rowIdx = buildMusicSettings(grid, rowIdx, widget, settings, saveHandlers);
+    } else if (widget.type === 'slideshow') {
+        rowIdx = buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandlers);
+    } else if (widget.type === 'command') {
+        rowIdx = buildCommandSettings(grid, rowIdx, widget, settings, saveHandlers, parentWindow);
+    } else if (widget.type === 'image' || widget.imagePath) {
+        rowIdx = buildImageSettings(grid, rowIdx, widget, settings, saveHandlers, parentWindow);
+        if (widget.imagePath && isAnimatedImageFile(widget.imagePath)) {
+            rowIdx = buildGifSettings(grid, rowIdx, widget, settings, saveHandlers);
+        }
+    }
+
+    const saveBtn = new Gtk.Button({
+        label: 'Save Changes',
+        css_classes: ['suggested-action'],
+        halign: Gtk.Align.END,
+        margin_top: 8,
+    });
+
+    saveBtn.connect('clicked', () => {
+        const widgets = getWidgets(settings);
+        const index = widgets.findIndex(w => w.id === widget.id);
+        if (index !== -1) {
+            saveHandlers.forEach(handler => handler(widgets[index]));
+            saveWidgets(settings, widgets);
+            if (onSavedCallback) onSavedCallback(widgets[index]);
+        }
+    });
+
+    box.append(saveBtn);
+    return box;
+}
 
 export function openWidgetEditDialog(parentWindow, widget, settings) {
     const typeLabels = {
         weather: 'Weather', time: 'Time', music: 'Music',
         pomodoro: 'Pomodoro', slideshow: 'Slideshow',
         'cpu-ram': 'CPU and RAM', 'network-speed': 'Network Speed',
+        'system-dashboard': 'System Dashboard',
         notes: 'Quick Notes', clipboard: 'Clipboard History',
         command: 'Command Launcher'
     };
@@ -27,50 +88,20 @@ export function openWidgetEditDialog(parentWindow, widget, settings) {
         use_header_bar: 1
     });
     
-    dialog.add_button('Cancel', Gtk.ResponseType.CANCEL);
-    dialog.add_button('Save', Gtk.ResponseType.OK);
+    dialog.add_button('Close', Gtk.ResponseType.CLOSE);
     
     const content = dialog.get_content_area();
     content.set_margin_top(15);
     content.set_margin_bottom(15);
     content.set_margin_start(15);
     content.set_margin_end(15);
-    content.set_spacing(10);
     
-    const grid = new Gtk.Grid({ column_spacing: 12, row_spacing: 12 });
-    content.append(grid);
-    
-    const saveHandlers = [];
-    let rowIdx = 0;
-    
-    rowIdx = buildStandardSettings(grid, rowIdx, widget, settings, saveHandlers);
-    
-    if (widget.type === 'weather') {
-        rowIdx = buildWeatherSettings(grid, rowIdx, widget, settings, saveHandlers);
-    } else if (widget.type === 'time') {
-        rowIdx = buildTimeSettings(grid, rowIdx, widget, settings, saveHandlers);
-    } else if (widget.type === 'music') {
-        rowIdx = buildMusicSettings(grid, rowIdx, widget, settings, saveHandlers);
-    } else if (widget.type === 'slideshow') {
-        rowIdx = buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandlers);
-    } else if (widget.type === 'command') {
-        rowIdx = buildCommandSettings(grid, rowIdx, widget, settings, saveHandlers, dialog);
-    } else if (widget.type === 'image' || widget.imagePath) {
-        rowIdx = buildImageSettings(grid, rowIdx, widget, settings, saveHandlers, dialog);
-        if (widget.imagePath && widget.imagePath.toLowerCase().endsWith('.gif')) {
-            rowIdx = buildGifSettings(grid, rowIdx, widget, settings, saveHandlers);
-        }
-    }
+    const panel = buildWidgetEditPanel(parentWindow, widget, settings, () => {
+        dialog.response(Gtk.ResponseType.CLOSE);
+    });
+    content.append(panel);
 
-    dialog.connect('response', (dlg, responseId) => {
-        if (responseId === Gtk.ResponseType.OK) {
-            const widgets = getWidgets(settings);
-            const index = widgets.findIndex(w => w.id === widget.id);
-            if (index !== -1) {
-                saveHandlers.forEach(handler => handler(widgets[index]));
-                saveWidgets(settings, widgets);
-            }
-        }
+    dialog.connect('response', (dlg) => {
         dlg.destroy();
     });
     
@@ -171,8 +202,12 @@ function buildStandardSettings(grid, rowIdx, widget, settings, saveHandlers) {
         // Font Family
         const fontLabel = new Gtk.Label({ label: 'Font Family:', xalign: 0, hexpand: true });
         fontBtn = new Gtk.FontButton({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
-        const currentFont = widget.fontFamily || settings.get_string('global-font-family') || 'Sans 11';
-        fontBtn.set_font(currentFont.replace(/'/g, '').replace(/, sans-serif/, '') + ' 11');
+        const currentFont = widget.fontFamily || settings.get_string('global-font-family') || "'Poppins', sans-serif";
+        const fontDesc = Pango.FontDescription.from_string(currentFont.replace(/'/g, '').replace(/, sans-serif/i, '').trim());
+        if (fontDesc.get_size() === 0) {
+            fontDesc.set_size(11 * Pango.SCALE);
+        }
+        fontBtn.set_font(fontDesc.to_string());
         grid.attach(fontLabel, 0, rowIdx, 1, 1);
         grid.attach(fontBtn, 1, rowIdx, 1, 1);
         rowIdx++;
@@ -189,7 +224,43 @@ function buildStandardSettings(grid, rowIdx, widget, settings, saveHandlers) {
         });
     }
 
+    // Target Monitor (only displayed if multiple monitors are connected)
+    const monitorCount = getConnectedMonitorsCount();
+    let monitorCombo = null;
+    let monitorKeys = [];
+
+    if (monitorCount > 1) {
+        const monitorLabel = new Gtk.Label({ label: 'Target Monitor:', xalign: 0, hexpand: true });
+        const monitorStrings = ['Default (Follow Global)', 'Primary Monitor'];
+        monitorKeys = ['global', 'primary'];
+        for (let i = 0; i < monitorCount; i++) {
+            monitorStrings.push(`Monitor ${i + 1}`);
+            monitorKeys.push(String(i));
+        }
+
+        monitorCombo = new Gtk.DropDown({
+            model: Gtk.StringList.new(monitorStrings),
+            valign: Gtk.Align.CENTER,
+            halign: Gtk.Align.END
+        });
+        const currentWidgetMonitor = widget.monitor || 'global';
+        const monitorIdx = monitorKeys.indexOf(currentWidgetMonitor);
+        monitorCombo.set_selected(monitorIdx >= 0 ? monitorIdx : 0);
+        grid.attach(monitorLabel, 0, rowIdx, 1, 1);
+        grid.attach(monitorCombo, 1, rowIdx, 1, 1);
+        rowIdx++;
+    }
+
     saveHandlers.push((target) => {
+        if (monitorCombo && monitorKeys.length > 0) {
+            const selectedMonitorKey = monitorKeys[monitorCombo.get_selected()];
+            if (selectedMonitorKey !== 'global') {
+                target.monitor = selectedMonitorKey;
+            } else {
+                delete target.monitor;
+            }
+        }
+
         target.overrideRadius = radiusSwitch.get_active();
         target.overrideBorderRadius = radiusSwitch.get_active();
         target.borderRadius = Math.round(radiusSpin.get_value());
@@ -214,23 +285,45 @@ function buildStandardSettings(grid, rowIdx, widget, settings, saveHandlers) {
 }
 
 function buildWeatherSettings(grid, rowIdx, widget, settings, saveHandlers) {
-    const layoutLabel = new Gtk.Label({ label: 'Layout Style:', xalign: 0, hexpand: true });
-    const layoutCombo = new Gtk.DropDown({
-        model: Gtk.StringList.new(['Standard (3x3)', 'Minimal (4x2)', 'Detailed Forecast (6x4)']),
-        valign: Gtk.Align.CENTER,
-        halign: Gtk.Align.END
-    });
-    
-    const layoutMap = ['standard', 'simple', 'forecast'];
-    const currentIdx = layoutMap.indexOf(widget.layout || 'standard');
-    layoutCombo.set_selected(currentIdx >= 0 ? currentIdx : 0);
-    
-    grid.attach(layoutLabel, 0, rowIdx, 1, 1);
-    grid.attach(layoutCombo, 1, rowIdx, 1, 1);
+    const currentLocation = { name: widget.location || 'London' };
+    if (widget.lat !== undefined && widget.lon !== undefined) {
+        currentLocation.lat = widget.lat;
+        currentLocation.lon = widget.lon;
+    }
+    const cityPicker = createLiveCitySearchRow(grid, 'City Location:', currentLocation, rowIdx++);
+
+    const dynamicColorLabel = new Gtk.Label({ label: 'Dynamic Weather Color:', xalign: 0, hexpand: true });
+    const dynamicColorSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
+    const isDynamicColorActive = widget.dynamicColor !== undefined
+        ? widget.dynamicColor
+        : settings.get_boolean('weather-dynamic-color');
+    dynamicColorSwitch.set_active(isDynamicColorActive);
+    grid.attach(dynamicColorLabel, 0, rowIdx, 1, 1);
+    grid.attach(dynamicColorSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
+
+    const dynamicOverlayLabel = new Gtk.Label({ label: 'Dynamic Weather Overlay:', xalign: 0, hexpand: true });
+    const dynamicOverlaySwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
+    const isDynamicOverlayActive = widget.dynamicImage !== undefined
+        ? widget.dynamicImage
+        : (widget.dynamicOverlay !== undefined ? widget.dynamicOverlay : settings.get_boolean('weather-dynamic-image'));
+    dynamicOverlaySwitch.set_active(isDynamicOverlayActive);
+    grid.attach(dynamicOverlayLabel, 0, rowIdx, 1, 1);
+    grid.attach(dynamicOverlaySwitch, 1, rowIdx, 1, 1);
     rowIdx++;
 
     saveHandlers.push((target) => {
-        target.layout = layoutMap[layoutCombo.get_selected()];
+        const selectedCity = cityPicker.getSelectedCity();
+        if (selectedCity && selectedCity.name) {
+            target.location = selectedCity.name;
+            if (selectedCity.lat !== undefined && selectedCity.lon !== undefined) {
+                target.lat = selectedCity.lat;
+                target.lon = selectedCity.lon;
+            }
+        }
+        target.dynamicColor = dynamicColorSwitch.get_active();
+        target.dynamicImage = dynamicOverlaySwitch.get_active();
+        target.dynamicOverlay = dynamicOverlaySwitch.get_active();
     });
 
     return rowIdx;
@@ -245,8 +338,27 @@ function buildTimeSettings(grid, rowIdx, widget, settings, saveHandlers) {
     grid.attach(formatSwitch, 1, rowIdx, 1, 1);
     rowIdx++;
 
+    let primaryPicker, sec1Picker, sec2Picker;
+    if (widget.layout === 'world' || widget.cities) {
+        const defaultCities = widget.cities || [
+            { name: 'London', timezone: 'Europe/London' },
+            { name: 'New York', timezone: 'America/New_York' },
+            { name: 'Moscow', timezone: 'Europe/Moscow' }
+        ];
+        primaryPicker = createLiveCitySearchRow(grid, 'Primary City (Top):', defaultCities[0] || { name: 'London', timezone: 'Europe/London' }, rowIdx++);
+        sec1Picker = createLiveCitySearchRow(grid, 'Secondary City (Bottom Left):', defaultCities[1] || { name: 'New York', timezone: 'America/New_York' }, rowIdx++);
+        sec2Picker = createLiveCitySearchRow(grid, 'Secondary City (Bottom Right):', defaultCities[2] || { name: 'Moscow', timezone: 'Europe/Moscow' }, rowIdx++);
+    }
+
     saveHandlers.push((target) => {
         target.use24h = formatSwitch.get_active();
+        if (primaryPicker && sec1Picker && sec2Picker) {
+            target.cities = [
+                primaryPicker.getSelectedCity(),
+                sec1Picker.getSelectedCity(),
+                sec2Picker.getSelectedCity()
+            ];
+        }
     });
 
     return rowIdx;
@@ -279,15 +391,41 @@ function buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandlers) {
     grid.attach(intervalSpin, 1, rowIdx, 1, 1);
     rowIdx++;
 
+    const captionLabel = new Gtk.Label({ label: 'Caption:', xalign: 0, hexpand: true });
+    const captionEntry = new Gtk.Entry({ text: widget.caption || 'My Slideshow', hexpand: true, placeholder_text: 'My Slideshow' });
+    grid.attach(captionLabel, 0, rowIdx, 1, 1);
+    grid.attach(captionEntry, 1, rowIdx, 1, 1);
+    rowIdx++;
+
+    const showCaptionLabel = new Gtk.Label({ label: 'Show Caption:', xalign: 0, hexpand: true });
+    const showCaptionSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
+    showCaptionSwitch.set_active(widget.showCaption !== false && widget.showText !== false);
+    grid.attach(showCaptionLabel, 0, rowIdx, 1, 1);
+    grid.attach(showCaptionSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
+
+    const fgColorLabel = new Gtk.Label({ label: 'Caption Text Color:', xalign: 0, hexpand: true });
+    const fgColorBtn = new Gtk.ColorButton({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
+    const fgRgba = new Gdk.RGBA();
+    fgRgba.parse(widget.fgColor || settings.get_string('global-foreground-color') || '#ffffff');
+    fgColorBtn.set_rgba(fgRgba);
+    grid.attach(fgColorLabel, 0, rowIdx, 1, 1);
+    grid.attach(fgColorBtn, 1, rowIdx, 1, 1);
+    rowIdx++;
+
     saveHandlers.push((target) => {
         target.intervalSeconds = Math.round(intervalSpin.get_value());
+        target.caption = captionEntry.get_text().trim() || 'My Slideshow';
+        target.showCaption = showCaptionSwitch.get_active();
+        target.showText = showCaptionSwitch.get_active();
+        target.fgColor = fgColorBtn.get_rgba().to_string();
     });
 
     return rowIdx;
 }
 
 function buildGifSettings(grid, rowIdx, widget, settings, saveHandlers) {
-    const animateLabel = new Gtk.Label({ label: 'Animate GIF:', xalign: 0, hexpand: true });
+    const animateLabel = new Gtk.Label({ label: 'Animate GIF / WebP:', xalign: 0, hexpand: true });
     const animateSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
     animateSwitch.set_active(widget.animateGif !== false);
     
@@ -304,35 +442,97 @@ function buildGifSettings(grid, rowIdx, widget, settings, saveHandlers) {
 
 function buildCommandSettings(grid, rowIdx, widget, settings, saveHandlers, dialog) {
     const nameLabel = new Gtk.Label({ label: 'Command Name:', xalign: 0, hexpand: true });
-    const nameEntry = new Gtk.Entry({ text: widget.commandName || '', hexpand: true });
+    const nameEntry = new Gtk.Entry({ text: widget.commandName || '', placeholder_text: 'e.g. Quick Launch', hexpand: true });
     grid.attach(nameLabel, 0, rowIdx, 1, 1);
     grid.attach(nameEntry, 1, rowIdx, 1, 1);
     rowIdx++;
 
     const cmdLabel = new Gtk.Label({ label: 'Bash Command:', xalign: 0, hexpand: true });
-    const cmdEntry = new Gtk.Entry({ text: widget.commandString || '', hexpand: true });
+    const cmdEntry = new Gtk.Entry({ text: widget.commandString || '', placeholder_text: 'e.g. echo "Hello World"', hexpand: true });
     grid.attach(cmdLabel, 0, rowIdx, 1, 1);
     grid.attach(cmdEntry, 1, rowIdx, 1, 1);
     rowIdx++;
 
+    const showTextLabel = new Gtk.Label({ label: 'Show Label / Text:', xalign: 0, hexpand: true });
+    const showTextSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
+    showTextSwitch.set_active(widget.showText !== false);
+    grid.attach(showTextLabel, 0, rowIdx, 1, 1);
+    grid.attach(showTextSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
+
+    const iconScaleLabel = new Gtk.Label({ label: 'Icon / Image Scale:', xalign: 0, hexpand: true });
+    const iconScaleSpin = Gtk.SpinButton.new_with_range(0.5, 3.0, 0.1);
+    iconScaleSpin.set_value(widget.iconScale !== undefined ? widget.iconScale : 1.0);
+    grid.attach(iconScaleLabel, 0, rowIdx, 1, 1);
+    grid.attach(iconScaleSpin, 1, rowIdx, 1, 1);
+    rowIdx++;
+
+    const iconControls = buildIconSelectionControls(grid, rowIdx, widget.iconName || 'utilities-terminal-symbolic', widget.imagePath || '', dialog);
+    rowIdx += 3;
+
     saveHandlers.push((target) => {
         target.commandName = nameEntry.get_text().trim() || 'Quick Launch';
         target.commandString = cmdEntry.get_text().trim() || 'echo "Hello World"';
+        target.showText = showTextSwitch.get_active();
+        target.iconScale = Math.round(iconScaleSpin.get_value() * 10) / 10;
+        const { icon, iconPath } = iconControls.getIconConfig();
+        target.iconName = icon;
+        target.imagePath = iconPath;
     });
 
     return rowIdx;
 }
 
 function buildImageSettings(grid, rowIdx, widget, settings, saveHandlers, dialog) {
+    const imagePathLabel = new Gtk.Label({ label: 'Image File:', xalign: 0, hexpand: true });
+    const imagePathBox = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 6, hexpand: true });
+    const imagePathEntry = new Gtk.Entry({ text: widget.imagePath || '', hexpand: true });
+    const imageBrowseBtn = new Gtk.Button({ label: 'Browse...' });
+
+    imageBrowseBtn.connect('clicked', () => {
+        openImageFileDialog(dialog, (selectedPath) => {
+            if (selectedPath) {
+                imagePathEntry.set_text(selectedPath);
+            }
+        });
+    });
+
+    imagePathBox.append(imagePathEntry);
+    imagePathBox.append(imageBrowseBtn);
+    grid.attach(imagePathLabel, 0, rowIdx, 1, 1);
+    grid.attach(imagePathBox, 1, rowIdx, 1, 1);
+    rowIdx++;
+
     const captionLabel = new Gtk.Label({ label: 'Caption:', xalign: 0, hexpand: true });
-    const captionEntry = new Gtk.Entry({ text: widget.caption || '', hexpand: true });
+    const captionEntry = new Gtk.Entry({ text: widget.caption || 'My Image', hexpand: true, placeholder_text: 'My Image' });
     grid.attach(captionLabel, 0, rowIdx, 1, 1);
     grid.attach(captionEntry, 1, rowIdx, 1, 1);
     rowIdx++;
 
+    const showCaptionLabel = new Gtk.Label({ label: 'Show Caption:', xalign: 0, hexpand: true });
+    const showCaptionSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
+    showCaptionSwitch.set_active(widget.showCaption !== false && widget.showText !== false);
+    grid.attach(showCaptionLabel, 0, rowIdx, 1, 1);
+    grid.attach(showCaptionSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
+
+    const fgColorLabel = new Gtk.Label({ label: 'Caption Text Color:', xalign: 0, hexpand: true });
+    const fgColorBtn = new Gtk.ColorButton({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
+    const fgRgba = new Gdk.RGBA();
+    fgRgba.parse(widget.fgColor || settings.get_string('global-foreground-color') || '#ffffff');
+    fgColorBtn.set_rgba(fgRgba);
+    grid.attach(fgColorLabel, 0, rowIdx, 1, 1);
+    grid.attach(fgColorBtn, 1, rowIdx, 1, 1);
+    rowIdx++;
+
     saveHandlers.push((target) => {
-        target.caption = captionEntry.get_text().trim();
+        target.imagePath = imagePathEntry.get_text().trim();
+        target.caption = captionEntry.get_text().trim() || 'My Image';
+        target.showCaption = showCaptionSwitch.get_active();
+        target.showText = showCaptionSwitch.get_active();
+        target.fgColor = fgColorBtn.get_rgba().to_string();
     });
 
     return rowIdx;
 }
+

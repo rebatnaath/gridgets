@@ -62,16 +62,19 @@ export function performCitySearch(query, resultsList, addButton, selectCallback)
     searchSession.send_and_read_async(openMeteoMessage, GLib.PRIORITY_DEFAULT, null, (session, result) => {
         try {
             const bytes = session.send_and_read_finish(result);
-            if (openMeteoMessage.get_status() === 200) {
-                const decoder = new TextDecoder('utf-8');
-                const openMeteoJson = JSON.parse(decoder.decode(bytes.get_data()));
-                if (openMeteoJson.results && openMeteoJson.results.length > 0) {
-                    const items = openMeteoJson.results.map(item => ({
-                        name: item.name,
-                        subtitle: `${item.admin1 ? item.admin1 + ', ' : ''}${item.country || ''}`
-                    }));
-                    renderResults(items);
-                    return;
+            if (bytes && openMeteoMessage.get_status() === 200) {
+                const byteArray = bytes.get_data();
+                if (byteArray) {
+                    const decoder = new TextDecoder('utf-8');
+                    const openMeteoJson = JSON.parse(decoder.decode(byteArray));
+                    if (openMeteoJson.results && openMeteoJson.results.length > 0) {
+                        const items = openMeteoJson.results.map(item => ({
+                            name: item.name,
+                            subtitle: `${item.admin1 ? item.admin1 + ', ' : ''}${item.country || ''}`
+                        }));
+                        renderResults(items);
+                        return;
+                    }
                 }
             }
             renderResults([]);

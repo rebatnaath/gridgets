@@ -1,11 +1,3 @@
-/**
- * ============================================================================
- * MUSIC LARGE LAYOUT
- * 
- * 2-panel split player layout displaying track metadata, album artwork, and controls.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveWidgetFontFamily } from '../../utils/widgetUtils.js';

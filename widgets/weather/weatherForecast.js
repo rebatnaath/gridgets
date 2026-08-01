@@ -1,9 +1,3 @@
-/**
- * ============================================================================
- * WEATHER FORECAST LAYOUT (6x4 or wide layouts)
- * ============================================================================
- */
-
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { FALLBACK_LOCATION, HOURLY_FORECAST_COUNT, createFallbackIcon, configureWrappingLabel, PANGO_ALIGN_RIGHT, PANGO_ALIGN_CENTER } from './weatherCommon.js';
@@ -125,21 +119,21 @@ export function attachForecastScaler(widgetNode, uiElements) {
         const hourlyTextSize = Math.max(8, Math.round(BASE_HOURLY_TEXT_SIZE * scale));
         const hourlyIconSize = Math.max(14, Math.round(BASE_HOURLY_ICON_SIZE * scale));
 
-        uiElements.cityLabel.style = `font-weight: bold; font-size: ${citySize}px; margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px;`;
-        uiElements.tempLabel.style = `font-size: ${tempSize}px; font-weight: 300;`;
+        uiElements.cityLabel.style = `font-weight: bold; font-size: ${citySize}px; margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px; color: inherit;`;
+        uiElements.tempLabel.style = `font-size: ${tempSize}px; font-weight: 300; color: inherit;`;
         uiElements.conditionIcon.icon_size = iconSize;
         uiElements.conditionIcon.style = `margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px;`;
-        uiElements.conditionLabel.style = `font-size: ${condSize}px; font-weight: bold; text-align: right;`;
-        uiElements.highLowLabel.style = `font-size: ${highLowSize}px; opacity: 0.8; text-align: right;`;
+        uiElements.conditionLabel.style = `font-size: ${condSize}px; font-weight: bold; text-align: right; color: inherit;`;
+        uiElements.highLowLabel.style = `font-size: ${highLowSize}px; opacity: 0.8; text-align: right; color: inherit;`;
 
         if (uiElements.hourlyActors) {
             uiElements.hourlyActors.forEach(actor => {
-                if (actor.timeLbl) actor.timeLbl.style = `font-size: ${hourlyTextSize}px; font-weight: bold; margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px; text-align: center;`;
+                if (actor.timeLbl) actor.timeLbl.style = `font-size: ${hourlyTextSize}px; font-weight: bold; margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px; text-align: center; color: inherit;`;
                 if (actor.icon) {
                     actor.icon.icon_size = hourlyIconSize;
                     actor.icon.style = `margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px;`;
                 }
-                if (actor.tempLbl) actor.tempLbl.style = `font-size: ${hourlyTextSize}px; font-weight: bold; text-align: center;`;
+                if (actor.tempLbl) actor.tempLbl.style = `font-size: ${hourlyTextSize}px; font-weight: bold; text-align: center; color: inherit;`;
             });
         }
     });

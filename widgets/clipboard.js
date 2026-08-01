@@ -1,18 +1,10 @@
-/**
- * ============================================================================
- * CLIPBOARD HISTORY WIDGET
- * 
- * Manages system clipboard history by polling the default St.Clipboard.
- * Displays recent entries and lets users click items to restore text.
- * ============================================================================
- */
-
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import {
-    loadJsonFromFile,
+    loadJsonFromFileAsync,
     saveJsonToFile,
+    getGridgetsDataDir,
     resolveWidgetForegroundColor,
     resolveWidgetFontFamily
 } from '../utils/widgetUtils.js';
@@ -22,13 +14,10 @@ import {
     startPollingTimer
 } from '../utils/widgetUIUtils.js';
 
-/** Polling and history limits */
 const TICK_INTERVAL_MS = 1000;
 const MAX_HISTORY_LENGTH = 10;
 const PREVIEW_TEXT_MAX_LENGTH = 40;
 const PREVIEW_TEXT_MIN_LENGTH = 20;
-
-/** Layout metrics */
 const BASE_CONTAINER_WIDTH = 240;
 const BASE_CONTAINER_HEIGHT = 160;
 const BASE_TITLE_FONT_SIZE = 14;
@@ -37,15 +26,10 @@ const BASE_ITEM_FONT_SIZE = 12;
 const MIN_ITEM_FONT_SIZE = 10;
 const BASE_ICON_SIZE = 16;
 const MIN_ICON_SIZE = 13;
-
-/** Mouse button constants */
 const BUTTON_PRIMARY = 1;
-
-/** Standard item box styling constants */
 const ITEM_STYLE_NORMAL = 'padding: 6px; border-radius: 4px; margin-bottom: 4px; background-color: transparent;';
 const ITEM_STYLE_HOVER = 'padding: 6px; border-radius: 4px; margin-bottom: 4px; background-color: rgba(255,255,255,0.1);';
 
-/** Creates a clipboard history widget node. */
 export function createClipboardNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveWidgetFontFamily(config);
     const textColor = resolveWidgetForegroundColor(config);
@@ -99,26 +83,31 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
     contentBox.add_child(scrollView);
     container.add_child(contentBox);
 
+    const baseDir = getGridgetsDataDir('clipboard');
     const clipboardFilePath = GLib.build_filenamev([
-        config.extensionPath || '',
+        baseDir,
         `clipboard-${config.id}.json`
     ]);
 
-    const savedData = loadJsonFromFile(clipboardFilePath);
     const state = {
-        clipboardHistory: (savedData && Array.isArray(savedData.history)) ? savedData.history : [],
+        clipboardHistory: [],
         timerId: null,
-        isDestroyed: false,
     };
 
-    container.connect('destroy', () => {
-        state.isDestroyed = true;
+    loadJsonFromFileAsync(clipboardFilePath, (savedData) => {
+        if (container.isDestroyed) return;
+        if (savedData && Array.isArray(savedData.history)) {
+            state.clipboardHistory = savedData.history;
+            renderClipboardItems();
+        } else {
+            saveJsonToFile(clipboardFilePath, { history: state.clipboardHistory });
+        }
     });
 
     const systemClipboard = St.Clipboard.get_default();
 
     const renderClipboardItems = () => {
-        if (state.isDestroyed) return;
+        if (container.isDestroyed) return;
         itemContainer.destroy_all_children();
 
         if (state.clipboardHistory.length === 0) {
@@ -161,7 +150,7 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
             });
             itemBox.add_child(textLabel);
 
-            itemBox.connect('button-press-event', (actor, event) => {
+            itemBox.connect('button-press-event', (_actor, event) => {
                 if (event.get_button() === BUTTON_PRIMARY) {
                     systemClipboard.set_text(St.ClipboardType.CLIPBOARD, clipboardText);
                     return Clutter.EVENT_STOP;
@@ -174,9 +163,9 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
     };
 
     const pollSystemClipboard = () => {
-        if (state.isDestroyed) return;
-        systemClipboard.get_text(St.ClipboardType.CLIPBOARD, (cb, newClipboardText) => {
-            if (state.isDestroyed || !newClipboardText || newClipboardText.trim() === '') return;
+        if (container.isDestroyed) return;
+        systemClipboard.get_text(St.ClipboardType.CLIPBOARD, (_clipboard, newClipboardText) => {
+            if (container.isDestroyed || !newClipboardText || newClipboardText.trim() === '') return;
 
             const isAlreadyLatest = state.clipboardHistory.length > 0
                 && state.clipboardHistory[0] === newClipboardText;
@@ -201,6 +190,9 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
     renderClipboardItems();
     startPollingTimer(pollSystemClipboard, TICK_INTERVAL_MS, state);
     connectTimerCleanup(container, state);
+    container.connect('destroy', () => {
+        state.clipboardHistory = [];
+    });
 
     return container;
 }

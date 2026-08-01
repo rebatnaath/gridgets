@@ -7,11 +7,24 @@
  * ============================================================================
  */
 
+import Gdk from 'gi://Gdk';
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
 import { createSwitchRow } from './aestheticControls.js';
 import { performCitySearch } from './weatherSearch.js';
 import { getWidgets, saveWidgets } from '../utils/widgetUtils.js';
+
+export function getConnectedMonitorsCount() {
+    try {
+        const display = Gdk.Display.get_default();
+        if (display) {
+            return display.get_monitors().get_n_items();
+        }
+    } catch (e) {
+        console.error('Error fetching connected monitors:', e);
+    }
+    return 1;
+}
 
 export function buildGlobalSettingsPage(settings) {
     const page = new Adw.PreferencesPage({
@@ -19,28 +32,50 @@ export function buildGlobalSettingsPage(settings) {
         icon_name: 'preferences-system-symbolic',
     });
 
+    const monitorCount = getConnectedMonitorsCount();
+
     // 1. Multi-Monitor Group
     const monitorGroup = new Adw.PreferencesGroup({
         title: 'Multi-Monitor Display',
         description: 'Choose default monitor display mode for widgets.',
     });
-    const globalMonitorRow = new Adw.ComboRow({
-        title: 'Global Target Monitor',
-        subtitle: 'Choose which monitor(s) display widgets by default.',
-        model: new Gtk.StringList({
-            strings: ['Primary Monitor', 'All Monitors', 'Monitor 1', 'Monitor 2', 'Monitor 3']
-        }),
-    });
-    const monitorValues = ['primary', 'all', '0', '1', '2'];
-    const currentGlobalMonitor = settings.get_string('global-monitor') || 'primary';
-    const currentIdx = monitorValues.indexOf(currentGlobalMonitor);
-    globalMonitorRow.set_selected(currentIdx >= 0 ? currentIdx : 0);
 
-    globalMonitorRow.connect('notify::selected', () => {
-        const selectedVal = monitorValues[globalMonitorRow.get_selected()];
-        settings.set_string('global-monitor', selectedVal);
-    });
-    monitorGroup.add(globalMonitorRow);
+    if (monitorCount > 1) {
+        const strings = [
+            'Primary Monitor',
+            'All Monitors (Span Canvas)',
+            'All Monitors (Independent Grids)'
+        ];
+        const monitorValues = ['primary', 'all', 'each'];
+
+        for (let i = 0; i < monitorCount; i++) {
+            strings.push(`Monitor ${i + 1}`);
+            monitorValues.push(String(i));
+        }
+
+        const globalMonitorRow = new Adw.ComboRow({
+            title: 'Global Target Monitor',
+            subtitle: 'Choose which monitor(s) display widgets by default.',
+            model: new Gtk.StringList({ strings }),
+        });
+
+        const currentGlobalMonitor = settings.get_string('global-monitor') || 'primary';
+        const currentIdx = monitorValues.indexOf(currentGlobalMonitor);
+        globalMonitorRow.set_selected(currentIdx >= 0 ? currentIdx : 0);
+
+        globalMonitorRow.connect('notify::selected', () => {
+            const selectedVal = monitorValues[globalMonitorRow.get_selected()];
+            settings.set_string('global-monitor', selectedVal);
+        });
+
+        monitorGroup.add(globalMonitorRow);
+    } else {
+        const singleMonitorRow = new Adw.ActionRow({
+            title: 'Global Target Monitor',
+            subtitle: 'Single Monitor Detected (No additional monitors connected).',
+        });
+        monitorGroup.add(singleMonitorRow);
+    }
     page.add(monitorGroup);
 
     // 2. Image Settings Group

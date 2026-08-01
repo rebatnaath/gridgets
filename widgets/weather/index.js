@@ -1,11 +1,5 @@
-/**
- * ============================================================================
- * WEATHER WIDGET MODULE INDEX
- * ============================================================================
- */
-
 import GLib from 'gi://GLib';
-import { createWidgetContainer, connectTimerCleanup } from '../../utils/widgetUIUtils.js';
+import { connectTimerCleanup, createWidgetContainer } from '../../utils/widgetUIUtils.js';
 import {
     REFRESH_INTERVAL_SECONDS,
     createBackgroundImageActor,
@@ -16,15 +10,11 @@ import { buildForecastLayout, attachForecastScaler } from './weatherForecast.js'
 import { buildSimpleLayout, attachSimpleScaler } from './weatherSimple.js';
 import { buildStandardLayout, attachStandardScaler } from './weatherStandard.js';
 
-/** Layout size threshold grid column constants */
 const FORECAST_MIN_GRID_WIDTH = 6;
 const SIMPLE_MIN_GRID_WIDTH = 4;
-
-/** Creates a weather widget instance supporting forecast, simple, and standard layouts. */
 export function createWeatherNode(widgetData, width, height, xPosition, yPosition, isDynamicColor, isDynamicImage) {
     const extensionPath = widgetData.extensionPath || '';
     const widgetNode = createWidgetContainer(widgetData, width, height, xPosition, yPosition);
-    widgetNode.isDestroyed = false;
 
     const bgImageActor = createBackgroundImageActor(widgetNode, widgetData);
     widgetNode.add_child(bgImageActor);
@@ -41,7 +31,7 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
         uiElements = buildForecastLayout(layout, widgetData, extensionPath);
         attachForecastScaler(widgetNode, uiElements);
     } else if (layoutVariant === 'simple') {
-        uiElements = buildSimpleLayout(layout);
+        uiElements = buildSimpleLayout(layout, widgetData, extensionPath);
         attachSimpleScaler(widgetNode, uiElements);
     } else {
         uiElements = buildStandardLayout(layout, widgetData, extensionPath);
@@ -77,13 +67,8 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
     connectTimerCleanup(widgetNode, state);
 
     widgetNode.connect('destroy', () => {
-        widgetNode.isDestroyed = true;
         if (widgetNode.weatherSession) {
-            try {
-                widgetNode.weatherSession.abort();
-            } catch (e) {
-                console.error('Error aborting weather session on widget destroy:', e);
-            }
+            widgetNode.weatherSession.abort();
             widgetNode.weatherSession = null;
         }
     });
