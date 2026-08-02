@@ -71,13 +71,19 @@ If you cloned or downloaded the raw repository source:
 1. Package the extension inside the project directory:
    ```bash
    gnome-extensions pack \
-     --extra-source=desktopGrid.js \
-     --extra-source=assets \
-     --extra-source=prefs \
-     --extra-source=schemas \
-     --extra-source=utils \
-     --extra-source=widgets \
-     --force
+   --extra-source=assets/close.svg \
+   --extra-source=assets/resize.svg \
+   --extra-source=assets/thumbnails \
+   --extra-source=assets/weather \
+   --extra-source=desktopGrid.js \
+   --extra-source=prefs \
+   --extra-source=schemas \
+   --extra-source=utils \
+   --extra-source=widgets \
+   --extra-source=extension.js \
+   --extra-source=prefs.js \
+   --extra-source=metadata.json \
+   --force   
    ```
 2. Install the zip file (automatically overwriting previous versions):
    ```bash
