@@ -17,7 +17,7 @@ You can add widgets by clicking the **Add to Desktop** button in the settings of
 - Most widgets should spawn straight onto your desktop.
 - Widgets that require more information will ask you for that in a dialog first.
 
-<video src="https://raw.githubusercontent.com/rebatnaath/gridgets/main/assets/github/user-guide/assets/adding-widgets.webm" controls width="100%"></video>
+<img src="assets/adding-widgets.gif" alt="Adding Widgets Demo" width="100%">
 
 ---
 
@@ -25,7 +25,7 @@ You can add widgets by clicking the **Add to Desktop** button in the settings of
 
 Widgets that need extra configuration, such as **Image / GIF**, **Slideshow**, **World Clock**, and **Command Launcher**, will open a setup dialog before they are placed so you can provide the required details.
 
-<video src="https://raw.githubusercontent.com/rebatnaath/gridgets/main/assets/github/user-guide/assets/widgets-with-additional-dialog.webm" controls width="100%"></video>
+<img src="assets/widgets-with-additional-dialog.gif" alt="Widgets With Additional Dialog Demo" width="100%">
 
 ### 🖱️ Desktop Interaction
 
@@ -36,7 +36,7 @@ To **resize**, **delete**, or open the individual settings of a widget, **right-
 - **Delete Widget**: removes the widget.
 - You can also **drag** widgets anywhere on the desktop to place or rearrange them.
 
-<video src="https://raw.githubusercontent.com/rebatnaath/gridgets/main/assets/github/user-guide/assets/desktop-interaction.webm" controls width="100%"></video>
+<img src="assets/desktop-interaction.gif" alt="Desktop Interaction Demo" width="100%">
 
 ---
 
@@ -46,7 +46,7 @@ We have various settings in **Appearance**, such as **themes**, **corner roundin
 
 Keep in mind that changing the background colour (or basically anything) here will be applied across **all** placed widgets. If you want to control specific or individual widgets, you can use the [Individual Settings](#-individual-settings).
 
-<video src="https://raw.githubusercontent.com/rebatnaath/gridgets/main/assets/github/user-guide/assets/appereance-settings.webm" controls width="100%"></video>
+<img src="assets/appereance-settings.gif" alt="Appearance Demo" width="100%">
 
 ---
 
@@ -54,7 +54,7 @@ Keep in mind that changing the background colour (or basically anything) here wi
 
 Global settings include some default settings for certain types of widgets, such as **Images** and **Weather**.
 
-<video src="https://raw.githubusercontent.com/rebatnaath/gridgets/main/assets/github/user-guide/assets/global-settings.webm" controls width="100%"></video>
+<img src="assets/global-settings.gif" alt="Global Settings Demo" width="100%">
 
 ### 🌤️ Global Settings: Weather
 
@@ -63,7 +63,7 @@ Global settings include some default settings for certain types of widgets, such
 
 If you're not a fan of these, you can disable them, as shown in the video.
 
-<video src="https://raw.githubusercontent.com/rebatnaath/gridgets/main/assets/github/user-guide/assets/global-settings-weather.webm" controls width="100%"></video>
+<img src="assets/global-settings-weather.gif" alt="Global Settings Weather Demo" width="100%">
 
 ---
 
@@ -71,7 +71,7 @@ If you're not a fan of these, you can disable them, as shown in the video.
 
 Individual Settings is very powerful. Every widget has its own control, so some widgets can look totally different even if they are the same. Please tinker with them yourself and see how you can customise them :P
 
-<video src="https://raw.githubusercontent.com/rebatnaath/gridgets/main/assets/github/user-guide/assets/individual-settings.webm" controls width="100%"></video>
+<img src="assets/individual-settings.gif" alt="Individual Settings Demo" width="100%">
 
 ---
 
