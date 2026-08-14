@@ -6,11 +6,11 @@ Everything you need to go from adding your first widget to fine-tuning each one 
 
 ---
 
-[➕ Adding Widgets](#-adding-widgets) · [💬 Additional Dialog](#-widgets-with-additional-dialog) · [🖱️ Desktop Interaction](#-desktop-interaction) · [🎨 Appearance](#-appereance) · [🌐 Global Settings](#-global-settings) · [🎛️ Individual Settings](#-individual-settings) · [🧩 Widget Overview](#-widget-overview)
+[Adding Widgets](#-adding-widgets) · [Additional Dialog](#-widgets-with-additional-dialog) · [Desktop Interaction](#-desktop-interaction) · [Appearance](#-appereance) · [Global Settings](#-global-settings) · [Individual Settings](#-individual-settings) · [Widget Overview](#-widget-overview)
 
 ---
 
-## ➕ Adding Widgets
+## Adding Widgets
 
 You can add widgets by clicking the **Add to Desktop** button in the settings of the extension.
 
@@ -21,13 +21,13 @@ You can add widgets by clicking the **Add to Desktop** button in the settings of
 
 ---
 
-## 💬 Widgets With Additional Dialog
+## Widgets With Additional Dialog
 
 Widgets that need extra configuration, such as **Image / GIF**, **Slideshow**, **World Clock**, and **Command Launcher**, will open a setup dialog before they are placed so you can provide the required details.
 
 <img src="assets/widgets-with-additional-dialog.gif" alt="Widgets With Additional Dialog Demo" width="100%">
 
-### 🖱️ Desktop Interaction
+### Desktop Interaction
 
 To **resize**, **delete**, or open the individual settings of a widget, **right-click** on the widget on the desktop.
 
@@ -40,7 +40,7 @@ To **resize**, **delete**, or open the individual settings of a widget, **right-
 
 ---
 
-## 🎨 Appereance
+## Appereance
 
 We have various settings in **Appearance**, such as **themes**, **corner rounding**, **border width** and others.
 
@@ -50,13 +50,13 @@ Keep in mind that changing the background colour (or basically anything) here wi
 
 ---
 
-## 🌐 Global Settings
+## Global Settings
 
 Global settings include some default settings for certain types of widgets, such as **Images** and **Weather**.
 
 <img src="assets/global-settings.gif" alt="Global Settings Demo" width="100%">
 
-### 🌤️ Global Settings: Weather
+### Global Settings: Weather
 
 - **Dynamic weather colour**: applies a background colour to the weather widget based on the current time and condition in that city.
 - **Overlay image**: adds an overlay image based on the city.
@@ -67,7 +67,7 @@ If you're not a fan of these, you can disable them, as shown in the video.
 
 ---
 
-## 🎛️ Individual Settings
+## Individual Settings
 
 Individual Settings is very powerful. Every widget has its own control, so some widgets can look totally different even if they are the same. Please tinker with them yourself and see how you can customise them :P
 
@@ -75,7 +75,7 @@ Individual Settings is very powerful. Every widget has its own control, so some 
 
 ---
 
-## 🧩 Widget Overview
+## Widget Overview
 
 Gridgets offers **16+ desktop widgets** plus **panel indicators** across five categories. Each widget lives on your desktop grid and can be moved, resized, and styled independently.
 
@@ -89,7 +89,7 @@ Three layouts powered by the [Open-Meteo](https://open-meteo.com/) free API (no 
 | **Weather Minimal** | <img src="../../thumbnails/weathers/weather-minimal.svg" width="50%"> | Compact view with large temperature and city name. Ideal for a clean look. |
 | **Weather Forecast** | <img src="../../thumbnails/weathers/weather-forecast.svg" width="50%"> | Extended layout with 6-hour hourly forecast alongside current conditions. Dynamic backgrounds supported. |
 
-> ⚠️ **Weather widgets** (other than Weather Minimal) are not currently resizable; this is being worked on.
+> **Weather widgets** (other than Weather Minimal) are not currently resizable; this is being worked on.
 
 ### Music & Audio Widgets
 
