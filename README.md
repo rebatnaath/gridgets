@@ -12,20 +12,20 @@ You can add things like digital clocks, system monitors, weather forecasts, stic
 
 For a detailed walkthrough of all widgets, customization options, and desktop interactions, see the [User Guide](assets/github/user-guide/README.md).
 
-## 🌟 Features
+## Features
 
 - **Grid Alignment:** Snap widgets cleanly to a responsive desktop grid.
 - **Built-in Widgets:** Time & Date, Weather, Pomodoro, Media Player, CPU/RAM, Network Speed, Image/GIF Slideshows, and Custom Bash Scripts.
 - **Individual Styling:** Customize colors, fonts, border radii, and border widths for every widget.
 - **Resource Efficient:** Uses a single background polling loop to keep CPU and battery usage minimal.
 
-## 📸 Screenshots
+## Screenshots
 
 | Grid Layout | Widget Preferences |
 |-------------|--------------------|
 | ![Desktop Grid](assets/github/desktop.png) | ![Preferences UI](assets/github/screenshot.png) |
 
-## 🚀 Installation
+## Installation
 
 ### Option A: From GitHub Releases (Easiest)
 
@@ -98,11 +98,11 @@ If you cloned or downloaded the raw repository source:
 
 Open the **Extensions** (or Extension Manager) app and click the gear icon next to Gridgets to configure your grid settings and customize your widgets.
 
-## ✅ Compatibility
+## Compatibility
 
 Supported GNOME Shell versions: `45`, `46`, `47`, `48`, `49`, `50`.
 
-## 🙏 Acknowledgements
+## Acknowledgements
 
 Thanks to these projects for providing assets used in this extension:
 
