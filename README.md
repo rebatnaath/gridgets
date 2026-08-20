@@ -2,11 +2,9 @@
 
 ![Gridgets Showcase](assets/github/showcase.gif)
 
-**Gridgets is a GNOME widgets extension for GNOME Shell.** It lets you place widgets directly onto your desktop using a clean, responsive grid system — think Rainmeter for Windows or macOS desktop widgets, built right into your GNOME desktop.
+Gridgets is a GNOME Shell extension that places widgets directly on your desktop using a responsive grid layout. Add clocks, system monitors, weather forecasts, sticky notes, media controls, animated images, and custom command outputs, then move, resize, and style each widget independently to match your setup.
 
-You can add things like digital clocks, system monitors, weather forecasts, sticky notes, media controls, animated GIFs, and even custom bash command outputs. Each widget can be independently moved, resized, and styled to match your setup.
-
-## 📖 User Guide
+## User Guide
 
 For a detailed walkthrough of all widgets, customization options, and desktop interactions, see the [User Guide](assets/github/user-guide/README.md).
 
@@ -32,7 +30,7 @@ For a detailed walkthrough of all widgets, customization options, and desktop in
    ```bash
    gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
    ```
-   *(Note: The `--force` flag automatically overwrites any existing installation).*
+   *(The `--force` flag automatically overwrites any existing installation.)*
 3. Restart GNOME Shell:
    * **Wayland:** Log out and log back in.
    * **X11:** Press `Alt` + `F2`, type `r`, and press `Enter`.
@@ -56,7 +54,7 @@ If you cloned or downloaded the raw repository source:
    mkdir -p ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    cp -r . ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    ```
-3. Restart GNOME Shell (Log out/in on Wayland, or `Alt` + `F2` -> `r` on X11).
+3. Restart GNOME Shell: log out and log back in (Wayland), or press `Alt` + `F2`, type `r`, and press `Enter` (X11).
 4. Enable the extension:
    ```bash
    gnome-extensions enable gridgets@rebatnaath.github.com
@@ -81,7 +79,7 @@ If you cloned or downloaded the raw repository source:
    --extra-source=extension.js \
    --extra-source=prefs.js \
    --extra-source=metadata.json \
-   --force   
+   --force
    ```
 2. Install the zip file (automatically overwriting previous versions):
    ```bash
@@ -92,13 +90,21 @@ If you cloned or downloaded the raw repository source:
    gnome-extensions enable gridgets@rebatnaath.github.com
    ```
 
-## ⚙️ Configuration
+## Configuration
 
 Open the **Extensions** (or Extension Manager) app and click the gear icon next to Gridgets to configure your grid settings and customize your widgets.
 
 ## Compatibility
 
 Supported GNOME Shell versions: `45`, `46`, `47`, `48`, `49`, `50`.
+
+## Contributing
+
+Contributions are welcome. Please read the [Contributing Guide](CONTRIBUTING.md) before opening an issue or pull request. It covers how to report issues and request features, plus the coding conventions, validation, and review process.
+
+## License
+
+Gridgets is free software, released under the [GNU General Public License v3.0](LICENSE).
 
 ## Acknowledgements
 
