@@ -1,7 +1,7 @@
 {
   "uuid": "gridgets@rebatnaath.github.com",
   "name": "Gridgets",
-  "description": "GNOME widgets for your desktop. A GNOME widget extension that places clocks, weather, system monitors, notes, music, and more onto a desktop grid.\n* Place image, GIF, weather, time, notes, music, system monitors, and clipboard widgets on a desktop grid.\n* Access your system clipboard history locally to provide a clipboard history widget.\n* Drag, resize, and customise each widget independently.",
+  "description": "GNOME widgets for your desktop.\n* Place clock, weather, notes, music, system monitor, clipboard and image widgets on a desktop grid.\n* Local clipboard history widget.\n* Drag, resize, and customise each widget independently.",
   "shell-version": [
     "45",
     "46",

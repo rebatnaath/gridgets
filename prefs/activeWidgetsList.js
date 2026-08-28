@@ -1,12 +1,3 @@
-/**
- * ============================================================================
- * PREFERENCES: ACTIVE WIDGETS LIST
- *
- * Builds expandable widget rows for the Individual Settings page and groups
- * them by monitor targeting so per-widget overrides are easier to scan.
- * ============================================================================
- */
-
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
 import { getWidgets, saveWidgets, deleteCacheFile } from '../utils/widgetUtils.js';
@@ -54,7 +45,7 @@ function formatGlobalMonitorMode(globalMonitorSetting) {
     return 'Primary Monitor';
 }
 
-export function formatMonitorLabel(monitorSetting) {
+function formatMonitorLabel(monitorSetting) {
     const sectionKey = normalizeMonitorSectionKey(monitorSetting);
 
     if (sectionKey === GLOBAL_SECTION_KEY) {
@@ -147,11 +138,10 @@ function createWidgetRow(window, settings, widget) {
         const widgets = getWidgets(settings);
         const remainingWidgets = widgets.filter(existingWidget => existingWidget.id !== widget.id);
 
-        if (widget.type === 'notes') {
-            deleteCacheFile('notes', widget.id);
-        }
-        if (widget.type === 'clipboard') {
-            deleteCacheFile('clipboard', widget.id);
+        const CACHE_TYPE_MAP = { clipboard: 'clipboard', todo: 'todos', github: 'github' };
+        const cacheKey = CACHE_TYPE_MAP[widget.type];
+        if (cacheKey) {
+            deleteCacheFile(cacheKey, widget.id);
         }
 
         saveWidgets(settings, remainingWidgets);

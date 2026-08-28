@@ -1,45 +1,28 @@
-/**
- * ============================================================================
- * WIDGET UTILITIES
- * 
- * Shared constants and utility functions used across various widgets.
- * Includes functions for building CSS styles, parsing colors, loading/saving
- * JSON data, resolving widget colors, calculating resized dimensions, and
- * checking for widget overlaps.
- * ============================================================================
- */
-
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import GioUnix from 'gi://GioUnix';
 
-/** Default font family used across all widgets */
-export const DEFAULT_FONT_FAMILY = "'Poppins', sans-serif";
+/** Empty string means no font-family override; widgets inherit the system theme font. */
+export const DEFAULT_FONT_FAMILY = '';
 
-/** Default background and foreground colors */
-export const DEFAULT_BG_COLOR = '#1a1b26';
+export const DEFAULT_BG_COLOR = '#222226';
 export const DEFAULT_FG_COLOR = '#ffffff';
 export const MAX_APP_LAUNCHER_ITEMS = 8;
 
-/** Temperature conversion constants */
 const TEMPERATURE_FAHRENHEIT_MULTIPLIER = 9 / 5;
 const TEMPERATURE_FAHRENHEIT_OFFSET = 32;
 
-/**
- * Cairo drawing constants — GJS doesn't expose these as named enums,
- * so we define them to avoid magic numbers in drawing code.
- */
+/** Cairo drawing constants — GJS doesn't expose these as named enums. */
 export const CAIRO_OPERATOR_CLEAR = 0;
 export const CAIRO_OPERATOR_OVER = 2;
 export const CAIRO_LINE_CAP_ROUND = 1;
 
-/** Standard layout grid dimension limits & spacing */
-export const COLUMNS_COUNT = 28;
+export const COLUMNS_COUNT = 50;
 export const ROWS_COUNT = 16;
 export const GRID_GAP_PX = 4;
 export const GRID_MARGIN_PX = 4;
 
 
-/** Minimum size requirements per widget type */
 export const MIN_WIDGET_SIZES = Object.freeze({
     'pomodoro': { minCols: 3, minRows: 3 },
     'network-speed': { minCols: 3, minRows: 2 },
@@ -49,13 +32,135 @@ export const MIN_WIDGET_SIZES = Object.freeze({
     'music': { minCols: 3, minRows: 2 },
     'notes': { minCols: 3, minRows: 3 },
     'clipboard': { minCols: 3, minRows: 3 },
-    'command': { minCols: 1, minRows: 1 },
     'app-launcher': { minCols: 3, minRows: 2 },
     'slideshow': { minCols: 2, minRows: 2 },
     'image': { minCols: 2, minRows: 2 },
     'calendar': { minCols: 3, minRows: 3 },
     'quotes': { minCols: 3, minRows: 3 },
+    'screen-time': { minCols: 6, minRows: 3 },
+    'calendar-grid': { minCols: 4, minRows: 4 },
+    'mood': { minCols: 4, minRows: 2 },
 });
+
+/**
+ * Resolves the use24h setting for a time widget.
+ * Individual widget override takes precedence over the global setting.
+ */
+export function resolveUse24h(widgetData) {
+    return (widgetData.use24h === false) ? false : (widgetData.globalUse24h !== false);
+}
+
+/**
+ * Calculates grid cell dimensions from canvas size and column count.
+ * Returns { cellSize, cellTotalWidth, cellTotalHeight, gridRows }.
+ */
+export function calculateGridDimensions(width, height, gridCols) {
+    const availableWidth = width - (GRID_MARGIN_PX * 2) - (GRID_GAP_PX * (gridCols - 1));
+    const cellSize = Math.max(1, Math.floor(availableWidth / gridCols));
+    const cellTotalWidth = cellSize + GRID_GAP_PX;
+    const availableHeight = height - (GRID_MARGIN_PX * 2);
+    const gridRows = Math.max(1, Math.floor((availableHeight + GRID_GAP_PX) / cellTotalWidth));
+    return { cellSize, cellTotalWidth, cellTotalHeight: cellTotalWidth, gridRows };
+}
+
+/** Corner rounding applied to every widget; not user-configurable. */
+export const DEFAULT_CORNER_RADIUS_PX = 12;
+
+/** Returns whether a CSS color reads as a dark surface (luminance below 0.5). */
+export function isDarkBackgroundColor(cssColor) {
+    const parsed = parseCssColor(cssColor);
+    if (!parsed) return true;
+    return (parsed.r * 0.299 + parsed.g * 0.587 + parsed.b * 0.114) < 0.5;
+}
+
+/**
+ * Resolves border overrides and global style settings for a widget.
+ * Returns a merged object with applied* properties and global* properties.
+ */
+export function resolveWidgetOverrides(widgetData, globalSettings) {
+    const {
+        globalBgColor,
+        globalFgColor,
+        globalFontFamily,
+    } = globalSettings;
+
+    return Object.assign({}, widgetData, {
+        appliedBorderRadius: DEFAULT_CORNER_RADIUS_PX,
+        globalBackgroundColor: globalBgColor,
+        globalForegroundColor: globalFgColor,
+        globalFontFamily: globalFontFamily,
+    });
+}
+
+/** The Adwaita accent palette, keyed by the GNOME 47+ 'accent-color' setting value. */
+const ADWAITA_ACCENT_COLORS = Object.freeze({
+    blue: '#3584e4',
+    teal: '#2190a4',
+    green: '#3a944a',
+    yellow: '#c88800',
+    orange: '#ed5b00',
+    red: '#e62d42',
+    pink: '#d56199',
+    purple: '#9141ac',
+    slate: '#6f8396',
+});
+const DEFAULT_ACCENT_COLOR = ADWAITA_ACCENT_COLORS.blue;
+
+/**
+ * Reads the system accent color from org.gnome.desktop.interface. The
+ * 'accent-color' key only exists on GNOME 47+, so older schemas fall back to
+ * the Adwaita default instead of erroring.
+ */
+export function resolveSystemAccentColor(interfaceSettings) {
+    if (!interfaceSettings || !interfaceSettings.settings_schema.has_key('accent-color'))
+        return DEFAULT_ACCENT_COLOR;
+    return ADWAITA_ACCENT_COLORS[interfaceSettings.get_string('accent-color')] || DEFAULT_ACCENT_COLOR;
+}
+
+/** Reads global extension settings; when follow-system-theme is enabled, bg/fg follow the GNOME color scheme. */
+export function readGlobalSettings(settings, interfaceSettings = null) {
+    let globalBgColor = settings.get_string('global-background-color');
+    let globalFgColor = settings.get_string('global-foreground-color');
+
+    if (settings.get_boolean('follow-system-theme') && interfaceSettings) {
+        const schemeColors = resolveSystemSchemeColors(interfaceSettings.get_string('color-scheme'));
+        if (schemeColors) {
+            globalBgColor = schemeColors.bg;
+            globalFgColor = schemeColors.fg;
+        }
+    }
+
+    const accentOverride = settings.get_string('accent-color-override');
+    const globalAccentColor = accentOverride || resolveSystemAccentColor(interfaceSettings);
+
+    return {
+        globalBgColor,
+        globalFgColor,
+        globalAccentColor,
+        globalFontFamily: settings.get_string('global-font-family'),
+        globalAnimateGif: settings.get_boolean('image-animate-gif'),
+        globalImageShowCaption: settings.get_boolean('image-show-caption'),
+        globalSlideshowShowCaption: settings.get_boolean('slideshow-show-caption'),
+        globalUseFahrenheit: settings.get_boolean('weather-use-fahrenheit'),
+        globalWeatherDynamicColor: settings.get_boolean('weather-dynamic-color'),
+        globalWeatherDynamicImage: settings.get_boolean('weather-dynamic-image'),
+        globalWeatherCity: settings.get_string('weather-city'),
+        globalUse24h: settings.get_boolean('time-format-24h'),
+    };
+}
+
+/** Returns Adwaita surface colors for a GNOME color-scheme value, or null for unknown schemes. */
+export function resolveSystemSchemeColors(colorScheme) {
+    switch (colorScheme) {
+        case 'prefer-dark':
+            return { bg: '#222226', fg: '#ffffff' };
+        case 'prefer-light':
+        case 'default':
+            return { bg: '#fafafb', fg: 'rgba(0, 0, 6, 0.8)' };
+        default:
+            return null;
+    }
+}
 
 /** Checks if a filename has an extension that supports animation (.gif, .webp). */
 export function isAnimatedImageFile(filename) {
@@ -64,7 +169,6 @@ export function isAnimatedImageFile(filename) {
     return lower.endsWith('.gif') || lower.endsWith('.webp');
 }
 
-/** Converts a Celsius temperature value to Fahrenheit. */
 export function celsiusToFahrenheit(celsius) {
     return (celsius * TEMPERATURE_FAHRENHEIT_MULTIPLIER) + TEMPERATURE_FAHRENHEIT_OFFSET;
 }
@@ -104,32 +208,81 @@ export function normalizeAppLauncherApps(apps) {
     return normalizedApps;
 }
 
-/** Returns the default grid size for an app launcher based on app count. */
-export function getAppLauncherDefaultSize(appCount) {
-    if (appCount > 4) {
-        return { width: 4, height: 4 };
-    }
+const CSS_RGB_FUNCTION_PATTERN = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([\d.]+))?/;
 
-    return { width: 4, height: 3 };
-}
-
-/** Generates the CSS border declaration from a widget config's applied values. */
-export function buildBorderStyle(config) {
-    const borderWidth = config.appliedBorderWidth || 0;
-    const borderColor = config.appliedBorderColor || 'transparent';
-    if (borderWidth > 0) return `border: ${borderWidth}px solid ${borderColor};`;
-    return '';
-}
-
-/** Parses a hex color string (#rrggbb) into normalized [0..1] RGB components. */
-export function parseHexColor(hexString) {
+/** Parses a CSS color string (#rrggbb or rgb()/rgba()) into normalized [0..1] RGB components. */
+export function parseCssColor(colorString) {
     const HEX_BASE = 16;
     const COLOR_MAX_BYTE = 255;
-    return {
-        r: parseInt(hexString.slice(1, 3), HEX_BASE) / COLOR_MAX_BYTE,
-        g: parseInt(hexString.slice(3, 5), HEX_BASE) / COLOR_MAX_BYTE,
-        b: parseInt(hexString.slice(5, 7), HEX_BASE) / COLOR_MAX_BYTE,
-    };
+    if (typeof colorString !== 'string')
+        return { r: 0, g: 0, b: 0 };
+
+    if (/^#[0-9a-fA-F]{6}$/.test(colorString)) {
+        return {
+            r: parseInt(colorString.slice(1, 3), HEX_BASE) / COLOR_MAX_BYTE,
+            g: parseInt(colorString.slice(3, 5), HEX_BASE) / COLOR_MAX_BYTE,
+            b: parseInt(colorString.slice(5, 7), HEX_BASE) / COLOR_MAX_BYTE,
+        };
+    }
+
+    const rgbMatch = colorString.match(CSS_RGB_FUNCTION_PATTERN);
+    if (rgbMatch) {
+        const channel = (value) => Math.min(COLOR_MAX_BYTE, parseInt(value, 10)) / COLOR_MAX_BYTE;
+        const parsed = { r: channel(rgbMatch[1]), g: channel(rgbMatch[2]), b: channel(rgbMatch[3]) };
+        if (rgbMatch[4] !== undefined)
+            parsed.a = Math.max(0, Math.min(1, parseFloat(rgbMatch[4])));
+        return parsed;
+    }
+
+    return { r: 0, g: 0, b: 0 };
+}
+
+export const SECONDARY_OPACITY = 0.55;
+
+/** Builds a CSS rgba() string from any CSS color string at the given alpha. */
+export function cssColorToRgba(colorString, alpha = 1) {
+    const { r, g, b } = parseCssColor(colorString);
+    return `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},${alpha})`;
+}
+
+const LUMINANCE_RED_WEIGHT = 0.299;
+const LUMINANCE_GREEN_WEIGHT = 0.587;
+const LUMINANCE_BLUE_WEIGHT = 0.114;
+const LUMINANCE_LIGHT_THRESHOLD = 0.55;
+export const LIGHT_TEXT_ON_ACCENT = 'rgba(255, 255, 255, 0.92)';
+export const DARK_TEXT_ON_ACCENT = 'rgba(30, 30, 30, 0.92)';
+
+/** Returns a readable text color for content drawn on top of the accent color. */
+export function resolveTextOnAccentColor(accentHex) {
+    const accent = parseCssColor(accentHex);
+    const accentLuminance = (accent.r * LUMINANCE_RED_WEIGHT)
+        + (accent.g * LUMINANCE_GREEN_WEIGHT)
+        + (accent.b * LUMINANCE_BLUE_WEIGHT);
+    return accentLuminance > LUMINANCE_LIGHT_THRESHOLD
+        ? DARK_TEXT_ON_ACCENT
+        : LIGHT_TEXT_ON_ACCENT;
+}
+
+/** Directories already created this session, so mkdir syscalls run at most once per path. */
+const ensuredDirectories = new Set();
+
+/** Clears the directory cache; called from the extension's disable(). */
+export function clearEnsuredDirectories() {
+    ensuredDirectories.clear();
+}
+
+function ensureDirectory(dirPath, errorContext) {
+    if (ensuredDirectories.has(dirPath))
+        return;
+    try {
+        const file = Gio.File.new_for_path(dirPath);
+        if (!file.query_exists(null)) {
+            file.make_directory_with_parents(null);
+        }
+        ensuredDirectories.add(dirPath);
+    } catch (e) {
+        console.error(`Error creating ${errorContext} ${dirPath}:`, e);
+    }
 }
 
 /** Returns the canonical user data storage directory for Gridgets (~/.local/share/gridgets/<subFolder>). */
@@ -139,113 +292,235 @@ export function getGridgetsDataDir(subFolder = '') {
         pathParts.push(subFolder);
     }
     const dataDir = GLib.build_filenamev(pathParts);
-    try {
-        const file = Gio.File.new_for_path(dataDir);
-        if (!file.query_exists(null)) {
-            file.make_directory_with_parents(null);
-        }
-    } catch (e) {
-        console.error(`Error creating data directory ${dataDir}:`, e);
-    }
+    ensureDirectory(dataDir, 'data directory');
     return dataDir;
 }
 
-/** Reads a JSON file asynchronously from disk and invokes callback with parsed object. */
+/**
+ * Reads a JSON file asynchronously and invokes callback(parsed, parseError).
+ * A missing/empty file yields callback(null) — the normal first-run case.
+ * A file that exists but fails to parse yields callback(null, error) so
+ * callers can avoid overwriting corrupt user data with fresh defaults.
+ */
 export function loadJsonFromFileAsync(filePath, callback) {
     const file = Gio.File.new_for_path(filePath);
     file.load_contents_async(null, (fileObj, res) => {
+        let contents = null;
         try {
-            const [success, contents] = fileObj.load_contents_finish(res);
-            if (success && contents.length > 0) {
-                const text = new TextDecoder('utf-8').decode(contents);
-                callback(JSON.parse(text));
-                return;
-            }
+            const [success, bytes] = fileObj.load_contents_finish(res);
+            if (success)
+                contents = bytes;
         } catch (e) {
-            // File does not exist or failed to parse
+            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+                console.error(`Error reading ${filePath}:`, e);
+            callback(null);
+            return;
         }
-        callback(null);
+
+        if (!contents || contents.length === 0) {
+            callback(null);
+            return;
+        }
+
+        try {
+            callback(JSON.parse(new TextDecoder('utf-8').decode(contents)));
+        } catch (parseError) {
+            console.error(`Corrupt JSON in ${filePath}; ignoring saved data:`, parseError);
+            callback(null, parseError);
+        }
     });
 }
 
-/** Writes a JS object as JSON to the specified file path atomically. */
+/** Writes a JS object as JSON to the specified file path atomically, fire-and-forget (async). */
 export function saveJsonToFile(filePath, data) {
-    try {
-        const parentDir = Gio.File.new_for_path(filePath).get_parent();
-        if (parentDir && !parentDir.query_exists(null)) {
-            parentDir.make_directory_with_parents(null);
+    const parentDir = Gio.File.new_for_path(filePath).get_parent();
+    if (parentDir)
+        ensureDirectory(parentDir.get_path(), 'parent directory');
+    const bytes = new GLib.Bytes(JSON.stringify(data, null, 2));
+    Gio.File.new_for_path(filePath).replace_contents_bytes_async(bytes, null, false, Gio.FileCreateFlags.NONE, null, (file, res) => {
+        try {
+            file.replace_contents_finish(res);
+        } catch (e) {
+            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                console.error(`Error saving JSON to ${filePath}:`, e);
         }
-        const jsonString = JSON.stringify(data, null, 2);
-        GLib.file_set_contents(filePath, jsonString);
+    });
+}
+
+/**
+ * Synchronous counterpart of saveJsonToFile for teardown paths (widget destroy),
+ * where an async write could still be pending when the extension is disabled.
+ */
+export function saveJsonToFileSync(filePath, data) {
+    const parentDir = Gio.File.new_for_path(filePath).get_parent();
+    if (parentDir)
+        ensureDirectory(parentDir.get_path(), 'parent directory');
+    const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2));
+    try {
+        Gio.File.new_for_path(filePath).replace_contents(bytes, null, false, Gio.FileCreateFlags.NONE, null);
+        return true;
     } catch (e) {
         console.error(`Error saving JSON to ${filePath}:`, e);
+        return false;
     }
 }
 
 /** Deletes the cache file associated with a widget from storage. */
 export function deleteCacheFile(subFolder, widgetId) {
-    try {
-        if (!widgetId) return;
-        const safeSubFolder = subFolder || '';
-        const baseDir = getGridgetsDataDir(safeSubFolder);
-        const filePath = GLib.build_filenamev([baseDir, `${safeSubFolder}-${widgetId}.json`]);
-        const file = Gio.File.new_for_path(filePath);
-        if (file.query_exists(null)) {
-            file.delete_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
-                try {
-                    f.delete_finish(res);
-                } catch (e) {
-                    // Ignored if file was already removed
-                }
-            });
-        }
-    } catch (e) {
-        console.error(`Error deleting cache file for ${subFolder}-${widgetId}:`, e);
+    if (!widgetId) return;
+    const safeSubFolder = subFolder || '';
+    const baseDir = getGridgetsDataDir(safeSubFolder);
+    const filePath = GLib.build_filenamev([baseDir, `${safeSubFolder}-${widgetId}.json`]);
+    const file = Gio.File.new_for_path(filePath);
+    if (file.query_exists(null)) {
+        file.delete_async(GLib.PRIORITY_DEFAULT, null, (f, res) => {
+            try {
+                f.delete_finish(res);
+            } catch (e) {
+                console.debug('Gridgets: cache file delete failed (non-critical):', e.message);
+            }
+        });
     }
 }
 
-/** Resolves the effective background color for a widget from its configuration. */
+function resolveWidgetConfigValue(config, globalKey, overrideKey, fallbackKeys, defaultValue) {
+    const globalValue = config?.[globalKey] ?? defaultValue;
+    if (!config) return globalValue;
+
+    const isColorsOverridden = config.overrideColors ?? config[overrideKey];
+    if (isColorsOverridden === false) return globalValue;
+
+    for (const key of fallbackKeys) {
+        if (config[key] !== undefined && config[key] !== null) return config[key];
+    }
+    return globalValue;
+}
+
 export function resolveWidgetBackgroundColor(config) {
-    const defaultColor = config?.globalBackgroundColor || DEFAULT_BG_COLOR;
-    if (!config) return defaultColor;
-
-    const isColorsOverridden = config.overrideColors ?? config.overrideBgColor;
-    if (isColorsOverridden === false) return defaultColor;
-
-    return config.bgColor || config.textBackgroundColor || defaultColor;
+    return resolveWidgetConfigValue(
+        config,
+        'globalBackgroundColor',
+        'overrideBgColor',
+        ['bgColor', 'textBackgroundColor'],
+        DEFAULT_BG_COLOR
+    );
 }
 
-/** Generates the CSS border and border-radius declarations from a widget config. */
 export function buildBaseWidgetStyle(config) {
-    const borderRadius = config.appliedBorderRadius || 0;
-    const borderStyle = buildBorderStyle(config);
-    return `border-radius: ${borderRadius}px; ${borderStyle}`;
+    const borderRadius = config.appliedBorderRadius || DEFAULT_CORNER_RADIUS_PX;
+    return `border-radius: ${borderRadius}px;`;
 }
 
-/** Resolves the effective text color for a widget from its configuration. */
 export function resolveWidgetForegroundColor(config) {
-    const defaultColor = config?.globalForegroundColor || DEFAULT_FG_COLOR;
-    if (!config) return defaultColor;
-
-    const isColorsOverridden = config.overrideColors ?? config.overrideFgColor;
-    if (isColorsOverridden === false) return defaultColor;
-
-    return config.fgColor || config.textColor || defaultColor;
+    return resolveWidgetConfigValue(
+        config,
+        'globalForegroundColor',
+        'overrideFgColor',
+        ['fgColor', 'textColor'],
+        DEFAULT_FG_COLOR
+    );
 }
 
-/** Resolves the effective font family for a widget from its configuration. */
-export function resolveWidgetFontFamily(config) {
-    const defaultFont = config?.globalFontFamily || DEFAULT_FONT_FAMILY;
-    if (!config) return defaultFont;
+/**
+ * Returns the explicitly configured font family, or '' when none is set so
+ * widgets inherit the system theme font. Never falls back to a hard-coded
+ * family; DEFAULT_FONT_FAMILY is only a prefs-side display fallback.
+ */
+export function resolveExplicitFontFamily(config) {
+    return (config && (config.fontFamily || config.globalFontFamily)) || '';
+}
 
-    const isColorsOverridden = config.overrideColors ?? config.overrideFont;
-    if (isColorsOverridden === false) return defaultFont;
+/**
+ * Small/Medium/Large footprints on the fixed grid, indexed 0-2.
+ * image / slideshow stay free-resizable instead ("free flow").
+ */
+export const SIZE_PRESET_TIERS = ['Small', 'Medium', 'Large'];
+const SIZE_PRESETS = {
+    'time': [[4, 3], [5, 4], [6, 5]],
+    'worldClock': [[4, 4], [5, 5], [6, 6]],
+    'weatherStandard': [[4, 4], [5, 5], [6, 6]],
+    'weatherSimple': [[4, 4], [5, 5], [6, 5]],
+    'weatherForecast': [[6, 4], [8, 5], [10, 6]],
+    'sun-schedule': [[4, 4], [5, 5], [6, 6]],
+    'musicSmall': [[4, 4], [5, 5], [6, 6]],
+    'musicWide': [[8, 4], [10, 5], [12, 6]],
+    'calendar': [[4, 4], [5, 5], [5, 6]],
+    'calendar-grid': [[5, 4], [6, 5], [8, 7]],
+    'system-dashboard': [[4, 4], [5, 5], [6, 6]],
+    'pomodoro': [[4, 4], [5, 5], [6, 6]],
+    'pomodoro-focus': [[8, 4], [10, 5], [12, 6]],
+    'cpu-ram': [[4, 2], [6, 3], [8, 4]],
+    'network-speed': [[4, 2], [6, 3], [8, 4]],
+    'notes': [[4, 4], [5, 5], [6, 6]],
+    'clipboard': [[4, 4], [5, 5], [6, 6]],
+    'quotes': [[4, 4], [5, 5], [6, 6]],
+    'screen-time': [[8, 4], [10, 5], [12, 6]],
+    'todo': [[6, 4], [7, 4], [8, 5]],
+    'github': [[8, 4], [10, 5], [12, 6]],
+    'mood': [[6, 3], [8, 4], [10, 5]],
+    'rss-headlines': [[4, 4], [5, 5], [6, 6]],
+};
 
-    return config.fontFamily || defaultFont;
+export const FREE_FLOW_SIZE_TYPES = ['image', 'slideshow'];
+
+function resolveSizePresetTable(widgetData) {
+    switch (widgetData.type) {
+        case 'time':
+            return (widgetData.layout === 'world') ? SIZE_PRESETS.worldClock : SIZE_PRESETS.time;
+        case 'weather': {
+            const layout = widgetData.layout || 'standard';
+            if (layout === 'forecast')
+                return SIZE_PRESETS.weatherForecast;
+            return (layout === 'simple') ? SIZE_PRESETS.weatherSimple : SIZE_PRESETS.weatherStandard;
+        }
+        case 'music':
+            return isWideMusicLayout(widgetData) ? SIZE_PRESETS.musicWide : SIZE_PRESETS.musicSmall;
+        default:
+            return SIZE_PRESETS[widgetData.type] || null;
+    }
+}
+
+/** App launcher tiles grow with the app count; frames scale one step per preset tier. */
+function resolveAppLauncherPreset(widgetData, sizeIndex) {
+    const appCount = Array.isArray(widgetData.apps) ? widgetData.apps.length : 0;
+    let tileCols = 1;
+    let tileRows = 1;
+    if (appCount > 6) { tileCols = 4; tileRows = 2; }
+    else if (appCount > 4) { tileCols = 3; tileRows = 2; }
+    else if (appCount > 2) { tileCols = 2; tileRows = 2; }
+    else if (appCount === 2) { tileCols = 2; tileRows = 1; }
+    return { width: tileCols + 2 + sizeIndex, height: tileRows + 1 + sizeIndex };
+}
+
+/** Returns whether the widget's context menu should offer S/M/L sizing. */
+export function supportsSizePresets(widgetData) {
+    return !FREE_FLOW_SIZE_TYPES.includes(widgetData.type)
+        && (resolveSizePresetTable(widgetData) !== null || widgetData.type === 'app-launcher');
+}
+
+/** Returns the {width, height} footprint for a preset tier, or null when unsupported. */
+export function resolveWidgetSizePreset(widgetData, sizeIndex) {
+    if (widgetData.type === 'app-launcher')
+        return resolveAppLauncherPreset(widgetData, sizeIndex);
+    const table = resolveSizePresetTable(widgetData);
+    if (!table || !table[sizeIndex])
+        return null;
+    return { width: table[sizeIndex][0], height: table[sizeIndex][1] };
+}
+
+export const WIDE_MUSIC_LAYOUT_ASPECT_RATIO = 1.5;
+
+/**
+ * Single source of truth for classifying the wide music layout; shared by the
+ * shell-side music widget and the preferences catalog/edit panel.
+ */
+export function isWideMusicLayout(widget) {
+    if (widget.isLargeLayout) return true;
+    return widget.height > 0 && widget.width / widget.height >= WIDE_MUSIC_LAYOUT_ASPECT_RATIO;
 }
 
 /** Validates and constrains a widget's proposed new position and size during resize operations. */
-export function calculateResizedDimensions(widgetData, newCols, newRows, newGridX, settingsOrWidgets = null, maxCols = COLUMNS_COUNT, maxRows = ROWS_COUNT) {
+export function calculateResizedDimensions(widgetData, newCols, newRows, newGridX, widgets = null, maxCols = COLUMNS_COUNT, maxRows = ROWS_COUNT) {
     const minLimits = MIN_WIDGET_SIZES[widgetData.type] || { minCols: 2, minRows: 2 };
     let validX = Math.max(0, Math.min(newGridX, maxCols - minLimits.minCols));
     let validCols = Math.max(minLimits.minCols, Math.min(newCols, maxCols - validX));
@@ -263,15 +538,9 @@ export function calculateResizedDimensions(widgetData, newCols, newRows, newGrid
         }
     }
 
-    let widgets = [];
-    if (Array.isArray(settingsOrWidgets)) {
-        widgets = settingsOrWidgets;
-    } else if (settingsOrWidgets && typeof settingsOrWidgets.get_string === 'function') {
-        widgets = getWidgets(settingsOrWidgets);
-    }
+    const otherWidgets = widgets ? widgets.filter(widget => widget.id !== widgetData.id) : [];
 
-    if (widgets && widgets.length > 0) {
-        const otherWidgets = widgets.filter(widget => widget.id !== widgetData.id);
+    if (otherWidgets.length > 0) {
 
         // Shrink width first, then height, so resize feedback stays predictable while avoiding overlap.
         while (validCols > minLimits.minCols && checkOverlap(validX, widgetData.y, validCols, validRows, otherWidgets)) {
@@ -295,7 +564,6 @@ export function calculateResizedDimensions(widgetData, newCols, newRows, newGrid
     };
 }
 
-/** Checks whether a proposed widget placement overlaps any existing widgets. */
 export function checkOverlap(x, y, width, height, widgets) {
     for (const widget of widgets) {
         const overlapX = x < (widget.x + widget.width) && (x + width) > widget.x;
@@ -306,48 +574,18 @@ export function checkOverlap(x, y, width, height, widgets) {
     return false;
 }
 
-/** Calculates minimum required grid columns to fit all placed widgets horizontally and vertically without overlap. */
-export function getMinRequiredCols(widgets, canvasWidth = 1920, canvasHeight = 1080) {
-    if (!widgets || widgets.length === 0) return 6;
-
-    const maxHorizCols = widgets.reduce((max, widget) => Math.max(max, (widget.x || 0) + (widget.width || 1)), 6);
-    const maxVertRows = widgets.reduce((max, widget) => Math.max(max, (widget.y || 0) + (widget.height || 1)), 4);
-
-    let minCols = Math.max(6, maxHorizCols);
-
-    const MAX_ALLOWED_GRID_COLS = 60;
-    while (minCols < MAX_ALLOWED_GRID_COLS) {
-        const availW = canvasWidth - (GRID_MARGIN_PX * 2) - (GRID_GAP_PX * (minCols - 1));
-        const cellSize = Math.max(1, Math.floor(availW / minCols));
-        const availH = canvasHeight - (GRID_MARGIN_PX * 2);
-        const gridRows = Math.max(1, Math.floor((availH + GRID_GAP_PX) / (cellSize + GRID_GAP_PX)));
-
-        if (gridRows >= maxVertRows) break;
-        minCols++;
-    }
-
-    return Math.min(MAX_ALLOWED_GRID_COLS, minCols);
+export function todayDateString() {
+    return toDateString(GLib.DateTime.new_now_local());
 }
 
-/** Default screen aspect ratio constant (16:9) */
+export function toDateString(dateTime) {
+    return `${dateTime.get_year()}-${dateTime.get_month().toString().padStart(2, '0')}-${dateTime.get_day_of_month().toString().padStart(2, '0')}`;
+}
+
 const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9;
 
-/** Finds the first available non-overlapping grid spot for a widget of given dimensions. */
-export function findEmptySpot(widgets, reqWidth, reqHeight, settingsOrCols = null, customRows = null) {
-    let maxCols = COLUMNS_COUNT;
-    let maxRows = ROWS_COUNT;
-
-    if (typeof settingsOrCols === 'number') {
-        maxCols = settingsOrCols;
-        if (typeof customRows === 'number') {
-            maxRows = customRows;
-        } else {
-            maxRows = Math.max(1, Math.round(maxCols / DEFAULT_SCREEN_ASPECT_RATIO));
-        }
-    } else if (settingsOrCols && typeof settingsOrCols.get_boolean === 'function') {
-        if (settingsOrCols.get_boolean('grid-custom-size')) {
-            maxCols = Math.max(4, settingsOrCols.get_int('grid-columns'));
-        }
+export function findEmptySpot(widgets, reqWidth, reqHeight, maxCols = COLUMNS_COUNT, maxRows = null) {
+    if (maxRows === null) {
         maxRows = Math.max(1, Math.round(maxCols / DEFAULT_SCREEN_ASPECT_RATIO));
     }
 
@@ -364,7 +602,6 @@ export function findEmptySpot(widgets, reqWidth, reqHeight, settingsOrCols = nul
     return null;
 }
 
-/** Safely parses and returns the array of widget configuration objects from Gio.Settings. */
 export function getWidgets(settings) {
     if (!settings) return [];
     try {
@@ -376,25 +613,65 @@ export function getWidgets(settings) {
     }
 }
 
-/** Serializes and saves an array of widget configuration objects to Gio.Settings. */
+export function serializeWidgets(widgets) {
+    return JSON.stringify(widgets || []);
+}
+
 export function saveWidgets(settings, widgets) {
     if (!settings) return;
     try {
-        const jsonString = JSON.stringify(widgets || []);
-        settings.set_string('widgets', jsonString);
+        settings.set_string('widgets', serializeWidgets(widgets));
     } catch (e) {
         console.error('Failed to save widgets to settings:', e);
     }
 }
 
+/** Generates a unique widget ID by incrementing the highest existing counter for the given prefix. */
+export function nextWidgetId(settings, prefix) {
+    const idStem = `widget-${prefix}-`;
+    let maxCounter = 0;
+    for (const widget of getWidgets(settings)) {
+        if (typeof widget.id !== 'string' || !widget.id.startsWith(idStem))
+            continue;
+        const counter = parseInt(widget.id.slice(idStem.length), 10);
+        if (!isNaN(counter) && counter > maxCounter)
+            maxCounter = counter;
+    }
+    return `${idStem}${maxCounter + 1}`;
+}
+
 /** Finds an empty grid spot, assigns position/size, and persists the widget. */
 export function addWidget(settings, widgetData, defaultWidth, defaultHeight) {
     const widgets = getWidgets(settings);
-    const emptySpot = findEmptySpot(widgets, defaultWidth, defaultHeight, settings);
+    // preset widgets spawn at Medium so every type enters the grid at a
+    // footprint that matches its S/M/L table; free-flow media keeps its own
+    const defaultPreset = supportsSizePresets(widgetData)
+        ? resolveWidgetSizePreset(widgetData, 0)
+        : null;
+    const spawnWidth = defaultPreset ? defaultPreset.width : defaultWidth;
+    const spawnHeight = defaultPreset ? defaultPreset.height : defaultHeight;
+    const gridCols = COLUMNS_COUNT;
+    const emptySpot = findEmptySpot(widgets, spawnWidth, spawnHeight, gridCols);
     widgetData.x = emptySpot ? emptySpot.x : 0;
     widgetData.y = emptySpot ? emptySpot.y : 0;
-    widgetData.width = defaultWidth;
-    widgetData.height = defaultHeight;
+    widgetData.width = spawnWidth;
+    widgetData.height = spawnHeight;
     widgets.push(widgetData);
     saveWidgets(settings, widgets);
+}
+
+/**
+ * Resolves a .desktop app id to a DesktopAppInfo;
+ * the class lives in the GioUnix platform library.
+ */
+export function resolveDesktopAppInfo(appId) {
+    if (!appId || typeof appId !== 'string') return null;
+
+    const idCandidates = appId.endsWith('.desktop') ? [appId] : [appId, `${appId}.desktop`];
+
+    for (const candidate of idCandidates) {
+        const appInfo = GioUnix.DesktopAppInfo.new(candidate);
+        if (appInfo && appInfo.get_id()) return appInfo;
+    }
+    return null;
 }

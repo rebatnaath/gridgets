@@ -1,23 +1,17 @@
-import St from 'gi://St';
-import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveWidgetFontFamily } from '../../utils/widgetUtils.js';
-import { createWidgetContainer } from '../../utils/widgetUIUtils.js';
+import {
+    resolveWidgetForegroundColor,
+    resolveExplicitFontFamily,
+    parseCssColor,
+    SECONDARY_OPACITY,
+} from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, drawSparkline, SPARK_SAMPLE_CAPACITY } from '../../shell/widgetUIUtils.js';
 import { networkEngine } from '../../utils/systemMonitorEngine.js';
+import { createSparklineTile, createTilesRow, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT, TILE_GAP_PX, TILE_MARGIN_PX } from './sparkTile.js';
 
-const DOWNLOAD_COLOR = '#2ecc71';
-const UPLOAD_COLOR = '#e74c3c';
 const BYTES_PER_KILOBYTE = 1024;
 const BYTES_PER_MEGABYTE = 1024 * 1024;
-const BASE_CONTAINER_WIDTH = 180;
-const BASE_CONTAINER_HEIGHT = 100;
-const BASE_ICON_SIZE = 24;
-const MIN_ICON_SIZE = 14;
-const BASE_FONT_SIZE = 20;
-const MIN_FONT_SIZE = 12;
-const DEFAULT_MARGIN_RIGHT_PX = 12;
-const DEFAULT_MARGIN_BOTTOM_PX = 8;
-const MIN_MARGIN_RIGHT_PX = 6;
-const MIN_MARGIN_BOTTOM_PX = 4;
+const SPARK_BASELINE_BYTES = BYTES_PER_KILOBYTE;
+
 export function formatBytesPerSecond(bytesPerSec) {
     if (bytesPerSec < BYTES_PER_KILOBYTE)
         return `${Math.round(bytesPerSec)} B/s`;
@@ -26,68 +20,66 @@ export function formatBytesPerSecond(bytesPerSec) {
     return `${(bytesPerSec / BYTES_PER_MEGABYTE).toFixed(1)} MB/s`;
 }
 
-function createSpeedRow(iconName, iconColor, { fontFamily, textColor, iconSize, fontSize, marginRight }, marginBottom = 0) {
-    const rowBox = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
-        x_align: Clutter.ActorAlign.START,
-        style: marginBottom > 0 ? `margin-bottom: ${marginBottom}px;` : '',
-    });
-
-    const icon = new St.Icon({
-        icon_name: iconName,
-        icon_size: iconSize,
-        style: `color: ${iconColor}; margin-right: ${marginRight}px;`,
-    });
-
-    const speedLabel = new St.Label({
-        text: '0 B/s',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${fontSize}px; font-weight: bold; text-align: left;`,
-        y_align: Clutter.ActorAlign.CENTER,
-    });
-
-    rowBox.add_child(icon);
-    rowBox.add_child(speedLabel);
-
-    return { rowBox, speedLabel };
-}
-
 export function createNetworkSpeedNode(config, width, height, xPosition, yPosition) {
-    const fontFamily = resolveWidgetFontFamily(config);
     const textColor = resolveWidgetForegroundColor(config);
+    const fontFamily = resolveExplicitFontFamily(config);
+    const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
+    const accentRgb = parseCssColor(config.globalAccentColor || '#3584e4');
+    const textRgb = parseCssColor(textColor);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
+    const scale = Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT);
 
-    const scale = Math.max(0.5, Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT));
-    const iconSize = Math.max(MIN_ICON_SIZE, Math.round(BASE_ICON_SIZE * scale));
-    const fontSize = Math.max(MIN_FONT_SIZE, Math.round(BASE_FONT_SIZE * scale));
-    const marginRight = Math.max(MIN_MARGIN_RIGHT_PX, Math.round(DEFAULT_MARGIN_RIGHT_PX * scale));
-    const marginBottom = Math.max(MIN_MARGIN_BOTTOM_PX, Math.round(DEFAULT_MARGIN_BOTTOM_PX * scale));
-
-    const styleOptions = { fontFamily, textColor, iconSize, fontSize, marginRight };
-
-    const contentBox = new St.BoxLayout({
-        orientation: Clutter.Orientation.VERTICAL,
-        x_align: Clutter.ActorAlign.CENTER,
-        y_align: Clutter.ActorAlign.CENTER,
-        x_expand: true,
-        y_expand: true,
-    });
-
-    const downloadRow = createSpeedRow('go-down-symbolic', DOWNLOAD_COLOR, styleOptions, marginBottom);
-    const uploadRow = createSpeedRow('go-up-symbolic', UPLOAD_COLOR, styleOptions);
-
-    contentBox.add_child(downloadRow.rowBox);
-    contentBox.add_child(uploadRow.rowBox);
-    container.add_child(contentBox);
-
-    const onDataUpdate = (data) => {
-        downloadRow.speedLabel.set_text(formatBytesPerSecond(data.downloadSpeed));
-        uploadRow.speedLabel.set_text(formatBytesPerSecond(data.uploadSpeed));
+    const drawSpeedSparkline = (context, surfaceWidth, surfaceHeight, samples, lineColor, lineOpacity) => {
+        const peak = Math.max(SPARK_BASELINE_BYTES, ...samples);
+        drawSparkline(context, surfaceWidth, surfaceHeight, samples, peak,
+            lineColor.r, lineColor.g, lineColor.b, lineOpacity);
     };
 
-    networkEngine.subscribe(onDataUpdate);
-    container.connect('destroy', () => {
-        networkEngine.unsubscribe(onDataUpdate);
+    const downloadTile = createSparklineTile({
+        labelText: 'Download',
+        unitText: 'B/s',
+        lineColor: accentRgb,
+        lineOpacity: 1.0,
+        unitOpacity: SECONDARY_OPACITY,
+        fontCss,
+        textColor,
+        scale,
+        rowSpacingPx: 4,
+        drawSamples: drawSpeedSparkline,
     });
+
+    const uploadTile = createSparklineTile({
+        labelText: 'Upload',
+        unitText: 'B/s',
+        lineColor: textRgb,
+        lineOpacity: SECONDARY_OPACITY,
+        unitOpacity: SECONDARY_OPACITY,
+        fontCss,
+        textColor,
+        scale,
+        rowSpacingPx: 4,
+        drawSamples: drawSpeedSparkline,
+    });
+
+    container.add_child(createTilesRow(
+        [downloadTile.tile, uploadTile.tile],
+        Math.max(1, Math.round(TILE_GAP_PX * scale)),
+        Math.max(1, Math.round(TILE_MARGIN_PX * scale))));
+
+    const onDataUpdate = (data) => {
+        for (const [tile, bytesPerSec] of [[downloadTile, data.downloadSpeed], [uploadTile, data.uploadSpeed]]) {
+            const [value, unit] = formatBytesPerSecond(bytesPerSec).split(' ');
+            tile.valueLabel.set_text(value);
+            tile.unitLabel.set_text(unit);
+            tile.samples.push(bytesPerSec);
+            if (tile.samples.length > SPARK_SAMPLE_CAPACITY)
+                tile.samples.shift();
+            tile.sparkArea.queue_repaint();
+        }
+    };
+
+    const releaseEngine = networkEngine.subscribe(onDataUpdate);
+    registerWidgetCleanup(container, releaseEngine);
 
     return container;
 }

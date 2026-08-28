@@ -55,6 +55,7 @@ function fetchRemoteCitiesDatabase() {
     return citiesRemoteFetchInFlight;
 }
 
+
 function buildCitySearchScaffold(grid, labelTitle, placeholderText, rowIdx) {
     const label = new Gtk.Label({ label: labelTitle, xalign: 0, valign: Gtk.Align.START, margin_top: 8 });
     const vBox = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 6, hexpand: true, valign: Gtk.Align.START });
@@ -110,17 +111,17 @@ export function createLiveCitySearchRow(grid, labelTitle, defaultCity, rowIdx) {
             return;
         }
         const escapedName = GLib.markup_escape_text(selectedCityObj.name, -1);
-        const escapedTz = GLib.markup_escape_text(selectedCityObj.timezone || '', -1);
+        const escapedDisplay = GLib.markup_escape_text(selectedCityObj.country || selectedCityObj.timezone || '', -1);
         if (isSelected) {
-            statusLabel.set_markup(`<span size='x-small' weight='bold'>Selected: ${escapedName} (${escapedTz})</span>`);
+            statusLabel.set_markup(`<span size='x-small' weight='bold'>Selected: ${escapedName} (${escapedDisplay})</span>`);
         } else {
-            statusLabel.set_markup(`<span size='x-small' alpha='60%'>Default: <b>${escapedName}</b> (${escapedTz})</span>`);
+            statusLabel.set_markup(`<span size='x-small' alpha='60%'>Default: <b>${escapedName}</b> (${escapedDisplay})</span>`);
         }
     };
     updateStatusLabel(false);
 
     const selectCity = (cityItem) => {
-        selectedCityObj = { name: cityItem.name, timezone: cityItem.timezone };
+        selectedCityObj = { name: cityItem.name, timezone: cityItem.timezone || '', country: cityItem.country || '' };
         lastSelectedCityName = cityItem.name;
         updateStatusLabel(true);
         isInternalUpdate = true;
@@ -174,15 +175,7 @@ export function createLiveCitySearchRow(grid, labelTitle, defaultCity, rowIdx) {
             }
         }
 
-        rawMatches.sort((a, b) => {
-            const aTzNorm = (a.timezone || '').replace(/[\s_]+/g, '').toLowerCase();
-            const bTzNorm = (b.timezone || '').replace(/[\s_]+/g, '').toLowerCase();
-            const aHasTzMatch = aTzNorm.includes(normalizedQuery);
-            const bHasTzMatch = bTzNorm.includes(normalizedQuery);
-            if (aHasTzMatch && !bHasTzMatch) return -1;
-            if (!aHasTzMatch && bHasTzMatch) return 1;
-            return 0;
-        });
+        rawMatches.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         const matches = rawMatches.slice(0, MAX_SEARCH_RESULTS_COUNT);
 
@@ -201,16 +194,12 @@ export function createLiveCitySearchRow(grid, labelTitle, defaultCity, rowIdx) {
                 });
 
                 const nameLabel = new Gtk.Label({
-                    label: `${item.name} (${item.timezone})`,
+                    label: `${item.name} (${item.country || ''})`,
                     xalign: 0,
                     hexpand: true
                 });
 
-                const tzLabel = new Gtk.Label({ xalign: 1 });
-                tzLabel.set_markup(`<span size='small' alpha='65%'>${GLib.markup_escape_text(item.timezone || '', -1)}</span>`);
-
                 rowBox.append(nameLabel);
-                rowBox.append(tzLabel);
                 row.set_child(rowBox);
 
                 const gesture = new Gtk.GestureClick();

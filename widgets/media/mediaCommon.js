@@ -1,62 +1,99 @@
 import St from 'gi://St';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { createCaptionOverlay } from '../../utils/widgetUIUtils.js';
+import { PACKAGE_VERSION } from 'resource:///org/gnome/shell/misc/config.js';
+import { createCaptionOverlay } from '../../shell/widgetUIUtils.js';
 
-/** Supported image extensions */
-export const SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.svg', '.gif'];
+const SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.svg', '.gif'];
 
-/** Aspect ratio comparison tolerance */
 export const ASPECT_RATIO_TOLERANCE = 0.01;
 
-/** Default animation frame interval for GIF playback */
 export const GIF_FRAME_INTERVAL_MS = 20;
 
-/** Pixel buffer channel metric constants */
+/** First GNOME Shell release where St.ImageContent.set_bytes() takes a CoglContext. */
+const SET_BYTES_COGL_CONTEXT_SHELL_VERSION = 48;
+
 const RGBA_CHANNELS_COUNT = 4;
 const ALPHA_CHANNEL_OFFSET = 3;
 const PIXEL_CENTER_OFFSET = 0.5;
 
-/** Checks if a filename has a supported image extension. */
 export function isSupportedImage(filename) {
     if (!filename) return false;
     const lower = filename.toLowerCase();
     return SUPPORTED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext));
 }
 
-/** Enumerates all supported image files in a folder. */
-export function listImagesInFolder(folderPath) {
+/**
+ * Applies raw RGBA pixels to an St.ImageContent. set_bytes() gained a
+ * leading CoglContext parameter in GNOME Shell 48; the extension supports
+ * 45+, so both signatures are handled here in one place.
+ */
+export function setImageContentBytes(imageContent, bytes, pixelFormat, width, height, rowStride) {
+    if (Number(PACKAGE_VERSION.split('.')[0]) >= SET_BYTES_COGL_CONTEXT_SHELL_VERSION) {
+        const coglContext = global.stage.context.get_backend().get_cogl_context();
+        imageContent.set_bytes(coglContext, bytes, pixelFormat, width, height, rowStride);
+    } else {
+        imageContent.set_bytes(bytes, pixelFormat, width, height, rowStride);
+    }
+}
+
+// Enumerates supported image files in a folder asynchronously.
+export async function listImagesInFolder(folderPath) {
+    if (!folderPath) return [];
+    const dir = Gio.File.new_for_path(folderPath);
+
+    let enumerator;
     try {
-        if (!folderPath) return [];
-        const dir = Gio.File.new_for_path(folderPath);
-        if (!dir.query_exists(null)) return [];
-
-        const enumerator = dir.enumerate_children(
-            'standard::name,standard::type',
-            Gio.FileQueryInfoFlags.NONE, null
-        );
-
-        const images = [];
-        let fileInfo;
-        while ((fileInfo = enumerator.next_file(null)) !== null) {
-            if (fileInfo.get_file_type() === Gio.FileType.REGULAR && isSupportedImage(fileInfo.get_name())) {
-                images.push(dir.get_child(fileInfo.get_name()).get_path());
-            }
-        }
-
-        images.sort();
-        return images;
+        enumerator = await new Promise((resolve, reject) => {
+            dir.enumerate_children_async(
+                'standard::name,standard::type',
+                Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, null,
+                (_source, result) => {
+                    try {
+                        resolve(dir.enumerate_children_finish(result));
+                    } catch (error) {
+                        reject(error);
+                    }
+                }
+            );
+        });
     } catch (e) {
         console.error('Error listing images in slideshow folder:', e);
         return [];
     }
+
+    const images = [];
+    const PAGE_SIZE = 64;
+    try {
+        while (true) {
+            const infos = await new Promise((resolve, reject) => {
+                enumerator.next_files_async(PAGE_SIZE, GLib.PRIORITY_DEFAULT, null, (_source, result) => {
+                    try {
+                        resolve(enumerator.next_files_finish(result));
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            });
+            if (!infos || infos.length === 0) break;
+            for (const fileInfo of infos) {
+                if (fileInfo.get_file_type() === Gio.FileType.REGULAR && isSupportedImage(fileInfo.get_name()))
+                    images.push(dir.get_child(fileInfo.get_name()).get_path());
+            }
+        }
+    } catch (e) {
+        console.error('Error listing images in slideshow folder:', e);
+    }
+
+    enumerator.close_async(GLib.PRIORITY_DEFAULT, null, null);
+    images.sort();
+    return images;
 }
 
-/** Resolves caption visibility based on widget override or global GSettings. */
 function isCaptionVisible(widgetData) {
-    if (widgetData.showCaption === false || widgetData.showText === false) {
-        return false;
-    }
+    if (widgetData.showCaption !== undefined)
+        return widgetData.showCaption;
 
     const isSlideshow = widgetData.type === 'slideshow';
     return isSlideshow
@@ -64,7 +101,6 @@ function isCaptionVisible(widgetData) {
         : (widgetData.globalImageShowCaption !== false);
 }
 
-/** Attaches a caption overlay to a media widget container node. */
 export function attachCaptionOverlay(widgetNode, widgetData, width, height, isWrappedContainer = false) {
     const caption = widgetData.caption || '';
     if (!isCaptionVisible(widgetData) || caption.length === 0) return;
@@ -87,10 +123,11 @@ export function attachCaptionOverlay(widgetNode, widgetData, width, height, isWr
     }
 }
 
-/** Helper to mask a single corner quadrant of an RGBA pixel buffer. */
-function maskCornerQuadrant(pixels, radius, rowstride, startX, startY, originX, originY, radiusSquared) {
+function maskCornerQuadrant(pixels, radius, rowstride, startX, startY, originX, originY, radiusSquared, width, height) {
     for (let y = startY; y < startY + radius; y++) {
+        if (y < 0 || y >= height) continue;
         for (let x = startX; x < startX + radius; x++) {
+            if (x < 0 || x >= width) continue;
             const deltaX = x - originX;
             const deltaY = y - originY;
             if (deltaX * deltaX + deltaY * deltaY > radiusSquared) {
@@ -100,17 +137,21 @@ function maskCornerQuadrant(pixels, radius, rowstride, startX, startY, originX, 
     }
 }
 
-/** Applies a rounded corner alpha mask to RGBA pixel buffer data. */
 export function applyCornerMask(pixels, width, height, radius, rowstride) {
     if (radius <= 0) return;
-    const radiusSquared = radius * radius;
+    const clampedRadius = Math.min(radius, Math.floor(Math.min(width, height) / 2));
+    const radiusSquared = clampedRadius * clampedRadius;
 
     // Top-left
-    maskCornerQuadrant(pixels, radius, rowstride, 0, 0, radius - PIXEL_CENTER_OFFSET, radius - PIXEL_CENTER_OFFSET, radiusSquared);
+    maskCornerQuadrant(pixels, clampedRadius, rowstride, 0, 0,
+        clampedRadius - PIXEL_CENTER_OFFSET, clampedRadius - PIXEL_CENTER_OFFSET, radiusSquared, width, height);
     // Top-right
-    maskCornerQuadrant(pixels, radius, rowstride, width - radius, 0, width - radius - PIXEL_CENTER_OFFSET, radius - PIXEL_CENTER_OFFSET, radiusSquared);
+    maskCornerQuadrant(pixels, clampedRadius, rowstride, width - clampedRadius, 0,
+        width - clampedRadius - PIXEL_CENTER_OFFSET, clampedRadius - PIXEL_CENTER_OFFSET, radiusSquared, width, height);
     // Bottom-left
-    maskCornerQuadrant(pixels, radius, rowstride, 0, height - radius, radius - PIXEL_CENTER_OFFSET, height - radius - PIXEL_CENTER_OFFSET, radiusSquared);
+    maskCornerQuadrant(pixels, clampedRadius, rowstride, 0, height - clampedRadius,
+        clampedRadius - PIXEL_CENTER_OFFSET, height - clampedRadius - PIXEL_CENTER_OFFSET, radiusSquared, width, height);
     // Bottom-right
-    maskCornerQuadrant(pixels, radius, rowstride, width - radius, height - radius, width - radius - PIXEL_CENTER_OFFSET, height - radius - PIXEL_CENTER_OFFSET, radiusSquared);
+    maskCornerQuadrant(pixels, clampedRadius, rowstride, width - clampedRadius, height - clampedRadius,
+        width - clampedRadius - PIXEL_CENTER_OFFSET, height - clampedRadius - PIXEL_CENTER_OFFSET, radiusSquared, width, height);
 }

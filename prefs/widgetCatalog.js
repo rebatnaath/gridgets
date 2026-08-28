@@ -1,3 +1,5 @@
+import { isWideMusicLayout } from '../utils/widgetUtils.js';
+
 export const STORE_WIDGETS = Object.freeze({
     weatherStandard: {
         title: 'Weather Standard',
@@ -76,6 +78,13 @@ export const STORE_WIDGETS = Object.freeze({
         thumbnail: 'pomodoro/pomodoro.svg',
         fallbackIconName: 'alarm-symbolic',
     },
+    pomodoroFocus: {
+        title: 'Pomodoro Focus',
+        description: 'Compact focus timer with mode switching, a circular gauge, and session tracking.',
+        gridSize: '4x2',
+        thumbnail: 'pomodoro/pomodoro-focus.svg',
+        fallbackIconName: 'alarm-symbolic',
+    },
     systemMonitor: {
         title: 'System Monitor',
         description: 'Monitor your CPU and RAM resource usage in real time.',
@@ -104,13 +113,6 @@ export const STORE_WIDGETS = Object.freeze({
         thumbnail: 'clipboard/clipboard.svg',
         fallbackIconName: 'edit-copy-symbolic',
     },
-    commandLauncher: {
-        title: 'Command Launcher',
-        description: 'Run custom bash scripts and commands from your desktop.',
-        gridSize: '2x2',
-        thumbnail: 'commands/commands.svg',
-        fallbackIconName: 'system-run-symbolic',
-    },
     appLauncher: {
         title: 'App Launcher',
         description: 'Launch up to 8 installed applications from a compact desktop widget.',
@@ -132,43 +134,78 @@ export const STORE_WIDGETS = Object.freeze({
         thumbnail: 'quotes/quotes.svg',
         fallbackIconName: 'help-about-symbolic',
     },
-});
-
-/** Catalog entries for panel indicators (not desktop widgets). */
-export const PANEL_WIDGETS = Object.freeze({
-    screenTime: {
+    screenTimeWidget: {
         title: 'Screen Time',
-        description: 'Tracks how long each app has been in focus today. Shows a ranked list with usage bars in the panel.',
-        settingKey: 'panel-screen-time',
-        thumbnail: 'panel/screen-time.svg',
+        description: 'Track your desktop screen time at a glance.',
+        gridSize: '6x3',
+        thumbnail: 'system-utils/screen-time.svg',
         fallbackIconName: 'preferences-system-time-symbolic',
     },
-    storePanel: {
-        title: 'Store Panel Button',
-        description: 'Quick-add widgets from a panel popup. Image, Slideshow, Command, and World Clock are omitted — use the full Store page for those.',
-        settingKey: 'panel-store-button',
-        thumbnail: 'panel/panel-store.svg',
-        fallbackIconName: 'software-update-available-symbolic',
+    calendarGrid: {
+        title: 'Month Calendar',
+        description: 'A compact month grid with today highlighted and weekends colored.',
+        gridSize: '4x4',
+        thumbnail: 'calendar/month-calendar.svg',
+        fallbackIconName: 'x-office-calendar-symbolic',
+    },
+    todoWidget: {
+        title: 'Tasks',
+        description: 'A todo list with a pending counter, checkable tasks, and quick add.',
+        gridSize: '5x3',
+        thumbnail: 'tasks/tasks.svg',
+        fallbackIconName: 'view-list-symbolic',
+    },
+    githubWidget: {
+        title: 'GitHub Activity',
+        description: 'Your GitHub contribution graph with avatar, yearly total, and sync status.',
+        gridSize: '7x3',
+        thumbnail: 'github/github.svg',
+        fallbackIconName: 'starred-symbolic',
+    },
+    rssHeadlinesWidget: {
+        title: 'RSS Headlines',
+        description: 'A compact card that auto-rotates through article headlines from any feed.',
+        gridSize: '3x3',
+        thumbnail: 'rss/rss-headlines.svg',
+        fallbackIconName: 'application-rss+xml-symbolic',
+    },
+    moodWidget: {
+        title: 'Mood Logger',
+        description: 'Log how you feel each day and watch the past four weeks fill with color.',
+        gridSize: '6x3',
+        thumbnail: 'quotes/mood-logger.svg',
+        fallbackIconName: 'face-smile-big-symbolic',
+    },
+    sunScheduleWidget: {
+        title: 'Solar Schedule',
+        description: 'Sunrise and sunset times for any city, powered by Open-Meteo.',
+        gridSize: '3x3',
+        thumbnail: 'solar-schedule/solar-schedule.svg',
+        fallbackIconName: 'daytime-sunset-symbolic',
     },
 });
 
 export const STORE_CATEGORIES = Object.freeze({
-    weather: ['weatherStandard', 'weatherMinimal', 'weatherForecast'],
+    weather: ['weatherStandard', 'weatherMinimal', 'weatherForecast', 'sunScheduleWidget'],
     music: ['musicPlayer', 'musicPlayerWide'],
-    time: ['timeAndDate', 'worldClock', 'calendarWidget'],
+    time: ['timeAndDate', 'worldClock', 'calendarWidget', 'calendarGrid'],
     media: ['imageGif', 'imageSlideshow'],
     utilities: [
         'systemDashboard',
         'pomodoroTimer',
+        'pomodoroFocus',
         'systemMonitor',
         'networkSpeed',
         'quickNotes',
         'clipboardHistory',
-        'commandLauncher',
         'appLauncher',
         'quotesWidget',
+        'screenTimeWidget',
+        'githubWidget',
+        'todoWidget',
+        'rssHeadlinesWidget',
+        'moodWidget',
     ],
-    panel: ['screenTime', 'storePanel'],
 });
 
 function getWeatherEntryKey(widget) {
@@ -183,13 +220,13 @@ function getWeatherEntryKey(widget) {
 }
 
 function getMusicEntryKey(widget) {
-    if (widget.width === widget.height * 2 || widget.isLargeLayout) {
+    if (isWideMusicLayout(widget)) {
         return 'musicPlayerWide';
     }
     return 'musicPlayer';
 }
 
-export function getStoreWidgetKey(widget) {
+function getStoreWidgetKey(widget) {
     switch (widget.type) {
         case 'weather':
             return getWeatherEntryKey(widget);
@@ -205,6 +242,8 @@ export function getStoreWidgetKey(widget) {
             return 'systemDashboard';
         case 'pomodoro':
             return 'pomodoroTimer';
+        case 'pomodoro-focus':
+            return 'pomodoroFocus';
         case 'cpu-ram':
             return 'systemMonitor';
         case 'network-speed':
@@ -213,14 +252,27 @@ export function getStoreWidgetKey(widget) {
             return 'quickNotes';
         case 'clipboard':
             return 'clipboardHistory';
-        case 'command':
-            return 'commandLauncher';
         case 'app-launcher':
             return 'appLauncher';
         case 'calendar':
             return 'calendarWidget';
+        case 'calendar-grid':
+            return 'calendarGrid';
         case 'quotes':
             return 'quotesWidget';
+        case 'screen-time':
+            return 'screenTimeWidget';
+        case 'todo':
+            return 'todoWidget';
+        case 'github':
+            return 'githubWidget';
+        case 'rss-headlines':
+        case 'rss-feed':
+            return 'rssHeadlinesWidget';
+        case 'mood':
+            return 'moodWidget';
+        case 'sun-schedule':
+            return 'sunScheduleWidget';
         default:
             return null;
     }
@@ -253,8 +305,13 @@ export function getWidgetDetailText(widget) {
             return `Folder: ${getPathBaseName(widget.slideshowFolder, 'Unknown')}`;
         case 'image':
             return `File: ${getPathBaseName(widget.imagePath, 'Unknown')}`;
-        case 'command':
-            return `Command: ${widget.commandName || 'Launcher'}`;
+        case 'rss-headlines':
+        case 'rss-feed':
+            return `Feed: ${widget.feedUrl || 'Not configured'}`;
+        case 'pomodoro-focus':
+            return `Focus: ${widget.workMinutes || 25} min sessions`;
+        case 'sun-schedule':
+            return `Location: ${widget.city || 'Unknown'}`;
         case 'app-launcher': {
             const apps = Array.isArray(widget.apps) ? widget.apps : [];
             if (apps.length === 0) {

@@ -1,16 +1,18 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import {
-    resolveWidgetBackgroundColor,
-    resolveWidgetForegroundColor,
-    resolveWidgetFontFamily,
-    parseHexColor,
-} from '../utils/widgetUtils.js';
-import { createWidgetContainer, connectTimerCleanup, startPollingTimer } from '../utils/widgetUIUtils.js';
+import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../utils/widgetUtils.js';
+import { createWidgetContainer, connectTimerCleanup, startPollingTimer, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
 
 const DATE_POLL_INTERVAL_MS = 60_000;
-const BUTTON_PRIMARY = 1;
+const BORDER_ALPHA = 0.14;
+const BASE_SCALE_SIZE = 200;
+const TOP_BAR_RADIUS_PX = 12;
+const DAY_FONT_SIZE_PX = 13;
+const DATE_FONT_SIZE_PX = 48;
+const MONTH_FONT_SIZE_PX = 15;
+const MONTH_MARGIN_BOTTOM_PX = 8;
+const CONTENT_BG_ALPHA = 0.06;
 
 function getToday() {
     const now = GLib.DateTime.new_now_local();
@@ -27,10 +29,11 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
     const bgColor = resolveWidgetBackgroundColor(config);
     const textColor = resolveWidgetForegroundColor(config);
-    const fontFamily = resolveWidgetFontFamily(config);
-    const { r, g, b } = parseHexColor(textColor);
+    const fontFamily = resolveExplicitFontFamily(config);
+    const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
+    container.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
 
-    const scale = Math.max(0.4, Math.min(width / 200, height / 200));
+    let scale = Math.min(width / BASE_SCALE_SIZE, height / BASE_SCALE_SIZE);
 
     const outerBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -42,7 +45,7 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const topBar = new St.Widget({
         x_expand: true,
         y_expand: true,
-        style: `background-color: ${bgColor}; border-radius: 12px 12px 0 0;`,
+        style: `background-color: ${bgColor}; border-radius: ${TOP_BAR_RADIUS_PX}px ${TOP_BAR_RADIUS_PX}px 0 0;`,
         layout_manager: new Clutter.BinLayout(),
     });
 
@@ -50,7 +53,7 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${Math.max(10, Math.round(13 * scale))}px; font-weight: 600; opacity: 0.9;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${Math.round(DAY_FONT_SIZE_PX * scale)}px; opacity: ${SECONDARY_OPACITY};`,
     });
     topBar.add_child(dayLabel);
     outerBox.add_child(topBar);
@@ -58,7 +61,7 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const contentPanel = new St.Widget({
         x_expand: true,
         y_expand: true,
-        style: `background-color: rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, 0.06); border-radius: 0 0 12px 12px;`,
+        style: `background-color: ${cssColorToRgba(textColor, CONTENT_BG_ALPHA)}; border-radius: 0 0 ${TOP_BAR_RADIUS_PX}px ${TOP_BAR_RADIUS_PX}px;`,
         layout_manager: new Clutter.BinLayout(),
     });
 
@@ -73,19 +76,28 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const dateNumber = new St.Label({
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${Math.max(28, Math.round(48 * scale))}px; font-weight: 700;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${Math.round(DATE_FONT_SIZE_PX * scale)}px; font-weight: 300;`,
     });
     contentBox.add_child(dateNumber);
 
     const monthLabel = new St.Label({
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${Math.max(11, Math.round(15 * scale))}px; font-weight: 500; opacity: 0.7; margin-bottom: ${Math.max(4, Math.round(8 * scale))}px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${Math.round(MONTH_FONT_SIZE_PX * scale)}px; `
+            + `opacity: ${SECONDARY_OPACITY}; margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`,
     });
     contentBox.add_child(monthLabel);
 
     contentPanel.add_child(contentBox);
     outerBox.add_child(contentPanel);
+
+    function applyScale(newScale) {
+        scale = newScale;
+        dayLabel.style = `${fontCss}color: ${textColor}; font-size: ${Math.round(DAY_FONT_SIZE_PX * scale)}px; opacity: ${SECONDARY_OPACITY};`;
+        dateNumber.style = `${fontCss}color: ${textColor}; font-size: ${Math.round(DATE_FONT_SIZE_PX * scale)}px; font-weight: 300;`;
+        monthLabel.style = `${fontCss}color: ${textColor}; font-size: ${Math.round(MONTH_FONT_SIZE_PX * scale)}px; `
+            + `opacity: ${SECONDARY_OPACITY}; margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`;
+    }
 
     function render() {
         const today = getToday();
@@ -102,6 +114,10 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     render();
     startPollingTimer(render, DATE_POLL_INTERVAL_MS, state);
     connectTimerCleanup(container, state);
+
+    attachResponsiveScaler(container, BASE_SCALE_SIZE, BASE_SCALE_SIZE, (_ratio, w, h) => {
+        applyScale(Math.min(w / BASE_SCALE_SIZE, h / BASE_SCALE_SIZE));
+    });
 
     return container;
 }

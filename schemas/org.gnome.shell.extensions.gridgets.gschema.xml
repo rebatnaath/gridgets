@@ -6,23 +6,13 @@
       <summary>Widgets JSON data</summary>
       <description>Stores the JSON representation of all active widgets.</description>
     </key>
-    <key name="border-radius" type="i">
-      <default>16</default>
-      <summary>Border Radius</summary>
-      <description>The corner rounding radius of the widgets.</description>
-    </key>
-    <key name="global-border-width" type="i">
-      <default>0</default>
-      <summary>Global Border Width</summary>
-      <description>Default border width for all widgets.</description>
-    </key>
-    <key name="global-border-color" type="s">
-      <default>'rgb(255,255,255)'</default>
-      <summary>Global Border Color</summary>
-      <description>Default border color for all widgets.</description>
+    <key name="follow-system-theme" type="b">
+      <default>false</default>
+      <summary>Follow System Theme</summary>
+      <description>If true, widgets use Adwaita light/dark colors based on the GNOME color scheme instead of the global background and foreground colors.</description>
     </key>
     <key name="global-background-color" type="s">
-      <default>'#1a1b26'</default>
+      <default>'#222226'</default>
       <summary>Global Background Color</summary>
       <description>Default background color for all widgets.</description>
     </key>
@@ -37,7 +27,7 @@
       <description>Visualize the underlying widget placement grid.</description>
     </key>
     <key name="global-font-family" type="s">
-      <default>"'Poppins', sans-serif"</default>
+      <default>''</default>
       <summary>Global Font Family</summary>
       <description>The font family to use across widgets.</description>
     </key>
@@ -86,40 +76,20 @@
       <summary>Global Target Monitor</summary>
       <description>Choose default monitor display mode for widgets.</description>
     </key>
-    <key name="music-ignore-browsers" type="b">
-      <default>true</default>
-      <summary>Ignore Browsers in Music Widget</summary>
-      <description>If true, browser MPRIS players (Firefox, Chromium, etc.) will be ignored by default.</description>
-    </key>
     <key name="open-edit-widget-id" type="s">
       <default>''</default>
       <summary>Widget ID to Edit</summary>
       <description>Internal key set when right-clicking a widget to open its edit dialog in preferences.</description>
     </key>
-    <key name="grid-custom-size" type="b">
-      <default>false</default>
-      <summary>Custom Grid Size</summary>
-      <description>If true, use custom grid column dimensions.</description>
-    </key>
-    <key name="grid-columns" type="i">
-      <default>28</default>
-      <summary>Grid Columns</summary>
-      <description>Number of columns across the desktop grid.</description>
-    </key>
-    <key name="panel-screen-time" type="b">
-      <default>false</default>
-      <summary>Screen Time Panel Widget</summary>
-      <description>If true, show the Screen Time indicator in the GNOME panel.</description>
-    </key>
-    <key name="panel-store-button" type="b">
-      <default>false</default>
-      <summary>Store Panel Button</summary>
-      <description>If true, show a panel button that opens the widget store as a popup.</description>
-    </key>
     <key name="theme" type="s">
       <default>''</default>
       <summary>Active Theme</summary>
       <description>The currently selected theme preset ID. Empty means no theme has been applied.</description>
+    </key>
+    <key name="accent-color-override" type="s">
+      <default>''</default>
+      <summary>Accent Color Override</summary>
+      <description>Custom accent color hex (e.g. '#3584e4'). Empty falls back to the system accent color.</description>
     </key>
   </schema>
 </schemalist>

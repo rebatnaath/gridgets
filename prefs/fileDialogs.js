@@ -1,27 +1,9 @@
-/**
- * ============================================================================
- * PREFERENCES: FILE DIALOGS
- * 
- * GTK FileDialog helpers for selecting image files and folders.
- * ============================================================================
- */
-
 import Gtk from 'gi://Gtk';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 
-/**
- * Helper to open GTK FileDialog for selecting image files.
- */
-export function openImageFileDialog(parentWindow, titleOrCallback, maybeCallback) {
-    let title = 'Select Image';
-    let callback = maybeCallback;
-    if (typeof titleOrCallback === 'function') {
-        callback = titleOrCallback;
-    } else if (typeof titleOrCallback === 'string') {
-        title = titleOrCallback;
-    }
-
-    const fileDialog = new Gtk.FileDialog({ title });
+export function openImageFileDialog(parentWindow, callback) {
+    const fileDialog = new Gtk.FileDialog({ title: 'Select Image' });
     const filter = new Gtk.FileFilter();
     filter.set_name('Images');
     filter.add_mime_type('image/png');
@@ -43,37 +25,30 @@ export function openImageFileDialog(parentWindow, titleOrCallback, maybeCallback
     fileDialog.open(parentWindow, null, (dialog, result) => {
         try {
             const file = dialog.open_finish(result);
-            if (file && typeof callback === 'function') {
-                const path = file.get_path() || (file.get_uri() ? file.get_uri().replace(/^file:\/\//, '') : '');
+            if (file) {
+                let path = file.get_path();
+                if (!path && file.get_uri())
+                    path = GLib.filename_from_uri(file.get_uri())[0];
                 callback(path);
             }
-        } catch (_error) {
-            // Ignore dialog cancellation.
+        } catch (error) {
+            if (!error.matches(Gtk.DialogError, Gtk.DialogError.DISMISSED))
+                console.error('Image file dialog failed:', error);
         }
     });
 }
 
-/**
- * Helper to open GTK FileDialog for selecting folders.
- */
-export function openFolderFileDialog(parentWindow, titleOrCallback, maybeCallback) {
-    let title = 'Select Folder';
-    let callback = maybeCallback;
-    if (typeof titleOrCallback === 'function') {
-        callback = titleOrCallback;
-    } else if (typeof titleOrCallback === 'string') {
-        title = titleOrCallback;
-    }
-
-    const fileDialog = new Gtk.FileDialog({ title });
+export function openFolderFileDialog(parentWindow, callback) {
+    const fileDialog = new Gtk.FileDialog({ title: 'Select Folder' });
     fileDialog.select_folder(parentWindow, null, (dialog, result) => {
         try {
             const folder = dialog.select_folder_finish(result);
-            if (folder && typeof callback === 'function') {
+            if (folder) {
                 callback(folder.get_path());
             }
-        } catch (_error) {
-            // Ignore dialog cancellation.
+        } catch (error) {
+            if (!error.matches(Gtk.DialogError, Gtk.DialogError.DISMISSED))
+                console.error('Folder file dialog failed:', error);
         }
     });
 }

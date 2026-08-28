@@ -99,10 +99,12 @@ export function saveMood(dateString, level) {
 
     if (!monthCache.has(monthKey)) {
         requestMonthLoad(monthKey, `${monthKey}-01`, () => {
-            const month = monthCache.get(monthKey);
+            let month = monthCache.get(monthKey);
             if (!month) {
-                saveMood(dateString, level);
-                return;
+                // Seed the cache so the recursive call takes the direct path
+                // instead of re-queuing a load that will fail again.
+                month = {};
+                monthCache.set(monthKey, month);
             }
             month[dateString] = level;
             saveJsonToFile(monthFilePath(dateString), month);

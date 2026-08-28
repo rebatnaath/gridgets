@@ -5,7 +5,8 @@ import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import Soup from 'gi://Soup?version=3.0';
 import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../utils/widgetUtils.js';
-import { createWidgetContainer, connectTimerCleanup, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
+import { createWidgetContainer, connectTimerCleanup, registerWidgetCleanup, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
+import { isActorDestroyed } from '../utils/actorLifecycle.js';
 
 const QUOTE_ROTATE_INTERVAL_SEC = 30;
 const BORDER_ALPHA = 0.14;
@@ -64,6 +65,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
     function fetchQuotes() {
         const message = Soup.Message.new('GET', QUOTES_URL);
         session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (sourceObject, result) => {
+            if (isActorDestroyed(container)) return;
             try {
                 if (message.get_status() !== 200) {
                     console.error(`Quotes fetch returned status ${message.get_status()}`);
@@ -106,6 +108,15 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
     });
 
     connectTimerCleanup(container, state);
+    registerWidgetCleanup(container, () => {
+        if (state.refreshTimerId) {
+            GLib.Source.remove(state.refreshTimerId);
+            state.refreshTimerId = null;
+        }
+        if (state.cancellable) {
+            state.cancellable.cancel();
+        }
+    });
 
     return container;
 }

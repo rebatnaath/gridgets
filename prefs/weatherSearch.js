@@ -1,85 +1,91 @@
-/**
- * ============================================================================
- * PREFERENCES: WEATHER CITY SEARCH
- * 
- * Asynchronous city search handler for Weather API / Open-Meteo geocoding.
- * ============================================================================
- */
-
 import Adw from 'gi://Adw';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import Soup from 'gi://Soup';
+import Soup from 'gi://Soup?version=3.0';
+import { clearBox } from './displayUtils.js';
 
-let searchSession = null;
+const MAX_RESULT_COUNT = 5;
 
-export function performCitySearch(query, resultsList, addButton, selectCallback) {
-    if (!query || query.length < 2) return;
+let sharedSession = null;
 
-    if (addButton) addButton.set_sensitive(false);
-    let child = resultsList.get_first_child();
-    while (child) {
-        let nextSibling = child.get_next_sibling();
-        resultsList.remove(child);
-        child = nextSibling;
-    }
-    resultsList.set_visible(false);
+function getSession() {
+    if (!sharedSession)
+        sharedSession = new Soup.Session();
+    return sharedSession;
+}
 
-    if (!searchSession) {
-        searchSession = new Soup.Session();
-    }
+// Creates an isolated search controller so concurrent dialogs don't cancel each other.
+export function createOpenMeteoCitySearch() {
+    let requestSequence = 0;
+    let cancellable = null;
 
-    const renderResults = (locationItems) => {
-        if (!locationItems || locationItems.length === 0) {
-            resultsList.append(new Adw.ActionRow({ title: 'No results found.' }));
+    return function performCitySearch(query, resultsList, selectCallback) {
+        if (!query || query.length < 2) return;
+
+        clearBox(resultsList);
+        resultsList.set_visible(false);
+
+        const requestId = ++requestSequence;
+        if (cancellable)
+            cancellable.cancel();
+        cancellable = new Gio.Cancellable();
+
+        const renderResults = (locationItems) => {
+            if (requestId !== requestSequence || cancellable.is_cancelled())
+                return;
+            if (!locationItems || locationItems.length === 0) {
+                resultsList.append(new Adw.ActionRow({ title: 'No results found.' }));
+                resultsList.set_visible(true);
+                return;
+            }
+
+            for (const loc of locationItems.slice(0, MAX_RESULT_COUNT)) {
+                const row = new Adw.ActionRow({
+                    title: loc.name,
+                    subtitle: loc.subtitle || '',
+                    activatable: true
+                });
+
+                row.connect('activated', () => {
+                    selectCallback(loc);
+                    let currentChild = resultsList.get_first_child();
+                    while (currentChild) {
+                        currentChild.remove_css_class('selected');
+                        currentChild = currentChild.get_next_sibling();
+                    }
+                    row.add_css_class('selected');
+                });
+                resultsList.append(row);
+            }
             resultsList.set_visible(true);
-            return;
-        }
+        };
 
-        for (const loc of locationItems.slice(0, 5)) {
-            const row = new Adw.ActionRow({
-                title: loc.name,
-                subtitle: `${loc.subtitle ? loc.subtitle : (loc.region ? loc.region + ', ' : '') + (loc.country || '')}`,
-                activatable: true
-            });
-
-            row.connect('activated', () => {
-                selectCallback(loc.name);
-                if (addButton) addButton.set_sensitive(true);
-                let currentChild = resultsList.get_first_child();
-                while (currentChild) {
-                    currentChild.remove_css_class('selected');
-                    currentChild = currentChild.get_next_sibling();
-                }
-                row.add_css_class('selected');
-            });
-            resultsList.append(row);
-        }
-        resultsList.set_visible(true);
-    };
-
-    const openMeteoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5`;
-    const openMeteoMessage = Soup.Message.new('GET', openMeteoUrl);
-    searchSession.send_and_read_async(openMeteoMessage, GLib.PRIORITY_DEFAULT, null, (session, result) => {
-        try {
-            const bytes = session.send_and_read_finish(result);
-            if (bytes && openMeteoMessage.get_status() === 200) {
-                const byteArray = bytes.get_data();
-                if (byteArray) {
-                    const decoder = new TextDecoder('utf-8');
-                    const openMeteoJson = JSON.parse(decoder.decode(byteArray));
-                    if (openMeteoJson.results && openMeteoJson.results.length > 0) {
-                        const items = openMeteoJson.results.map(item => ({
-                            name: item.name,
-                            subtitle: `${item.admin1 ? item.admin1 + ', ' : ''}${item.country || ''}`
-                        }));
-                        renderResults(items);
-                        return;
+        const geocodeUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=${MAX_RESULT_COUNT}`;
+        const message = Soup.Message.new('GET', geocodeUrl);
+        getSession().send_and_read_async(message, GLib.PRIORITY_DEFAULT, cancellable, (session, result) => {
+            try {
+                const bytes = session.send_and_read_finish(result);
+                if (bytes && message.get_status() === 200) {
+                    const byteArray = bytes.get_data();
+                    if (byteArray) {
+                        const decoder = new TextDecoder('utf-8');
+                        const geocodeJson = JSON.parse(decoder.decode(byteArray));
+                        if (geocodeJson.results && geocodeJson.results.length > 0) {
+                            const items = geocodeJson.results.map(item => ({
+                                name: item.name,
+                                subtitle: `${item.admin1 ? item.admin1 + ', ' : ''}${item.country || ''}`,
+                                latitude: item.latitude,
+                                longitude: item.longitude,
+                            }));
+                            renderResults(items);
+                            return;
+                        }
                     }
                 }
+                renderResults([]);
+            } catch (e) {
+                renderResults([]);
             }
-            renderResults([]);
-        } catch (e) {
-            renderResults([]);
-        }
-    });
+        });
+    };
 }

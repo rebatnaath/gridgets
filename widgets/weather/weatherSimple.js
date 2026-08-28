@@ -1,21 +1,22 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { attachResponsiveScaler } from '../../utils/widgetUIUtils.js';
-import { resolveWidgetFontFamily, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import {
+    resolveWidgetForegroundColor,
+    SECONDARY_OPACITY,
+} from '../../utils/widgetUtils.js';
+import { buildFontCss } from './weatherCommon.js';
 
-/** Reference scaling dimensions */
 const BASE_LAYOUT_WIDTH = 240;
 const BASE_LAYOUT_HEIGHT = 160;
 
-/** Baseline font sizes */
 const BASE_TEMP_FONT_SIZE = 48;
 const BASE_CITY_FONT_SIZE = 16;
 const TEMP_MARGIN_BOTTOM_PX = 4;
 
-/** Builds minimal simple layout structure with centered temperature and city labels. */
 export function buildSimpleLayout(layout, widgetData = null) {
     const uiElements = {};
-    const fontFamily = resolveWidgetFontFamily(widgetData);
+    const fontCss = buildFontCss(widgetData);
     const textColor = resolveWidgetForegroundColor(widgetData);
 
     const simpleBox = new St.BoxLayout({
@@ -28,14 +29,14 @@ export function buildSimpleLayout(layout, widgetData = null) {
 
     uiElements.tempLabel = new St.Label({
         text: '--°',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${BASE_TEMP_FONT_SIZE}px; font-weight: bold; margin-bottom: ${TEMP_MARGIN_BOTTOM_PX}px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${BASE_TEMP_FONT_SIZE}px; font-weight: 300; margin-bottom: ${TEMP_MARGIN_BOTTOM_PX}px;`,
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
     });
 
     uiElements.cityLabel = new St.Label({
         text: (widgetData && widgetData.location) || 'Loading...',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${BASE_CITY_FONT_SIZE}px; font-weight: 500; opacity: 0.9;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${BASE_CITY_FONT_SIZE}px; opacity: ${SECONDARY_OPACITY};`,
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
     });
@@ -47,16 +48,16 @@ export function buildSimpleLayout(layout, widgetData = null) {
     return uiElements;
 }
 
-/** Attaches responsive scaling behavior to simple layout. */
-export function attachSimpleScaler(widgetNode, uiElements) {
+export function attachSimpleScaler(widgetNode, uiElements, widgetData) {
+    const fontCss = buildFontCss(widgetData);
     return attachResponsiveScaler(widgetNode, BASE_LAYOUT_WIDTH, BASE_LAYOUT_HEIGHT, (scale) => {
         if (!uiElements || !uiElements.tempLabel || !uiElements.cityLabel) return;
 
-        const tempSize = Math.max(20, Math.round(BASE_TEMP_FONT_SIZE * scale));
-        const citySize = Math.max(10, Math.round(BASE_CITY_FONT_SIZE * scale));
-        const marginBottom = Math.max(2, Math.round(TEMP_MARGIN_BOTTOM_PX * scale));
+        const tempSize = Math.max(1, Math.round(BASE_TEMP_FONT_SIZE * scale));
+        const citySize = Math.max(1, Math.round(BASE_CITY_FONT_SIZE * scale));
+        const marginBottom = Math.max(1, Math.round(TEMP_MARGIN_BOTTOM_PX * scale));
 
-        uiElements.tempLabel.style = `font-size: ${tempSize}px; font-weight: bold; margin-bottom: ${marginBottom}px; text-align: center; color: inherit;`;
-        uiElements.cityLabel.style = `font-size: ${citySize}px; font-weight: 500; opacity: 0.9; text-align: center; color: inherit;`;
+        uiElements.tempLabel.style = `${fontCss}font-size: ${tempSize}px; font-weight: 300; margin-bottom: ${marginBottom}px; text-align: center; color: inherit;`;
+        uiElements.cityLabel.style = `${fontCss}font-size: ${citySize}px; opacity: ${SECONDARY_OPACITY}; text-align: center; color: inherit;`;
     });
 }

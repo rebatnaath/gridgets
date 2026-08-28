@@ -1,36 +1,40 @@
 # Gridgets — GNOME Shell Widgets
 
-![Gridgets Showcase](assets/github/showcase.gif)
+![Gridgets Showcase](github/showcase.gif)
 
-Gridgets is a GNOME Shell extension that places widgets directly on your desktop using a responsive grid layout. Add clocks, system monitors, weather forecasts, sticky notes, media controls, animated images, and custom command outputs, then move, resize, and style each widget independently to match your setup.
+Gridgets is a GNOME Shell extension that places widgets directly on your desktop using a responsive grid layout. Add clocks, system monitors, weather forecasts, sticky notes, media controls, animated images, and more, then move, resize, and style each widget independently to match your setup.
 
 ## User Guide
 
-For a detailed walkthrough of all widgets, customization options, and desktop interactions, see the [User Guide](assets/github/user-guide/README.md).
+For a detailed walkthrough of all widgets, customization options, and desktop interactions, see the [User Guide](github/user-guide/README.md).
 
 ## Features
 
-- **Grid Alignment:** Snap widgets cleanly to a responsive desktop grid.
-- **Built-in Widgets:** Time & Date, Weather, Pomodoro, Media Player, CPU/RAM, Network Speed, Image/GIF Slideshows, and Custom Bash Scripts.
-- **Individual Styling:** Customize colors, fonts, border radii, and border widths for every widget.
-- **Resource Efficient:** Uses a single background polling loop to keep CPU and battery usage minimal.
+- **Grid Alignment:** Snap widgets cleanly to a responsive 50-column desktop grid.
+- **24+ Built-in Widgets:** Weather, Time, Calendar, Music, System Monitor, Notes, Clipboard, Pomodoro, Tasks, GitHub, RSS, Mood, Images, and more.
+- **Individual Styling:** Customize colors, fonts, border radii, and sizes for every widget.
+- **Size Presets:** Quick S/M/L sizing from the right-click context menu.
+- **Drag & Resize:** Move widgets by dragging, resize with the corner handle.
+- **Multi-Monitor:** Show widgets on primary, all, or each monitor independently.
+- **Follow System Theme:** Automatically switch between light and dark mode.
 
 ## Screenshots
 
 | Grid Layout | Widget Preferences |
 |-------------|--------------------|
-| ![Desktop Grid](assets/github/desktop.png) | ![Preferences UI](assets/github/screenshot.png) |
+| ![Desktop Grid](github/desktop.png) | ![Preferences UI](github/screenshot.png) |
 
 ## Installation
 
-### Option A: From GitHub Releases (Easiest)
+> **Note:** The [Releases](https://github.com/rebatnaath/gridgets/releases) page currently contains an old build. For the latest version, build from source using Option B or C below.
 
-1. Download the latest release `.zip` file (`gridgets@rebatnaath.github.com.shell-extension.zip`) from the [Releases](https://github.com/rebatnaath/gridgets/releases) page.
-2. Install it using the `gnome-extensions` CLI command:
+### Option A: From GitHub Releases
+
+1. Download the latest `.zip` file from the [Releases](https://github.com/rebatnaath/gridgets/releases) page.
+2. Install it:
    ```bash
    gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
    ```
-   *(The `--force` flag automatically overwrites any existing installation.)*
 3. Restart GNOME Shell:
    * **Wayland:** Log out and log back in.
    * **X11:** Press `Alt` + `F2`, type `r`, and press `Enter`.
@@ -43,56 +47,49 @@ For a detailed walkthrough of all widgets, customization options, and desktop in
 
 ### Option B: Manual Directory Copy (From Source)
 
-If you cloned or downloaded the raw repository source:
-
-1. Remove any previous installation directory to prevent leftover file conflicts:
+1. Remove any previous installation:
    ```bash
    rm -rf ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    ```
-2. Copy the extension files into your GNOME extensions directory:
+2. Copy the extension files:
    ```bash
    mkdir -p ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    cp -r . ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    ```
-3. Restart GNOME Shell: log out and log back in (Wayland), or press `Alt` + `F2`, type `r`, and press `Enter` (X11).
-4. Enable the extension:
+3. Restart GNOME Shell (log out/in on Wayland, or `Alt+F2` → `r` on X11).
+4. Enable:
    ```bash
    gnome-extensions enable gridgets@rebatnaath.github.com
    ```
 
 ---
 
-### Option C: Build and Install Zip Package
+### Option C: Build Zip Package
 
-1. Package the extension inside the project directory:
+1. From the project directory:
    ```bash
    gnome-extensions pack \
-   --extra-source=assets/close.svg \
-   --extra-source=assets/resize.svg \
-   --extra-source=assets/thumbnails \
-   --extra-source=assets/weather \
-   --extra-source=desktopGrid.js \
-   --extra-source=prefs \
-   --extra-source=schemas \
-   --extra-source=utils \
-   --extra-source=widgets \
-   --extra-source=extension.js \
-   --extra-source=prefs.js \
-   --extra-source=metadata.json \
-   --force
+     --extra-source=assets/thumbnails \
+     --extra-source=assets/weather \
+     --extra-source=shell \
+     --extra-source=schemas \
+     --extra-source=utils \
+     --extra-source=widgets \
+     --extra-source=prefs \
+     --force
    ```
-2. Install the zip file (automatically overwriting previous versions):
+2. Install:
    ```bash
    gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
    ```
-3. Restart GNOME Shell and enable:
+3. Restart and enable:
    ```bash
    gnome-extensions enable gridgets@rebatnaath.github.com
    ```
 
 ## Configuration
 
-Open the **Extensions** (or Extension Manager) app and click the gear icon next to Gridgets to configure your grid settings and customize your widgets.
+Open the **Extensions** app (or Extension Manager) and click the gear icon next to Gridgets to configure your grid settings and customize your widgets.
 
 ## Compatibility
 
@@ -100,7 +97,7 @@ Supported GNOME Shell versions: `45`, `46`, `47`, `48`, `49`, `50`.
 
 ## Contributing
 
-Contributions are welcome. Please read the [Contributing Guide](CONTRIBUTING.md) before opening an issue or pull request. It covers how to report issues and request features, plus the coding conventions, validation, and review process.
+Contributions are welcome. Please read the [Contributing Guide](CONTRIBUTING.md) before opening an issue or pull request.
 
 ## License
 
@@ -112,5 +109,3 @@ Thanks to these projects for providing assets used in this extension:
 
 * [SVG Repo](https://www.svgrepo.com/) for vector icons.
 * [Meteocons by basmilius](https://github.com/basmilius/meteocons) for the weather icons.
-
-

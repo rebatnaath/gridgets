@@ -1,264 +1,245 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveWidgetFontFamily } from '../../utils/widgetUtils.js';
-import { createWidgetContainer } from '../../utils/widgetUIUtils.js';
+import {
+    resolveWidgetForegroundColor,
+    resolveExplicitFontFamily,
+    parseCssColor,
+    cssColorToRgba,
+    CAIRO_OPERATOR_CLEAR,
+    CAIRO_OPERATOR_OVER,
+    isDarkBackgroundColor,
+    resolveWidgetBackgroundColor,
+} from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
 import { cpuRamEngine, networkEngine } from '../../utils/systemMonitorEngine.js';
 import { formatBytesPerSecond } from './network.js';
 
-const CYAN_ACCENT_COLOR = '#00d2ff';
-const ORANGE_ACCENT_COLOR = '#f97316';
 const PERCENTAGE_FACTOR = 100;
-const BASE_CONTAINER_WIDTH_PX = 260;
-const BASE_CONTAINER_HEIGHT_PX = 240;
-const BASE_TITLE_FONT_SIZE_PX = 13;
-const BASE_SUBTEXT_FONT_SIZE_PX = 11;
-const BASE_VALUE_FONT_SIZE_PX = 14;
-const BASE_ICON_SIZE_PX = 16;
-const BASE_CARD_PADDING_PX = 10;
-const BASE_PROGRESS_BAR_HEIGHT_PX = 8;
-export function createSystemDashboardNode(config, width, height, xPosition, yPosition) {
-    const fontFamily = resolveWidgetFontFamily(config);
-    const textColor = resolveWidgetForegroundColor(config);
-    const container = createWidgetContainer(config, width, height, xPosition, yPosition);
+const CHART_MAX_SAMPLES = 90;
+const CHART_LINE_WIDTH = 2;
+const CHART_FILL_ALPHA = 0.16;
+const CHART_PAD = 4;
+const LABEL_OPACITY = 0.65;
+const BASE_CONTAINER_WIDTH_PX = 240;
+const BASE_CONTAINER_HEIGHT_PX = 260;
+const BASE_CARD_PADDING_PX = 14;
+const BASE_CARD_RADIUS_PX = 16;
+const BASE_CARD_GAP_PX = 12;
+const BASE_TITLE_FONT_SIZE_PX = 16;
+const BASE_BADGE_FONT_SIZE_PX = 15;
+const BASE_NET_LABEL_FONT_SIZE_PX = 16;
+const BASE_NET_VALUE_FONT_SIZE_PX = 26;
+const BASE_NET_UNIT_FONT_SIZE_PX = 16;
+const BORDER_ALPHA = 0.14;
+const CARD_BG_DARK_ALPHA = 0.05;
+const CARD_BG_LIGHT_ALPHA = 0.04;
+const CARD_BORDER_DARK_ALPHA = 0.06;
+const CARD_BORDER_LIGHT_ALPHA = 0.10;
 
-    const scale = Math.max(0.5, Math.min(width / BASE_CONTAINER_WIDTH_PX, height / BASE_CONTAINER_HEIGHT_PX));
-    const titleFontSize = Math.max(9, Math.round(BASE_TITLE_FONT_SIZE_PX * scale));
-    const subtextFontSize = Math.max(8, Math.round(BASE_SUBTEXT_FONT_SIZE_PX * scale));
-    const valueFontSize = Math.max(10, Math.round(BASE_VALUE_FONT_SIZE_PX * scale));
-    const iconSize = Math.max(12, Math.round(BASE_ICON_SIZE_PX * scale));
-    const cardPadding = Math.max(6, Math.round(BASE_CARD_PADDING_PX * scale));
-    const progressBarHeight = Math.max(6, Math.round(BASE_PROGRESS_BAR_HEIGHT_PX * scale));
+function drawTrendChart(ctx, w, h, samples, accentHex) {
+    if (w === 0 || h === 0) return;
+
+    ctx.setOperator(CAIRO_OPERATOR_CLEAR);
+    ctx.paint();
+    ctx.setOperator(CAIRO_OPERATOR_OVER);
+
+    if (samples.length < 2) return;
+
+    const innerW = w - (CHART_PAD * 2);
+    const innerH = h - (CHART_PAD * 2);
+
+    const pointAt = (index) => {
+        const ratio = index / (samples.length - 1);
+        const value = Math.max(0, Math.min(1, samples[index]));
+        return [
+            CHART_PAD + ratio * innerW,
+            CHART_PAD + (1 - value) * innerH,
+        ];
+    };
+
+    const { r, g, b } = parseCssColor(accentHex);
+
+    ctx.setLineWidth(CHART_LINE_WIDTH);
+    ctx.setSourceRGBA(r, g, b, 1);
+    ctx.newPath();
+    const [startX, startY] = pointAt(0);
+    ctx.moveTo(startX, startY);
+    for (let i = 1; i < samples.length; i++) {
+        const [x, y] = pointAt(i);
+        ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.lineTo(w - CHART_PAD, CHART_PAD + innerH);
+    ctx.lineTo(CHART_PAD, CHART_PAD + innerH);
+    ctx.closePath();
+    ctx.setSourceRGBA(r, g, b, CHART_FILL_ALPHA);
+    ctx.fill();
+}
+
+function createValueUnitRow(fontCss, textColor, valueFontSize, unitFontSize) {
+    const row = new St.BoxLayout({
+        orientation: Clutter.Orientation.HORIZONTAL,
+        x_align: Clutter.ActorAlign.START,
+    });
+    const valueLabel = new St.Label({
+        text: '--',
+        style: `${fontCss}color: ${textColor}; font-size: ${valueFontSize}px; font-weight: 300;`,
+    });
+    const unitLabel = new St.Label({
+        text: '',
+        style: `${fontCss}color: ${textColor}; font-size: ${unitFontSize}px; opacity: ${LABEL_OPACITY};`,
+    });
+    row.add_child(valueLabel);
+    row.add_child(unitLabel);
+    return { row, valueLabel, unitLabel };
+}
+
+export function createSystemDashboardNode(config, width, height, xPosition, yPosition) {
+    const fontFamily = resolveExplicitFontFamily(config);
+    const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
+    const textColor = resolveWidgetForegroundColor(config);
+    const accentHex = config.globalAccentColor || '#3584e4';
+    const container = createWidgetContainer(config, width, height, xPosition, yPosition);
+    container.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
+
+    const scale = Math.min(width / BASE_CONTAINER_WIDTH_PX, height / BASE_CONTAINER_HEIGHT_PX);
+    const cardPadding = Math.round(BASE_CARD_PADDING_PX * scale);
+    const cardRadius = Math.round(BASE_CARD_RADIUS_PX * scale);
+    const cardGap = Math.round(BASE_CARD_GAP_PX * scale);
+    const titleFontSize = Math.round(BASE_TITLE_FONT_SIZE_PX * scale);
+    const badgeFontSize = Math.round(BASE_BADGE_FONT_SIZE_PX * scale);
+    const netLabelFontSize = Math.round(BASE_NET_LABEL_FONT_SIZE_PX * scale);
+    const netValueFontSize = Math.round(BASE_NET_VALUE_FONT_SIZE_PX * scale);
+    const netUnitFontSize = Math.round(BASE_NET_UNIT_FONT_SIZE_PX * scale);
+    const isDarkSurface = isDarkBackgroundColor(resolveWidgetBackgroundColor(config));
+    const cardBg = cssColorToRgba(textColor, isDarkSurface ? CARD_BG_DARK_ALPHA : CARD_BG_LIGHT_ALPHA);
+    const cardBorderAlpha = isDarkSurface ? CARD_BORDER_DARK_ALPHA : CARD_BORDER_LIGHT_ALPHA;
+    const cardStyle = `background-color: ${cardBg}; border: 1px solid ${cssColorToRgba(textColor, cardBorderAlpha)}; border-radius: ${cardRadius}px; padding: ${cardPadding}px;`;
+
+    const createChartArea = () => new St.DrawingArea({
+        x_expand: true,
+        y_expand: true,
+        x_align: Clutter.ActorAlign.FILL,
+        y_align: Clutter.ActorAlign.FILL,
+    });
+
+    const createBadge = () => new St.Label({
+        text: '',
+        style: `${fontCss}color: ${textColor}; font-size: ${badgeFontSize}px; background-color: ${cssColorToRgba(textColor, 0.08)}; border-radius: 999px; padding: 2px 10px;`,
+        y_align: Clutter.ActorAlign.CENTER,
+    });
+
+    const createCardHeader = (titleText, badge) => {
+        const header = new St.BoxLayout({
+            orientation: Clutter.Orientation.HORIZONTAL,
+            x_expand: true,
+            style: `margin-bottom: ${Math.round(8 * scale)}px;`,
+        });
+        const titleLabel = new St.Label({
+            text: titleText,
+            style: `${fontCss}color: ${textColor}; font-size: ${titleFontSize}px; opacity: ${LABEL_OPACITY};`,
+            y_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
+        });
+        header.add_child(titleLabel);
+        if (badge) {
+            header.add_child(badge);
+        }
+        return { header, titleLabel };
+    };
 
     const contentBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
-        style: `padding: ${cardPadding}px;`,
+        style: `padding: ${Math.round(10 * scale)}px; spacing: ${Math.round(10 * scale)}px;`,
     });
 
-    const cpuCardBox = new St.BoxLayout({
+    const processorCard = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
-        y_align: Clutter.ActorAlign.FILL,
-        style: `background-color: rgba(255, 255, 255, 0.07); border-radius: ${Math.round(10 * scale)}px; padding: ${Math.round(10 * scale)}px; margin-bottom: ${Math.round(8 * scale)}px;`,
+        style: cardStyle,
     });
 
-    const cpuHeaderRow = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
-        x_expand: true,
-        style: `margin-bottom: ${Math.round(4 * scale)}px;`,
-    });
+    const processorBadge = createBadge();
+    processorCard.add_child(createCardHeader('Processor', processorBadge).header);
+    const cpuChartArea = createChartArea();
+    processorCard.add_child(cpuChartArea);
 
-    const cpuTitleBox = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
-        x_align: Clutter.ActorAlign.START,
-        x_expand: true,
-    });
-
-    const cpuIcon = new St.Icon({
-        icon_name: 'processor-symbolic',
-        icon_size: iconSize,
-        style: `color: ${textColor}; margin-right: ${Math.round(6 * scale)}px;`,
-    });
-
-    const cpuTitleLabel = new St.Label({
-        text: 'CPU: -- GHz',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${titleFontSize}px; font-weight: bold;`,
-        y_align: Clutter.ActorAlign.CENTER,
-    });
-
-    cpuTitleBox.add_child(cpuIcon);
-    cpuTitleBox.add_child(cpuTitleLabel);
-
-    const cpuTempLabel = new St.Label({
-        text: '--°C',
-        style: `font-family: ${fontFamily}; color: ${CYAN_ACCENT_COLOR}; font-size: ${titleFontSize}px; font-weight: bold;`,
-        x_align: Clutter.ActorAlign.END,
-        y_align: Clutter.ActorAlign.CENTER,
-    });
-
-    cpuHeaderRow.add_child(cpuTitleBox);
-    cpuHeaderRow.add_child(cpuTempLabel);
-
-    const cpuSubRow = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
-        x_expand: true,
-    });
-
-    const cpuUtilLabel = new St.Label({
-        text: 'Utilization: --%',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${subtextFontSize}px; opacity: 0.8;`,
-        x_align: Clutter.ActorAlign.START,
-        x_expand: true,
-    });
-
-    const cpuTasksLabel = new St.Label({
-        text: '-- Tasks',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${subtextFontSize}px; opacity: 0.8;`,
-        x_align: Clutter.ActorAlign.END,
-    });
-
-    cpuSubRow.add_child(cpuUtilLabel);
-    cpuSubRow.add_child(cpuTasksLabel);
-
-    cpuCardBox.add_child(cpuHeaderRow);
-    cpuCardBox.add_child(cpuSubRow);
-
-    const networkCardBox = new St.BoxLayout({
+    const networkCard = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
-        y_expand: true,
-        y_align: Clutter.ActorAlign.FILL,
-        style: `background-color: rgba(255, 255, 255, 0.05); border-radius: ${Math.round(10 * scale)}px; padding: ${Math.round(10 * scale)}px; margin-bottom: ${Math.round(8 * scale)}px;`,
+        style: cardStyle,
     });
 
-    function createNetworkRow(iconName, iconColor, labelText) {
-        const rowBox = new St.BoxLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
+    const networkGrid = new St.BoxLayout({
+        orientation: Clutter.Orientation.HORIZONTAL,
+        x_expand: true,
+        style: `spacing: ${cardGap * 2}px;`,
+    });
+
+    const createNetworkStat = (labelText) => {
+        const stat = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
-            style: `margin-bottom: ${Math.round(4 * scale)}px;`,
+            style: `spacing: ${Math.round(4 * scale)}px;`,
         });
-
-        const leftBox = new St.BoxLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
-            x_align: Clutter.ActorAlign.START,
-            x_expand: true,
-        });
-
-        const icon = new St.Icon({
-            icon_name: iconName,
-            icon_size: iconSize,
-            style: `color: ${iconColor}; margin-right: ${Math.round(6 * scale)}px;`,
-        });
-
         const label = new St.Label({
             text: labelText,
-            style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${subtextFontSize}px; opacity: 0.8;`,
-            y_align: Clutter.ActorAlign.CENTER,
+            style: `${fontCss}color: ${textColor}; font-size: ${netLabelFontSize}px; opacity: ${LABEL_OPACITY};`,
         });
-
-        leftBox.add_child(icon);
-        leftBox.add_child(label);
-
-        const valueLabel = new St.Label({
-            text: '0 B/s',
-            style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${valueFontSize}px; font-weight: bold;`,
-            x_align: Clutter.ActorAlign.END,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-
-        rowBox.add_child(leftBox);
-        rowBox.add_child(valueLabel);
-
-        return { rowBox, valueLabel };
-    }
-
-    const downloadRow = createNetworkRow('go-down-symbolic', CYAN_ACCENT_COLOR, 'Download');
-    const uploadRow = createNetworkRow('go-up-symbolic', ORANGE_ACCENT_COLOR, 'Upload');
-
-    networkCardBox.add_child(downloadRow.rowBox);
-    networkCardBox.add_child(uploadRow.rowBox);
-
-    const ramCardBox = new St.BoxLayout({
-        orientation: Clutter.Orientation.VERTICAL,
-        x_expand: true,
-        y_expand: true,
-        y_align: Clutter.ActorAlign.FILL,
-        style: `background-color: rgba(255, 255, 255, 0.07); border-radius: ${Math.round(10 * scale)}px; padding: ${Math.round(10 * scale)}px;`,
-    });
-
-    const ramHeaderRow = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
-        x_expand: true,
-        style: `margin-bottom: ${Math.round(6 * scale)}px;`,
-    });
-
-    const ramTitleBox = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
-        x_align: Clutter.ActorAlign.START,
-        x_expand: true,
-    });
-
-    const ramIcon = new St.Icon({
-        icon_name: 'resources-symbolic',
-        icon_size: iconSize,
-        style: `color: ${textColor}; margin-right: ${Math.round(6 * scale)}px;`,
-    });
-
-    const ramTitleLabel = new St.Label({
-        text: 'Memory',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${titleFontSize}px; font-weight: bold;`,
-        y_align: Clutter.ActorAlign.CENTER,
-    });
-
-    ramTitleBox.add_child(ramIcon);
-    ramTitleBox.add_child(ramTitleLabel);
-
-    const ramPercentLabel = new St.Label({
-        text: '--%',
-        style: `font-family: ${fontFamily}; color: ${CYAN_ACCENT_COLOR}; font-size: ${titleFontSize}px; font-weight: bold;`,
-        x_align: Clutter.ActorAlign.END,
-        y_align: Clutter.ActorAlign.CENTER,
-    });
-
-    ramHeaderRow.add_child(ramTitleBox);
-    ramHeaderRow.add_child(ramPercentLabel);
-
-    const ramTrackBox = new St.Widget({
-        style: `background-color: rgba(255, 255, 255, 0.15); border-radius: ${Math.round(progressBarHeight / 2)}px; height: ${progressBarHeight}px; min-height: ${progressBarHeight}px; width: 100%;`,
-        x_expand: true,
-    });
-
-    const ramFillBox = new St.Widget({
-        style: `background-color: ${CYAN_ACCENT_COLOR}; border-radius: ${Math.round(progressBarHeight / 2)}px; height: ${progressBarHeight}px; min-height: ${progressBarHeight}px; width: 10px;`,
-    });
-
-    ramTrackBox.add_child(ramFillBox);
-
-    let lastRamProgressRatio = 0.5;
-
-    const updateRamProgressBarWidth = (progressRatio) => {
-        lastRamProgressRatio = progressRatio;
-        const trackWidth = ramTrackBox.get_width() || Math.max(100, Math.round(width - cardPadding * 4));
-        const fillWidth = Math.max(progressBarHeight, Math.round(trackWidth * Math.max(0.02, Math.min(1.0, progressRatio))));
-        ramFillBox.set_width(fillWidth);
+        const valueRow = createValueUnitRow(fontCss, textColor, netValueFontSize, netUnitFontSize);
+        stat.add_child(label);
+        stat.add_child(valueRow.row);
+        return { stat, valueLabel: valueRow.valueLabel, unitLabel: valueRow.unitLabel };
     };
 
-    ramCardBox.add_child(ramHeaderRow);
-    ramCardBox.add_child(ramTrackBox);
+    const downloadStat = createNetworkStat('Download');
+    const uploadStat = createNetworkStat('Upload');
 
-    contentBox.add_child(cpuCardBox);
-    contentBox.add_child(networkCardBox);
-    contentBox.add_child(ramCardBox);
+    networkGrid.add_child(downloadStat.stat);
+    networkGrid.add_child(uploadStat.stat);
+    networkCard.add_child(networkGrid);
+
+    contentBox.add_child(processorCard);
+    contentBox.add_child(networkCard);
     container.add_child(contentBox);
 
+    let cpuSamples = [];
+
+    cpuChartArea.connect('repaint', (area) => {
+        const ctx = area.get_context();
+        const [w, h] = area.get_surface_size();
+        drawTrendChart(ctx, w, h, cpuSamples, accentHex);
+        ctx.$dispose();
+    });
+
     const onCpuRamUpdate = (data) => {
-        const cpuPercent = Math.round(data.cpuProgress * PERCENTAGE_FACTOR);
-        const ramPercent = Math.round(data.ramProgress * PERCENTAGE_FACTOR);
-
-        cpuTitleLabel.set_text(`CPU: ${data.cpuFreqGhz} GHz`);
-        cpuTempLabel.set_text(`${data.cpuTempC}°C`);
-        cpuUtilLabel.set_text(`Utilization: ${cpuPercent}%`);
-        cpuTasksLabel.set_text(`${data.taskCount} Tasks`);
-        ramPercentLabel.set_text(`${ramPercent}%`);
-
-        updateRamProgressBarWidth(data.ramProgress);
+        cpuSamples.push(data.cpuProgress);
+        if (cpuSamples.length > CHART_MAX_SAMPLES) {
+            cpuSamples.shift();
+        }
+        processorBadge.set_text(`${Math.round(data.cpuProgress * PERCENTAGE_FACTOR)}%`);
+        cpuChartArea.queue_repaint();
     };
 
     const onNetworkUpdate = (data) => {
-        downloadRow.valueLabel.set_text(formatBytesPerSecond(data.downloadSpeed));
-        uploadRow.valueLabel.set_text(formatBytesPerSecond(data.uploadSpeed));
+        const setNetworkValue = (valueLabel, unitLabel, bytesPerSec) => {
+            const [value, unit] = formatBytesPerSecond(bytesPerSec).split(' ');
+            valueLabel.set_text(value);
+            unitLabel.set_text(` ${unit}`);
+        };
+        setNetworkValue(downloadStat.valueLabel, downloadStat.unitLabel, data.downloadSpeed);
+        setNetworkValue(uploadStat.valueLabel, uploadStat.unitLabel, data.uploadSpeed);
     };
 
-    container.connect('notify::width', () => updateRamProgressBarWidth(lastRamProgressRatio));
+    const releaseCpuRam = cpuRamEngine.subscribe(onCpuRamUpdate);
+    const releaseNetwork = networkEngine.subscribe(onNetworkUpdate);
 
-    cpuRamEngine.subscribe(onCpuRamUpdate);
-    networkEngine.subscribe(onNetworkUpdate);
-
-    container.connect('destroy', () => {
-        cpuRamEngine.unsubscribe(onCpuRamUpdate);
-        networkEngine.unsubscribe(onNetworkUpdate);
+    registerWidgetCleanup(container, () => {
+        releaseCpuRam();
+        releaseNetwork();
     });
 
     return container;

@@ -1,17 +1,22 @@
 import St from 'gi://St';
 import Cogl from 'gi://Cogl';
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import { buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
-import { connectTimerCleanup } from '../../utils/widgetUIUtils.js';
-import { ASPECT_RATIO_TOLERANCE, GIF_FRAME_INTERVAL_MS, applyCornerMask, attachCaptionOverlay } from './mediaCommon.js';
+import { WidgetActor, connectTimerCleanup, scheduleDeferredUpdate } from '../../shell/widgetUIUtils.js';
+import { ASPECT_RATIO_TOLERANCE, GIF_FRAME_INTERVAL_MS, applyCornerMask, attachCaptionOverlay, setImageContentBytes } from './mediaCommon.js';
+import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
+
+const RESIZE_REPAINT_THROTTLE_MS = 16;
+
+const MAX_CONSECUTIVE_FRAME_FAILURES = 10;
 
 export function createAnimatedImageNode(widgetData, width, height, xPosition, yPosition, animateGif = true) {
     const borderRadius = widgetData.appliedBorderRadius || 0;
-    const borderWidth = widgetData.appliedBorderWidth || 0;
     const baseStyle = buildBaseWidgetStyle(widgetData);
 
-    const widgetNode = new St.Widget({
+    const widgetNode = new WidgetActor({
         style: `background-color: transparent; ${baseStyle}`,
         x: xPosition,
         y: yPosition,
@@ -21,35 +26,38 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
     });
 
     widgetNode.set_clip_to_allocation(true);
+    watchActorLifecycle(widgetNode);
     const state = {
         timerId: null,
     };
 
-    try {
-        const animation = GdkPixbuf.PixbufAnimation.new_from_file(widgetData.imagePath);
+    const applyStaticFallback = () => {
+        widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
+    };
+
+    const startAnimation = (animation) => {
         if (animation.is_static_image()) {
-            widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
-            return widgetNode;
+            applyStaticFallback();
+            return;
         }
 
         const iter = animation.get_iter(null);
         const imageActor = new St.Widget();
-        widgetNode.add_child(imageActor);
+        // The caption overlay is attached before the async load finishes;
+        // keep frames below it so the caption is never covered.
+        widgetNode.insert_child_at_index(imageActor, 0);
 
         const updateImage = (pixbuf) => {
-            if (widgetNode.isDestroyed || !pixbuf) return;
+            if (isActorDestroyed(widgetNode) || !pixbuf) return;
             let renderPixbuf = pixbuf;
-            const bw = borderWidth;
             const containerWidth = widgetNode.width;
             const containerHeight = widgetNode.height;
-            const innerWidth = Math.max(0, containerWidth - bw * 2);
-            const innerHeight = Math.max(0, containerHeight - bw * 2);
 
-            if (innerWidth > 0 && innerHeight > 0) {
+            if (containerWidth > 0 && containerHeight > 0) {
                 const imageWidth = pixbuf.get_width();
                 const imageHeight = pixbuf.get_height();
                 const imageAspect = imageWidth / imageHeight;
-                const containerAspect = innerWidth / innerHeight;
+                const containerAspect = containerWidth / containerHeight;
 
                 if (Math.abs(imageAspect - containerAspect) > ASPECT_RATIO_TOLERANCE) {
                     let cropWidth, cropHeight, cropX, cropY;
@@ -70,8 +78,8 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
                     }
                 }
 
-                imageActor.set_size(innerWidth, innerHeight);
-                imageActor.set_position(bw, bw);
+                imageActor.set_size(containerWidth, containerHeight);
+                imageActor.set_position(0, 0);
             }
 
             if (!renderPixbuf.get_has_alpha()) {
@@ -82,9 +90,9 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
             const pixels = renderPixbuf.get_pixels();
 
             let textureRadius = 0;
-            if (innerWidth > 0) {
-                const scaleX = renderPixbuf.get_width() / innerWidth;
-                textureRadius = Math.max(0, Math.round((borderRadius - bw) * scaleX));
+            if (containerWidth > 0) {
+                const scaleX = renderPixbuf.get_width() / containerWidth;
+                textureRadius = Math.max(0, Math.round(borderRadius * scaleX));
             }
 
             if (textureRadius > 0) {
@@ -97,17 +105,7 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
             });
             const bytes = pixels instanceof GLib.Bytes ? pixels : new GLib.Bytes(pixels);
 
-            try {
-                const coglContext = global.stage.context.get_backend().get_cogl_context();
-                frameImage.set_bytes(coglContext, bytes, format, renderPixbuf.get_width(), renderPixbuf.get_height(), renderPixbuf.get_rowstride());
-            } catch (e) {
-                try {
-                    frameImage.set_bytes(bytes, format, renderPixbuf.get_width(), renderPixbuf.get_height(), renderPixbuf.get_rowstride());
-                } catch (e2) {
-                    console.error(`Failed to set GIF frame data: ${e2.message}`);
-                    return;
-                }
-            }
+            setImageContentBytes(frameImage, bytes, format, renderPixbuf.get_width(), renderPixbuf.get_height(), renderPixbuf.get_rowstride());
 
             imageActor.set_content(frameImage);
         };
@@ -115,22 +113,30 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
         updateImage(iter.get_pixbuf());
 
         if (animateGif) {
+            let consecutiveFailures = 0;
+            let lastErrorMessage = '';
             const scheduleNextFrame = (delayMs) => {
                 const validDelay = Math.max(10, Math.floor(delayMs && delayMs > 0 ? delayMs : GIF_FRAME_INTERVAL_MS));
                 state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, validDelay, () => {
                     state.timerId = null;
-                    if (widgetNode.isDestroyed) return GLib.SOURCE_REMOVE;
+                    if (isActorDestroyed(widgetNode)) return GLib.SOURCE_REMOVE;
 
+                    let nextDelay = GIF_FRAME_INTERVAL_MS;
                     try {
-                        if (iter.advance(null)) {
+                        if (iter.advance(null))
                             updateImage(iter.get_pixbuf());
-                        }
+                        consecutiveFailures = 0;
                         const rawDelay = iter.get_delay_time();
-                        const nextDelay = (rawDelay && rawDelay > 0) ? Math.floor(rawDelay) : GIF_FRAME_INTERVAL_MS;
-                        scheduleNextFrame(nextDelay);
+                        if (rawDelay && rawDelay > 0) nextDelay = Math.floor(rawDelay);
                     } catch (err) {
-                        console.error(`GIF loop error: ${err.message}`);
+                        consecutiveFailures += 1;
+                        lastErrorMessage = err.message;
+                        if (consecutiveFailures >= MAX_CONSECUTIVE_FRAME_FAILURES) {
+                            console.error(`GIF animation stopped after ${consecutiveFailures} consecutive frame failures; last error: ${lastErrorMessage}`);
+                            return GLib.SOURCE_REMOVE;
+                        }
                     }
+                    scheduleNextFrame(nextDelay);
                     return GLib.SOURCE_REMOVE;
                 });
             };
@@ -141,23 +147,49 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
         }
 
         widgetNode.connect('notify::width', () => {
-            if (!widgetNode.isDestroyed) updateImage(iter.get_pixbuf());
+            if (!isActorDestroyed(widgetNode))
+                scheduleDeferredUpdate(state, RESIZE_REPAINT_THROTTLE_MS, () => updateImage(iter.get_pixbuf()));
         });
         widgetNode.connect('notify::height', () => {
-            if (!widgetNode.isDestroyed) updateImage(iter.get_pixbuf());
+            if (!isActorDestroyed(widgetNode))
+                scheduleDeferredUpdate(state, RESIZE_REPAINT_THROTTLE_MS, () => updateImage(iter.get_pixbuf()));
         });
 
         connectTimerCleanup(widgetNode, state);
+    };
 
-    } catch (e) {
-        console.error('Failed to load GIF animation:', e);
-        widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
-    }
+    const imagePath = widgetData.imagePath;
+    (async () => {
+        const file = Gio.File.new_for_path(imagePath);
+        const stream = await new Promise((resolve, reject) => {
+            file.read_async(GLib.PRIORITY_DEFAULT, null, (_source, result) => {
+                try {
+                    resolve(file.read_finish(result));
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        });
+        const animation = await new Promise((resolve, reject) => {
+            GdkPixbuf.PixbufAnimation.new_from_stream_async(stream, null, (_source, result) => {
+                try {
+                    resolve(GdkPixbuf.PixbufAnimation.new_from_stream_finish(result));
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }).catch((error) => {
+            stream.close_async(GLib.PRIORITY_DEFAULT, null, null);
+            throw error;
+        });
+        stream.close_async(GLib.PRIORITY_DEFAULT, null, null);
+        if (!isActorDestroyed(widgetNode)) startAnimation(animation);
+    })().catch((e) => {
+        console.error(`Failed to load GIF animation: ${e.message}`);
+        if (!isActorDestroyed(widgetNode)) applyStaticFallback();
+    });
 
     attachCaptionOverlay(widgetNode, widgetData, width, height, true);
     return widgetNode;
 }
 
-export function createAnimatedGifNode(widgetData, width, height, xPosition, yPosition, animateGif = true) {
-    return createAnimatedImageNode(widgetData, width, height, xPosition, yPosition, animateGif);
-}

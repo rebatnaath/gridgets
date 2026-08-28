@@ -1,32 +1,12 @@
-/**
- * ============================================================================
- * PREFERENCES: GLOBAL SETTINGS PAGE
- * 
- * Defines global extension settings including multi-monitor options, image/GIF
- * behavior, weather configurations, and time formats.
- * ============================================================================
- */
-
-import Gdk from 'gi://Gdk';
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
 import { createSwitchRow } from './aestheticControls.js';
-import { performCitySearch } from './weatherSearch.js';
+import { createOpenMeteoCitySearch } from './weatherSearch.js';
 import { getWidgets, saveWidgets } from '../utils/widgetUtils.js';
-
-export function getConnectedMonitorsCount() {
-    try {
-        const display = Gdk.Display.get_default();
-        if (display) {
-            return display.get_monitors().get_n_items();
-        }
-    } catch (e) {
-        console.error('Error fetching connected monitors:', e);
-    }
-    return 1;
-}
+import { clearBox, getConnectedMonitorsCount, buildMonitorEntries } from './displayUtils.js';
 
 export function buildGlobalSettingsPage(settings) {
+    const performCitySearch = createOpenMeteoCitySearch();
     const page = new Adw.PreferencesPage({
         title: 'Global Settings',
         icon_name: 'preferences-system-symbolic',
@@ -34,7 +14,6 @@ export function buildGlobalSettingsPage(settings) {
 
     const monitorCount = getConnectedMonitorsCount();
 
-    // 1. Multi-Monitor Group
     const monitorGroup = new Adw.PreferencesGroup({
         title: 'Multi-Monitor Display',
         description: 'Choose default monitor display mode for widgets.',
@@ -48,9 +27,9 @@ export function buildGlobalSettingsPage(settings) {
         ];
         const monitorValues = ['primary', 'all', 'each'];
 
-        for (let i = 0; i < monitorCount; i++) {
-            strings.push(`Monitor ${i + 1}`);
-            monitorValues.push(String(i));
+        for (const entry of buildMonitorEntries(monitorCount)) {
+            strings.push(entry.label);
+            monitorValues.push(entry.key);
         }
 
         const globalMonitorRow = new Adw.ComboRow({
@@ -78,7 +57,18 @@ export function buildGlobalSettingsPage(settings) {
     }
     page.add(monitorGroup);
 
-    // 2. Image Settings Group
+    const themeGroup = new Adw.PreferencesGroup({
+        title: 'Theme',
+        description: 'Widget color behavior.',
+    });
+    themeGroup.add(createSwitchRow(
+        'Follow System Theme',
+        'Use Adwaita light/dark colors based on the GNOME color scheme instead of the custom colors below.',
+        settings,
+        'follow-system-theme'
+    ).row);
+    page.add(themeGroup);
+
     const imageConfigGroup = new Adw.PreferencesGroup({
         title: 'Image Settings',
         description: 'Configuration for image and GIF widgets.',
@@ -88,7 +78,6 @@ export function buildGlobalSettingsPage(settings) {
     imageConfigGroup.add(createSwitchRow('Show Slideshow Captions', 'Toggle captions for slideshow widgets.', settings, 'slideshow-show-caption').row);
     page.add(imageConfigGroup);
 
-    // 3. Weather Settings Group
     const weatherConfigGroup = new Adw.PreferencesGroup({
         title: 'Weather Settings',
         description: 'Configure your default city and appearance.',
@@ -122,40 +111,31 @@ export function buildGlobalSettingsPage(settings) {
 
     searchEntry.connect('activate', () => {
         const query = searchEntry.get_text();
-        performCitySearch(query, resultsList, null, (locationName) => {
+        performCitySearch(query, resultsList, (location) => {
+            const locationName = location.name;
             settings.set_string('weather-city', locationName);
             searchRow.set_subtitle(`Current: ${locationName}`);
             searchEntry.set_text('');
-            
-            try {
-                const widgets = getWidgets(settings);
-                let modified = false;
-                for (const widget of widgets) {
-                    if (widget.type === 'weather') {
-                        widget.location = locationName;
-                        modified = true;
-                    }
+
+            const widgets = getWidgets(settings);
+            let modified = false;
+            for (const widget of widgets) {
+                if (widget.type === 'weather') {
+                    widget.location = locationName;
+                    modified = true;
                 }
-                if (modified) {
-                    saveWidgets(settings, widgets);
-                }
-            } catch (e) {
-                console.error('Failed to update widgets with new location:', e);
+            }
+            if (modified) {
+                saveWidgets(settings, widgets);
             }
 
-            let child = resultsList.get_first_child();
-            while (child) {
-                const next = child.get_next_sibling();
-                resultsList.remove(child);
-                child = next;
-            }
+            clearBox(resultsList);
             resultsList.set_visible(false);
-        }, settings);
+        });
     });
 
     page.add(weatherConfigGroup);
 
-    // 4. Time Settings Group
     const timeConfigGroup = new Adw.PreferencesGroup({
         title: 'Time Settings',
         description: 'Configuration for time widgets.',

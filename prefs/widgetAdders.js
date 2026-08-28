@@ -1,23 +1,14 @@
-/**
- * ============================================================================
- * PREFERENCES: WIDGET ADDERS
- * 
- * Grid collision detection and factory functions for persisting new widgets to
- * GSettings.
- * ============================================================================
- */
-
 import {
-    getWidgets,
-    saveWidgets,
-    findEmptySpot,
     addWidget,
+    nextWidgetId,
     normalizeAppLauncherApps,
-    getAppLauncherDefaultSize,
+    WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
 } from '../utils/widgetUtils.js';
 
+export const DEFAULT_RSS_REFRESH_MINUTES = 15;
+
 export function addTimeWidget(settings, width = 3, height = 2, layout = 'digital', cities = null) {
-    const config = { id: 'widget-time-' + Date.now(), type: 'time', layout };
+    const config = { id: nextWidgetId(settings, 'time'), type: 'time', layout };
     if (cities && Array.isArray(cities)) {
         config.cities = cities;
     }
@@ -25,50 +16,93 @@ export function addTimeWidget(settings, width = 3, height = 2, layout = 'digital
 }
 
 export function addWeatherWidget(settings, city = 'London', width = 3, height = 3, layout = 'standard') {
-    addWidget(settings, { id: 'widget-weather-' + Date.now(), type: 'weather', location: city, layout }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'weather'), type: 'weather', location: city, layout }, width, height);
 }
 
 export function addMusicWidget(settings, width = 4, height = 4) {
-    addWidget(settings, { id: 'widget-music-' + Date.now(), type: 'music' }, width, height);
+    const config = { id: nextWidgetId(settings, 'music'), type: 'music' };
+    // Must set before addWidget, which keys off isWideMusicLayout()
+    config.isLargeLayout = width / height >= WIDE_MUSIC_LAYOUT_ASPECT_RATIO;
+    addWidget(settings, config, width, height);
 }
 
 export function addPomodoroWidget(settings, width = 4, height = 4) {
-    addWidget(settings, { id: 'widget-pomodoro-' + Date.now(), type: 'pomodoro' }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'pomodoro'), type: 'pomodoro' }, width, height);
+}
+
+export function addPomodoroFocusWidget(settings, width = 4, height = 2) {
+    addWidget(settings, { id: nextWidgetId(settings, 'pomodoro-focus'), type: 'pomodoro-focus' }, width, height);
 }
 
 export function addCpuRamWidget(settings, width = 4, height = 2) {
-    addWidget(settings, { id: 'widget-cpu-ram-' + Date.now(), type: 'cpu-ram' }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'cpu-ram'), type: 'cpu-ram' }, width, height);
 }
 
 export function addNetworkSpeedWidget(settings, width = 3, height = 2) {
-    addWidget(settings, { id: 'widget-network-speed-' + Date.now(), type: 'network-speed' }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'network-speed'), type: 'network-speed' }, width, height);
 }
 
 export function addSystemDashboardWidget(settings, width = 4, height = 4) {
-    addWidget(settings, { id: 'widget-system-dashboard-' + Date.now(), type: 'system-dashboard' }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'system-dashboard'), type: 'system-dashboard' }, width, height);
 }
 
 export function addNotesWidget(settings, width = 4, height = 4) {
-    addWidget(settings, { id: 'widget-notes-' + Date.now(), type: 'notes' }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'notes'), type: 'notes' }, width, height);
 }
 
 export function addClipboardWidget(settings, width = 4, height = 4) {
-    addWidget(settings, { id: 'widget-clipboard-' + Date.now(), type: 'clipboard' }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'clipboard'), type: 'clipboard' }, width, height);
 }
 
 export function addCalendarWidget(settings, width = 4, height = 3) {
-    addWidget(settings, { id: 'widget-calendar-' + Date.now(), type: 'calendar' }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'calendar'), type: 'calendar' }, width, height);
 }
 
 export function addQuotesWidget(settings, width = 3, height = 3) {
-    addWidget(settings, { id: 'widget-quotes-' + Date.now(), type: 'quotes' }, width, height);
+    addWidget(settings, { id: nextWidgetId(settings, 'quotes'), type: 'quotes' }, width, height);
 }
 
-export function addCommandWidget(settings, commandName, commandString, iconName, imagePath, showText = true, width = 2, height = 2) {
+export function addScreenTimeWidget(settings, width = 6, height = 3) {
+    addWidget(settings, { id: nextWidgetId(settings, 'screen-time'), type: 'screen-time' }, width, height);
+}
+
+export function addCalendarGridWidget(settings, width = 4, height = 4) {
+    addWidget(settings, { id: nextWidgetId(settings, 'calendar-grid'), type: 'calendar-grid' }, width, height);
+}
+
+export function addTodoWidget(settings, width = 5, height = 3) {
+    addWidget(settings, { id: nextWidgetId(settings, 'todo'), type: 'todo' }, width, height);
+}
+
+export function addGithubWidget(settings, username = '', width = 7, height = 3) {
+    const widgetConfig = { id: nextWidgetId(settings, 'github'), type: 'github' };
+    if (username)
+        widgetConfig.username = username;
+    addWidget(settings, widgetConfig, width, height);
+}
+
+export function addRssHeadlinesWidget(settings, feedUrl = '', width = 3, height = 3) {
+    if (!feedUrl)
+        return;
     addWidget(settings, {
-        id: 'widget-command-' + Date.now(),
-        type: 'command',
-        commandName, commandString, iconName, imagePath, showText
+        id: nextWidgetId(settings, 'rss-headlines'),
+        type: 'rss-headlines',
+        feedUrl,
+        refreshMinutes: DEFAULT_RSS_REFRESH_MINUTES,
+    }, width, height);
+}
+
+export function addMoodWidget(settings, width = 6, height = 3) {
+    addWidget(settings, { id: nextWidgetId(settings, 'mood'), type: 'mood' }, width, height);
+}
+
+export function addSunScheduleWidget(settings, city, latitude, longitude, width = 3, height = 3) {
+    addWidget(settings, {
+        id: nextWidgetId(settings, 'sun-schedule'),
+        type: 'sun-schedule',
+        city,
+        latitude,
+        longitude,
     }, width, height);
 }
 
@@ -78,28 +112,23 @@ export function addAppLauncherWidget(settings, apps) {
         return;
     }
 
-    const defaultSize = getAppLauncherDefaultSize(normalizedApps.length);
     addWidget(settings, {
-        id: 'widget-app-launcher-' + Date.now(),
+        id: nextWidgetId(settings, 'app-launcher'),
         type: 'app-launcher',
         apps: normalizedApps,
-    }, defaultSize.width, defaultSize.height);
+    }, 4, 3);
 }
 
 export function addSlideshowWidget(settings, folderPath, intervalSeconds = 10, width = 4, height = 4, caption = 'My Slideshow', showCaption = true) {
     const finalCaption = caption && caption.trim() !== '' ? caption.trim() : 'My Slideshow';
     const widgetConfig = {
-        id: 'widget-slideshow-' + Date.now(),
+        id: nextWidgetId(settings, 'slideshow'),
         type: 'slideshow',
         slideshowFolder: folderPath,
         intervalSeconds,
         caption: finalCaption,
+        showCaption: showCaption !== false,
     };
-
-    if (showCaption === false) {
-        widgetConfig.showCaption = false;
-        widgetConfig.showText = false;
-    }
 
     addWidget(settings, widgetConfig, width, height);
 }
@@ -107,16 +136,12 @@ export function addSlideshowWidget(settings, folderPath, intervalSeconds = 10, w
 export function addImageWidget(settings, imagePath, caption = 'My Image', showCaption = true, width = 2, height = 2) {
     const finalCaption = caption && caption.trim() !== '' ? caption.trim() : 'My Image';
     const widgetConfig = {
-        id: 'widget-image-' + Date.now(),
+        id: nextWidgetId(settings, 'image'),
         type: 'image',
         imagePath,
         caption: finalCaption,
+        showCaption: showCaption !== false,
     };
-
-    if (showCaption === false) {
-        widgetConfig.showCaption = false;
-        widgetConfig.showText = false;
-    }
 
     addWidget(settings, widgetConfig, width, height);
 }

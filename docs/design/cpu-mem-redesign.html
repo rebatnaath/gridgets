@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gridgets — CPU / Memory Widget Redesign</title>
+<style>
+    :root {
+        --surface: #222226;
+        --text: #ffffff;
+        --muted: rgba(255, 255, 255, 0.55);
+        --accent: #3584e4;
+        --track: rgba(255, 255, 255, 0.15);
+        --hairline: rgba(255, 255, 255, 0.14);
+    }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        padding: 40px 20px;
+        background: linear-gradient(160deg, #1a2436 0%, #2d1f3a 100%);
+        font-family: 'Inter', 'Cantarell', system-ui, sans-serif;
+        color: var(--text);
+    }
+    h1 { font-size: 18px; font-weight: 600; opacity: 0.9; }
+    .row { display: flex; gap: 32px; flex-wrap: wrap; justify-content: center; }
+    .option { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .option .label { font-size: 14px; font-weight: 600; }
+    .option .desc { font-size: 11.5px; color: rgba(255,255,255,0.5); max-width: 320px; text-align: center; line-height: 1.5; }
+    .widget {
+        width: 340px;
+        height: 170px;
+        background: var(--surface);
+        border: 1px solid var(--hairline);
+        border-radius: 12px;
+        box-sizing: border-box;
+        padding: 18px 22px;
+        display: flex;
+    }
+
+    /* ---------- Option A : twin rings ---------- */
+    .rings { display: flex; width: 100%; align-items: center; justify-content: space-evenly; }
+    .ring { position: relative; width: 108px; height: 108px; }
+    .ring svg { transform: rotate(-90deg); }
+    .ring .track { stroke: var(--track); fill: none; }
+    .ring .fill { stroke: var(--accent); fill: none; stroke-linecap: round; transition: stroke-dashoffset .4s; }
+    .ring.center .fill { stroke: var(--text); }
+    .ring .value {
+        position: absolute; inset: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    }
+    .ring .value b { font-size: 26px; font-weight: 300; letter-spacing: -0.5px; }
+    .ring .value span { font-size: 9.5px; color: var(--muted); letter-spacing: 1.2px; text-transform: uppercase; }
+    .ring.secondary .fill { stroke: var(--text); opacity: 0.35; }
+
+    /* ---------- Option B : adwaita list rows ---------- */
+    .rows { display: flex; flex-direction: column; width: 100%; justify-content: center; gap: 18px; }
+    .stat-row { display: flex; flex-direction: column; gap: 7px; }
+    .stat-row .head { display: flex; justify-content: space-between; align-items: baseline; }
+    .stat-row .head span { font-size: 11px; color: var(--muted); letter-spacing: 0.8px; }
+    .stat-row .head b { font-size: 17px; font-weight: 400; }
+    .meter { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+    .meter i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+    .stat-row.secondary .meter i { background: var(--text); opacity: 0.45; }
+    .divider { height: 1px; background: var(--hairline); }
+
+    /* ---------- Option C : hero split ---------- */
+    .split { display: flex; width: 100%; align-items: stretch; gap: 20px; }
+    .hero {
+        flex: 1.25;
+        display: flex; flex-direction: column; justify-content: center; gap: 8px;
+        border-right: 1px solid var(--hairline);
+        padding-right: 20px;
+    }
+    .hero .k { font-size: 10.5px; color: var(--muted); letter-spacing: 1.4px; text-transform: uppercase; }
+    .hero b { font-size: 56px; font-weight: 300; line-height: 0.95; letter-spacing: -2px; }
+    .hero b small { font-size: 20px; font-weight: 300; color: var(--muted); letter-spacing: 0; }
+    .hero .bar { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+    .hero .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+    .side {
+        flex: 1;
+        display: flex; flex-direction: column; justify-content: center; gap: 6px;
+    }
+    .side .k { font-size: 10.5px; color: var(--muted); letter-spacing: 1.4px; text-transform: uppercase; }
+    .side b { font-size: 30px; font-weight: 300; letter-spacing: -1px; }
+    .side b small { font-size: 14px; color: var(--muted); letter-spacing: 0; }
+    .side .bar { height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+    .side .bar i { display: block; height: 100%; background: var(--text); opacity: 0.45; border-radius: 2px; }
+    footer { font-size: 11px; color: rgba(255,255,255,0.35); max-width: 720px; text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<h1>CPU / Memory — three directions, same rules</h1>
+
+<div class="row">
+    <!-- ================= OPTION A ================= -->
+    <div class="option">
+        <div class="widget">
+            <div class="rings">
+                <div class="ring center">
+                    <svg width="108" height="108">
+                        <circle class="track" cx="54" cy="54" r="46" stroke-width="5"/>
+                        <circle class="fill" cx="54" cy="54" r="46" stroke-width="5"
+                                stroke-dasharray="289" stroke-dashoffset="72"/>
+                    </svg>
+                    <div class="value"><b>75%</b><span>CPU</span></div>
+                </div>
+                <div class="ring secondary">
+                    <svg width="108" height="108">
+                        <circle class="track" cx="54" cy="54" r="46" stroke-width="5"/>
+                        <circle class="fill" cx="54" cy="54" r="46" stroke-width="5"
+                                stroke-dasharray="289" stroke-dashoffset="173"/>
+                    </svg>
+                    <div class="value"><b>40%</b><span>Memory</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="label">A — Twin Rings</div>
+        <div class="desc">Both metrics as circular gauges; CPU carries the accent, Memory stays neutral.
+        Matches the pomodoro/solar arcs you already ship, so it reads as one family.</div>
+    </div>
+
+    <!-- ================= OPTION B ================= -->
+    <div class="option">
+        <div class="widget">
+            <div class="rows">
+                <div class="stat-row">
+                    <div class="head"><span>CPU</span><b>75%</b></div>
+                    <div class="meter"><i style="width:75%"></i></div>
+                </div>
+                <div class="divider"></div>
+                <div class="stat-row secondary">
+                    <div class="head"><span>MEMORY</span><b>40%</b></div>
+                    <div class="meter"><i style="width:40%"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="label">B — List Rows</div>
+        <div class="desc">Adwaita preferences-card feel: quiet caps label, medium-weight value,
+        slim accent bar, hairline divider. The calmest option; scales gracefully when tiny.</div>
+    </div>
+
+    <!-- ================= OPTION C ================= -->
+    <div class="option">
+        <div class="widget">
+            <div class="split">
+                <div class="hero">
+                    <div class="k">CPU</div>
+                    <b>75<small>%</small></b>
+                    <div class="bar"><i style="width:75%"></i></div>
+                </div>
+                <div class="side">
+                    <div class="k">MEMORY</div>
+                    <b>40<small>%</small></b>
+                    <div class="bar"><i style="width:40%"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="label">C — Hero Split</div>
+        <div class="desc">One dominant hero numeral (CPU) with the accent bar, memory demoted a visual
+        tier on the other side of a hairline divider. Most opinionated hierarchy.</div>
+    </div>
+</div>
+
+<footer>
+    All three obey the house rules: surface + text + muted (55%) + one accent · weight 300 numerals /
+    400 body · hairline border derived from text color · flat, no shadows.<br>
+    A reuses the existing <code>drawCircularArc()</code> helper · B and C are pure St.Box layouts.
+    Values shown are static samples.
+</footer>
+
+</body>
+</html>

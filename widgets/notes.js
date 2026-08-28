@@ -1,16 +1,12 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import {
-    loadJsonFromFileAsync,
-    saveJsonToFile,
-    getGridgetsDataDir,
-    resolveWidgetForegroundColor,
-    resolveWidgetFontFamily
-} from '../utils/widgetUtils.js';
-import { createWidgetContainer } from '../utils/widgetUIUtils.js';
+import { SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync } from '../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, scheduleDeferredUpdate, attachButtonFeedback } from '../shell/widgetUIUtils.js';
+import { BUTTON_PRIMARY } from '../desktopGrid/constants.js';
+import { isActorDestroyed } from '../utils/actorLifecycle.js';
 
-const DEFAULT_NOTE_TEXT = '📝 Quick Note\n- [ ] Task 1\n- [x] Task 2\n\n**Click the pen icon to edit**';
+const DEFAULT_NOTE_TEXT = 'Quick Note\n- [ ] Task 1\n- [x] Task 2\n\n**Click the pen icon to edit**';
 const BASE_CONTAINER_WIDTH = 240;
 const BASE_CONTAINER_HEIGHT = 160;
 const BASE_TITLE_FONT_SIZE = 14;
@@ -18,12 +14,12 @@ const BASE_CONTENT_FONT_SIZE = 14;
 const BASE_ICON_SIZE = 16;
 const MIN_FONT_SIZE = 11;
 const MIN_ICON_SIZE = 13;
-const BUTTON_PRIMARY = 1;
+const BORDER_ALPHA = 0.14;
 const MARKDOWN_RULES = [
     [/\*\*(.*?)\*\*/g, '<b>$1</b>'],
     [/\*(.*?)\*/g, '<i>$1</i>'],
-    [/^- \[ \]/gm, '☐ '],
-    [/^- \[x\]/gm, '☑ '],
+    [/^- \[ \]/gm, '[ ] '],
+    [/^- \[x\]/gm, '[x] '],
     [/^### (.*$)/gm, '<span size="large" weight="bold">$1</span>'],
     [/^## (.*$)/gm, '<span size="x-large" weight="bold">$1</span>'],
     [/^# (.*$)/gm, '<span size="xx-large" weight="bold">$1</span>'],
@@ -39,11 +35,13 @@ function convertMarkdownToPango(text) {
 }
 
 export function createNotesNode(config, width, height, xPosition, yPosition) {
-    const fontFamily = resolveWidgetFontFamily(config);
+    const fontFamily = resolveExplicitFontFamily(config);
+    const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
+    container.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
 
-    const scale = Math.max(0.5, Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT));
+    const scale = Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT);
     const titleFontSize = Math.max(MIN_FONT_SIZE, Math.round(BASE_TITLE_FONT_SIZE * scale));
     const contentFontSize = Math.max(MIN_FONT_SIZE, Math.round(BASE_CONTENT_FONT_SIZE * scale));
     const iconSize = Math.max(MIN_ICON_SIZE, Math.round(BASE_ICON_SIZE * scale));
@@ -70,7 +68,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
 
     const titleLabel = new St.Label({
         text: 'Quick Notes',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${titleFontSize}px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${titleFontSize}px; opacity: ${SECONDARY_OPACITY};`,
         x_expand: true,
         y_align: Clutter.ActorAlign.CENTER,
     });
@@ -90,6 +88,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
 
     headerBox.add_child(titleLabel);
     headerBox.add_child(editButton);
+    attachButtonFeedback(editButton);
     contentBox.add_child(headerBox);
 
     const scrollView = new St.ScrollView({
@@ -108,7 +107,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     contentBox.add_child(scrollView);
 
     const displayLabel = new St.Label({
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${contentFontSize}px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${contentFontSize}px;`,
         x_expand: true,
         y_expand: true,
     });
@@ -122,7 +121,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     });
 
     const textEditor = new Clutter.Text({
-        font_name: `${fontFamily} ${contentFontSize}px`,
+        font_name: `${fontFamily ? `${fontFamily} ` : ''}${contentFontSize}px`,
         editable: true,
         selectable: true,
         reactive: true,
@@ -132,15 +131,13 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     });
     editorContainer.add_child(textEditor);
 
-    const styleChangedSignalId = editorContainer.connect('style-changed', () => {
-        if (container.isDestroyed) return;
-        const themeNode = editorContainer.get_theme_node();
-        if (themeNode) {
-            textEditor.set_color(themeNode.get_foreground_color());
-        }
+    editorContainer.connect('style-changed', () => {
+        if (isActorDestroyed(container) || !editorContainer.get_stage()) return;
+        textEditor.set_color(editorContainer.get_theme_node().get_foreground_color());
     });
 
     let isEditingActive = false;
+    const state = { deferredUpdateId: null };
     scrollContent.add_child(displayLabel);
     scrollContent.add_child(editorContainer);
 
@@ -164,26 +161,24 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
         isEditingActive = true;
     };
 
-    const textChangedSignalId = textEditor.connect('text-changed', () => {
+    textEditor.connect('text-changed', () => {
         if (isEditingActive) {
             noteContent = textEditor.text;
-            saveJsonToFile(notesFilePath, { notes: noteContent });
+            scheduleDeferredUpdate(state, 500, () => saveJsonToFile(notesFilePath, { notes: noteContent }));
         }
     });
 
-    container.connect('destroy', () => {
+    registerWidgetCleanup(container, () => {
+        if (state.deferredUpdateId) {
+            GLib.Source.remove(state.deferredUpdateId);
+            state.deferredUpdateId = null;
+        }
         if (isEditingActive) {
             noteContent = textEditor.text;
-            saveJsonToFile(notesFilePath, { notes: noteContent });
+            saveJsonToFileSync(notesFilePath, { notes: noteContent });
             if (global.stage.get_key_focus() === textEditor) {
                 global.stage.set_key_focus(null);
             }
-        }
-        if (styleChangedSignalId) {
-            editorContainer.disconnect(styleChangedSignalId);
-        }
-        if (textChangedSignalId) {
-            textEditor.disconnect(textChangedSignalId);
         }
     });
 
@@ -204,14 +199,14 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     showNoteViewer();
     container.add_child(contentBox);
 
-    loadJsonFromFileAsync(notesFilePath, (savedData) => {
-        if (container.isDestroyed) return;
+    loadJsonFromFileAsync(notesFilePath, (savedData, loadError) => {
+        if (isActorDestroyed(container)) return;
         if (savedData && savedData.notes !== undefined) {
             noteContent = savedData.notes;
             if (!isEditingActive) {
                 showNoteViewer();
             }
-        } else {
+        } else if (!loadError) {
             saveJsonToFile(notesFilePath, { notes: noteContent });
         }
     });

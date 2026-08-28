@@ -1,10 +1,11 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { resolveWidgetForegroundColor, resolveWidgetFontFamily } from '../utils/widgetUtils.js';
-import { createWidgetContainer } from '../utils/widgetUIUtils.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveDesktopAppInfo } from '../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup } from '../shell/widgetUIUtils.js';
+import { BUTTON_PRIMARY } from '../desktopGrid/constants.js';
+import { isActorDestroyed } from '../utils/actorLifecycle.js';
 
 const MAX_APPS = 8;
 const DEFAULT_APP_ICON = 'application-x-executable-symbolic';
@@ -12,8 +13,9 @@ const DRAG_THRESHOLD_PIXELS = 10;
 const OUTER_MARGIN = 12;
 const GRID_GAP = 10;
 const TILE_RADIUS = 14;
-const TILE_BASE_BG = 'rgba(255, 255, 255, 0.16)';
-const TILE_HOVER_BG = 'rgba(255, 255, 255, 0.32)';
+const TILE_BASE_ALPHA = 0.07;
+const TILE_HOVER_ALPHA = 0.13;
+const BORDER_ALPHA = 0.14;
 const TILE_PADDING_RATIO = 0.1;
 const TILE_PADDING_MIN = 3;
 const TILE_PADDING_MAX = 10;
@@ -21,18 +23,6 @@ const TILE_PADDING_MAX = 10;
 const ICON_SIZE_RATIO = 0.72;
 const MIN_ICON_SIZE = 8;
 const MAX_ICON_SIZE = 200;
-const BUTTON_PRIMARY = 1;
-function resolveDesktopAppInfo(appId) {
-    if (!appId || typeof appId !== 'string') return null;
-
-    const idCandidates = appId.endsWith('.desktop') ? [appId] : [appId, `${appId}.desktop`];
-
-    for (const candidate of idCandidates) {
-        const appInfo = Gio.DesktopAppInfo.new(candidate);
-        if (appInfo && appInfo.get_id()) return appInfo;
-    }
-    return null;
-}
 
 function computeGridLayout(appCount) {
     if (appCount <= 1) return { cols: 1, rows: 1 };
@@ -42,14 +32,18 @@ function computeGridLayout(appCount) {
     return { cols: 4, rows: 2 };
 }
 
-function buildTileStyle(backgroundColor, padding) {
-    return `background-color: ${backgroundColor}; border-radius: ${TILE_RADIUS}px; padding: ${padding}px;`;
+function buildTileStyle(tileRgba, padding) {
+    return `background-color: ${tileRgba}; border-radius: ${TILE_RADIUS}px; padding: ${padding}px;`;
 }
 
 export function createAppLauncherNode(config, width, height, xPosition, yPosition) {
-    const fontFamily = resolveWidgetFontFamily(config);
+    const fontFamily = resolveExplicitFontFamily(config);
+    const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
+    const tileBaseBg = cssColorToRgba(textColor, TILE_BASE_ALPHA);
+    const tileHoverBg = cssColorToRgba(textColor, TILE_HOVER_ALPHA);
+    container.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
 
     const apps = Array.isArray(config.apps) ? config.apps.slice(0, MAX_APPS) : [];
 
@@ -60,7 +54,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
             y_expand: true,
-            style: `font-family: ${fontFamily}; color: ${textColor}; opacity: 0.6; font-size: 14px;`,
+            style: `${fontCss}color: ${textColor}; opacity: 0.55; font-size: 14px;`,
         });
         container.add_child(emptyLabel);
         return container;
@@ -90,11 +84,9 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
     container.add_child(outerBox);
 
     const cells = [];
-    let pressX = 0;
-    let pressY = 0;
 
     const launchApp = (appInfo, app, displayName) => {
-        if (container.isDestroyed) return;
+        if (isActorDestroyed(container)) return;
 
         if (appInfo) {
             try {
@@ -110,7 +102,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
 
     const updateCell = (cell, padding, iconSize) => {
         cell.padding = padding;
-        cell.button.set_style(buildTileStyle(cell.hovered ? TILE_HOVER_BG : TILE_BASE_BG, padding));
+        cell.button.set_style(buildTileStyle(cell.hovered ? tileHoverBg : tileBaseBg, padding));
         cell.icon.set_icon_size(iconSize);
     };
 
@@ -138,7 +130,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
                 can_focus: true,
                 x_expand: true,
                 y_expand: true,
-                style: buildTileStyle(TILE_BASE_BG, TILE_PADDING_MIN),
+                style: buildTileStyle(tileBaseBg, TILE_PADDING_MIN),
                 x_align: Clutter.ActorAlign.CENTER,
                 y_align: Clutter.ActorAlign.CENTER,
             });
@@ -165,23 +157,25 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             button.set_child(cellBox);
             rowBox.add_child(button);
 
-            const cell = { icon: appIcon, button, padding: TILE_PADDING_MIN, hovered: false };
+            const cell = { icon: appIcon, button, padding: TILE_PADDING_MIN, hovered: false, pressX: 0, pressY: 0 };
 
             button.connect('enter-event', () => {
                 cell.hovered = true;
-                button.set_style(buildTileStyle(TILE_HOVER_BG, cell.padding));
+                button.set_style(buildTileStyle(tileHoverBg, cell.padding));
                 return Clutter.EVENT_PROPAGATE;
             });
             button.connect('leave-event', () => {
                 cell.hovered = false;
-                button.set_style(buildTileStyle(TILE_BASE_BG, cell.padding));
+                button.set_style(buildTileStyle(tileBaseBg, cell.padding));
                 return Clutter.EVENT_PROPAGATE;
             });
 
             button.connect('button-press-event', (_actor, event) => {
                 if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
                     return Clutter.EVENT_PROPAGATE;
-                [pressX, pressY] = event.get_coords();
+                const [x, y] = event.get_coords();
+                cell.pressX = x;
+                cell.pressY = y;
                 return Clutter.EVENT_STOP;
             });
 
@@ -190,8 +184,8 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
                     return Clutter.EVENT_PROPAGATE;
 
                 const [releaseX, releaseY] = event.get_coords();
-                const isClickNotDrag = Math.abs(releaseX - pressX) < DRAG_THRESHOLD_PIXELS
-                    && Math.abs(releaseY - pressY) < DRAG_THRESHOLD_PIXELS;
+                const isClickNotDrag = Math.abs(releaseX - cell.pressX) < DRAG_THRESHOLD_PIXELS
+                    && Math.abs(releaseY - cell.pressY) < DRAG_THRESHOLD_PIXELS;
 
                 if (isClickNotDrag) {
                     launchApp(appInfo, app, displayName);
@@ -204,7 +198,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
     }
 
     const updateScaling = () => {
-        if (container.isDestroyed) return;
+        if (isActorDestroyed(container)) return;
         const currentWidth = container.width || width || 240;
         const currentHeight = container.height || height || 180;
         const contentWidth = Math.max(1, currentWidth - (OUTER_MARGIN * 2));
@@ -226,10 +220,18 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
 
     container.connect('notify::width', updateScaling);
     container.connect('notify::height', updateScaling);
-    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-        if (!container.isDestroyed) {
-            updateScaling();
+
+    let idleSourceId = null;
+    registerWidgetCleanup(container, () => {
+        if (idleSourceId) {
+            GLib.Source.remove(idleSourceId);
+            idleSourceId = null;
         }
+    });
+
+    idleSourceId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        idleSourceId = null;
+        updateScaling();
         return GLib.SOURCE_REMOVE;
     });
 

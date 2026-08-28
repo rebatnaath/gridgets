@@ -33,8 +33,8 @@ export function buildWidgetEditPanel(parentWindow, widget, settings, onSavedCall
     rowIdx = buildStandardSettings(grid, rowIdx, widget, settings, saveHandlers);
 
     switch (widget.type) {
-        case 'rss-feed':
         case 'rss-headlines':
+        case 'rss-feed':
             rowIdx = buildRssSettings(grid, rowIdx, widget, saveHandlers);
             break;
         case 'sun-schedule':

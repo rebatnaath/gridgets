@@ -241,6 +241,23 @@ class RssFeedEngine {
 /** Active engines keyed by feed URL; released when the last subscriber unsubscribes. */
 const activeEngines = new Map();
 
+/** Clears all cached engines; called from the extension's disable(). */
+export function clearRssEngines() {
+    for (const engine of activeEngines.values()) {
+        if (engine.timerId) {
+            GLib.Source.remove(engine.timerId);
+            engine.timerId = null;
+        }
+        if (engine.cancellable) {
+            engine.cancellable.cancel();
+            engine.cancellable = null;
+        }
+        engine.session.abort();
+        engine.lastItems = [];
+    }
+    activeEngines.clear();
+}
+
 /**
  * Acquires (or creates) the shared engine for a feed URL and subscribes to it.
  * The returned function releases the subscription and must be called on destroy.

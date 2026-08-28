@@ -1,43 +1,38 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveWidgetFontFamily } from '../../utils/widgetUtils.js';
-import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, startMinuteAlignedTimer } from '../../utils/widgetUIUtils.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveUse24h, SECONDARY_OPACITY } from '../../utils/widgetUtils.js';
+import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, formatTimeParts, startMinuteAlignedTimer } from '../../shell/widgetUIUtils.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const BASE_CONTAINER_WIDTH = 260;
 const BASE_CONTAINER_HEIGHT = 240;
-const TOP_CITY_BASE_FONT_SIZE = 20;
+const TOP_CITY_BASE_FONT_SIZE = 16;
 const TOP_TIME_BASE_FONT_SIZE = 40;
-const TOP_GMT_BASE_FONT_SIZE = 13;
-const SEC_CITY_BASE_FONT_SIZE = 15;
-const SEC_TIME_BASE_FONT_SIZE = 24;
-const SEC_GMT_BASE_FONT_SIZE = 12;
+const TOP_GMT_BASE_FONT_SIZE = 15;
+const SEC_CITY_BASE_FONT_SIZE = 14;
+const SEC_TIME_BASE_FONT_SIZE = 22;
+const SEC_GMT_BASE_FONT_SIZE = 13;
+const CONTAINER_PADDING_PX = 20;
+const BORDER_ALPHA = 0.14;
+const TOP_AMPM_MARGIN_BOTTOM_PX = 6;
+const TOP_AMPM_MARGIN_LEFT_PX = 4;
+const SEC_AMPM_MARGIN_BOTTOM_PX = 3;
+const SEC_AMPM_MARGIN_LEFT_PX = 3;
+
 const DEFAULT_CITIES = [
-    { name: 'London', timezone: 'Europe/London', primary: true },
-    { name: 'New York', timezone: 'America/New_York', primary: false },
-    { name: 'Moscow', timezone: 'Europe/Moscow', primary: false },
+    { name: 'London', timezone: 'Europe/London', country: 'GB', primary: true },
+    { name: 'New York', timezone: 'America/New_York', country: 'US', primary: false },
+    { name: 'Moscow', timezone: 'Europe/Moscow', country: 'RU', primary: false },
 ];
 
 function getFormattedTimeAndGmt(timezoneId, is24h) {
-    let tz;
-    try {
-        tz = timezoneId ? (GLib.TimeZone.new_identifier(timezoneId) || GLib.TimeZone.new(timezoneId)) : GLib.TimeZone.new_local();
-    } catch (e) {
-        tz = GLib.TimeZone.new_local();
-    }
-
+    const tz = timezoneId
+        ? (GLib.TimeZone.new_identifier(timezoneId) || GLib.TimeZone.new(timezoneId))
+        : GLib.TimeZone.new_local();
     const now = GLib.DateTime.new_now(tz || GLib.TimeZone.new_local());
 
-    let timeStr;
-    let ampmStr = '';
-    if (is24h) {
-        timeStr = now.format('%H:%M');
-    } else {
-        const displayHour = parseInt(now.format('%I'), 10).toString();
-        const minute = now.format('%M');
-        timeStr = `${displayHour}:${minute}`;
-        ampmStr = now.format('%p');
-    }
+    const { time: timeStr, ampm: ampmStr } = formatTimeParts(now, is24h);
 
     const offsetMicrosec = now.get_utc_offset();
     const totalOffsetSec = Math.floor(offsetMicrosec / 1000000);
@@ -61,16 +56,26 @@ function getFormattedTimeAndGmt(timezoneId, is24h) {
     return { timeStr, ampmStr, gmtStr };
 }
 
-function buildWorldClockUI(layoutBox, fontFamily, textColor, cities) {
+function buildWorldClockUI(layoutBox, fontCss, textColor, cities) {
     const primaryCity = cities[0] || DEFAULT_CITIES[0];
     const leftSecondaryCity = cities[1] || DEFAULT_CITIES[1];
     const rightSecondaryCity = cities[2] || DEFAULT_CITIES[2];
+
+    // Label style builder reused by the responsive scaler.
+    const labelStyle = (sizePx, { secondary = false, light = false, marginLeftPx = 0, alignRight = false } = {}) => {
+        let style = `${fontCss}font-size: ${Math.max(1, Math.round(sizePx))}px; color: inherit;`;
+        if (light) style += ' font-weight: 300;';
+        if (secondary) style += ` opacity: ${SECONDARY_OPACITY};`;
+        if (marginLeftPx > 0) style += ` margin-left: ${marginLeftPx}px;`;
+        if (alignRight) style += ' text-align: right;';
+        return style;
+    };
 
     const mainContainer = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
-        style: 'padding: 16px;',
+        style: `padding: ${CONTAINER_PADDING_PX}px;`,
     });
 
     const topRow = new St.BoxLayout({
@@ -87,12 +92,12 @@ function buildWorldClockUI(layoutBox, fontFamily, textColor, cities) {
 
     const topCityLabel = new St.Label({
         text: primaryCity.name,
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${TOP_CITY_BASE_FONT_SIZE}px; color: inherit;`,
+        style: labelStyle(TOP_CITY_BASE_FONT_SIZE, { secondary: true }),
     });
 
     const topGmtLabel = new St.Label({
         text: 'GMT +0',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${TOP_GMT_BASE_FONT_SIZE}px; opacity: 0.6; color: inherit;`,
+        style: labelStyle(TOP_GMT_BASE_FONT_SIZE, { secondary: true }),
     });
 
     topInfoBox.add_child(topCityLabel);
@@ -104,13 +109,13 @@ function buildWorldClockUI(layoutBox, fontFamily, textColor, cities) {
     });
     const topTimeLabel = new St.Label({
         text: '00:00',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${TOP_TIME_BASE_FONT_SIZE}px; color: inherit;`,
+        style: labelStyle(TOP_TIME_BASE_FONT_SIZE, { light: true }),
     });
     const topAmpmLabel = new St.Label({
         text: '',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${TOP_GMT_BASE_FONT_SIZE}px; opacity: 0.6; margin-left: 4px; color: inherit;`,
+        style: labelStyle(TOP_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: TOP_AMPM_MARGIN_LEFT_PX }),
         y_align: Clutter.ActorAlign.END,
-        margin_bottom: 6,
+        margin_bottom: TOP_AMPM_MARGIN_BOTTOM_PX,
     });
     topTimeBox.add_child(topTimeLabel);
     topTimeBox.add_child(topAmpmLabel);
@@ -138,7 +143,7 @@ function buildWorldClockUI(layoutBox, fontFamily, textColor, cities) {
     });
     const leftCityLabel = new St.Label({
         text: leftSecondaryCity.name,
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${SEC_CITY_BASE_FONT_SIZE}px; color: inherit;`,
+        style: labelStyle(SEC_CITY_BASE_FONT_SIZE, { secondary: true }),
     });
     const leftTimeBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
@@ -146,20 +151,20 @@ function buildWorldClockUI(layoutBox, fontFamily, textColor, cities) {
     });
     const leftTimeLabel = new St.Label({
         text: '00:00',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${SEC_TIME_BASE_FONT_SIZE}px; color: inherit;`,
+        style: labelStyle(SEC_TIME_BASE_FONT_SIZE),
     });
     const leftAmpmLabel = new St.Label({
         text: '',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${SEC_GMT_BASE_FONT_SIZE}px; opacity: 0.6; margin-left: 3px; color: inherit;`,
+        style: labelStyle(SEC_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX }),
         y_align: Clutter.ActorAlign.END,
-        margin_bottom: 3,
+        margin_bottom: SEC_AMPM_MARGIN_BOTTOM_PX,
     });
     leftTimeBox.add_child(leftTimeLabel);
     leftTimeBox.add_child(leftAmpmLabel);
 
     const leftGmtLabel = new St.Label({
         text: 'GMT +0',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${SEC_GMT_BASE_FONT_SIZE}px; opacity: 0.6; color: inherit;`,
+        style: labelStyle(SEC_GMT_BASE_FONT_SIZE, { secondary: true }),
     });
     leftSecBox.add_child(leftCityLabel);
     leftSecBox.add_child(leftTimeBox);
@@ -172,7 +177,7 @@ function buildWorldClockUI(layoutBox, fontFamily, textColor, cities) {
     });
     const rightCityLabel = new St.Label({
         text: rightSecondaryCity.name,
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${SEC_CITY_BASE_FONT_SIZE}px; text-align: right; color: inherit;`,
+        style: labelStyle(SEC_CITY_BASE_FONT_SIZE, { secondary: true, alignRight: true }),
         x_align: Clutter.ActorAlign.END,
     });
     const rightTimeBox = new St.BoxLayout({
@@ -182,22 +187,22 @@ function buildWorldClockUI(layoutBox, fontFamily, textColor, cities) {
     });
     const rightTimeLabel = new St.Label({
         text: '00:00',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${SEC_TIME_BASE_FONT_SIZE}px; text-align: right; color: inherit;`,
+        style: labelStyle(SEC_TIME_BASE_FONT_SIZE, { alignRight: true }),
         x_align: Clutter.ActorAlign.END,
     });
     const rightAmpmLabel = new St.Label({
         text: '',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${SEC_GMT_BASE_FONT_SIZE}px; opacity: 0.6; margin-left: 3px; text-align: right; color: inherit;`,
+        style: labelStyle(SEC_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX, alignRight: true }),
         x_align: Clutter.ActorAlign.END,
         y_align: Clutter.ActorAlign.END,
-        margin_bottom: 3,
+        margin_bottom: SEC_AMPM_MARGIN_BOTTOM_PX,
     });
     rightTimeBox.add_child(rightTimeLabel);
     rightTimeBox.add_child(rightAmpmLabel);
 
     const rightGmtLabel = new St.Label({
         text: 'GMT +0',
-        style: `font-family: ${fontFamily}; color: ${textColor}; font-size: ${SEC_GMT_BASE_FONT_SIZE}px; opacity: 0.6; text-align: right; color: inherit;`,
+        style: labelStyle(SEC_GMT_BASE_FONT_SIZE, { secondary: true, alignRight: true }),
         x_align: Clutter.ActorAlign.END,
     });
     rightSecBox.add_child(rightCityLabel);
@@ -211,6 +216,7 @@ function buildWorldClockUI(layoutBox, fontFamily, textColor, cities) {
     layoutBox.add_child(mainContainer);
 
     return {
+        labelStyle,
         topCityLabel,
         topTimeLabel,
         topAmpmLabel,
@@ -251,23 +257,27 @@ function updateWorldTimes(ui, is24h) {
     ui.rightGmtLabel.set_text(rightData.gmtStr);
 }
 
-export function createWorldTimeNode(widgetData, width, height, xPosition, yPosition, global24h) {
-    const is24h = (widgetData.use24h === false) ? false : (global24h !== false);
-    const fontFamily = resolveWidgetFontFamily(widgetData);
+export function createWorldTimeNode(widgetData, width, height, xPosition, yPosition) {
+    const fontFamily = resolveExplicitFontFamily(widgetData);
+    const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(widgetData);
 
     const widgetNode = createWidgetContainer(widgetData, width, height, xPosition, yPosition);
+    widgetNode.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
 
     const cities = widgetData.cities || DEFAULT_CITIES;
     // Keep a stable left/right mapping so the responsive scaler updates the same labels.
-    const ui = buildWorldClockUI(widgetNode, fontFamily, textColor, cities);
+    const ui = buildWorldClockUI(widgetNode, fontCss, textColor, cities);
 
     const state = {
         timerId: null,
     };
 
     const updateDisplay = () => {
-        if (widgetNode.isDestroyed) return GLib.SOURCE_REMOVE;
+        if (isActorDestroyed(widgetNode)) return GLib.SOURCE_REMOVE;
+        // Re-evaluate on every tick so toggling the 24h setting takes effect
+        // without needing to recreate the widget.
+        const is24h = resolveUse24h(widgetData);
         updateWorldTimes(ui, is24h);
         return GLib.SOURCE_CONTINUE;
     };
@@ -277,30 +287,23 @@ export function createWorldTimeNode(widgetData, width, height, xPosition, yPosit
     connectTimerCleanup(widgetNode, state);
 
     attachResponsiveScaler(widgetNode, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT, (scale) => {
-        if (widgetNode.isDestroyed) return;
+        if (isActorDestroyed(widgetNode)) return;
 
-        const topCitySize = Math.max(12, Math.round(TOP_CITY_BASE_FONT_SIZE * scale));
-        const topTimeSize = Math.max(22, Math.round(TOP_TIME_BASE_FONT_SIZE * scale));
-        const topGmtSize = Math.max(9, Math.round(TOP_GMT_BASE_FONT_SIZE * scale));
+        const scaled = (base) => base * scale;
+        ui.topCityLabel.style = ui.labelStyle(scaled(TOP_CITY_BASE_FONT_SIZE), { secondary: true });
+        ui.topTimeLabel.style = ui.labelStyle(scaled(TOP_TIME_BASE_FONT_SIZE), { light: true });
+        ui.topAmpmLabel.style = ui.labelStyle(scaled(TOP_GMT_BASE_FONT_SIZE), { secondary: true, marginLeftPx: TOP_AMPM_MARGIN_LEFT_PX });
+        ui.topGmtLabel.style = ui.labelStyle(scaled(TOP_GMT_BASE_FONT_SIZE), { secondary: true });
 
-        const secCitySize = Math.max(10, Math.round(SEC_CITY_BASE_FONT_SIZE * scale));
-        const secTimeSize = Math.max(14, Math.round(SEC_TIME_BASE_FONT_SIZE * scale));
-        const secGmtSize = Math.max(8, Math.round(SEC_GMT_BASE_FONT_SIZE * scale));
+        ui.leftCityLabel.style = ui.labelStyle(scaled(SEC_CITY_BASE_FONT_SIZE), { secondary: true });
+        ui.leftTimeLabel.style = ui.labelStyle(scaled(SEC_TIME_BASE_FONT_SIZE));
+        ui.leftAmpmLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE), { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX });
+        ui.leftGmtLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE), { secondary: true });
 
-        ui.topCityLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${topCitySize}px; color: inherit;`;
-        ui.topTimeLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${topTimeSize}px; color: inherit;`;
-        ui.topAmpmLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-size: ${topGmtSize}px; opacity: 0.6; margin-left: 4px; color: inherit;`;
-        ui.topGmtLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-size: ${topGmtSize}px; opacity: 0.6; color: inherit;`;
-
-        ui.leftCityLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${secCitySize}px; color: inherit;`;
-        ui.leftTimeLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${secTimeSize}px; color: inherit;`;
-        ui.leftAmpmLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-size: ${secGmtSize}px; opacity: 0.6; margin-left: 3px; color: inherit;`;
-        ui.leftGmtLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-size: ${secGmtSize}px; opacity: 0.6; color: inherit;`;
-
-        ui.rightCityLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${secCitySize}px; text-align: right; color: inherit;`;
-        ui.rightTimeLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-weight: bold; font-size: ${secTimeSize}px; text-align: right; color: inherit;`;
-        ui.rightAmpmLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-size: ${secGmtSize}px; opacity: 0.6; margin-left: 3px; text-align: right; color: inherit;`;
-        ui.rightGmtLabel.style = `font-family: ${fontFamily}; color: ${textColor}; font-size: ${secGmtSize}px; opacity: 0.6; text-align: right; color: inherit;`;
+        ui.rightCityLabel.style = ui.labelStyle(scaled(SEC_CITY_BASE_FONT_SIZE), { secondary: true, alignRight: true });
+        ui.rightTimeLabel.style = ui.labelStyle(scaled(SEC_TIME_BASE_FONT_SIZE), { alignRight: true });
+        ui.rightAmpmLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE), { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX, alignRight: true });
+        ui.rightGmtLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE), { secondary: true, alignRight: true });
     });
 
     return widgetNode;
