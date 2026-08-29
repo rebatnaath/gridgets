@@ -1,12 +1,16 @@
 # Gridgets — GNOME Shell Widgets
 
-![Gridgets Showcase](github/showcase.gif)
+![Gridgets Showcase](github/showcase.png)
+
+| | | |
+|---|---|---|
+| ![Showcase 1](github/showcase1.png) | ![Showcase 2](github/showcase2.png) | ![Showcase 3](github/showcase3.png) |
 
 Gridgets is a GNOME Shell extension that places widgets directly on your desktop using a responsive grid layout. Add clocks, system monitors, weather forecasts, sticky notes, media controls, animated images, and more, then move, resize, and style each widget independently to match your setup.
 
-## User Guide
+<!-- ## User Guide
 
-For a detailed walkthrough of all widgets, customization options, and desktop interactions, see the [User Guide](github/user-guide/README.md).
+For a detailed walkthrough of all widgets, customization options, and desktop interactions, see the [User Guide](github/user-guide/README.md). -->
 
 ## Features
 
@@ -17,12 +21,6 @@ For a detailed walkthrough of all widgets, customization options, and desktop in
 - **Drag & Resize:** Move widgets by dragging, resize with the corner handle.
 - **Multi-Monitor:** Show widgets on primary, all, or each monitor independently.
 - **Follow System Theme:** Automatically switch between light and dark mode.
-
-## Screenshots
-
-| Grid Layout | Widget Preferences |
-|-------------|--------------------|
-| ![Desktop Grid](github/desktop.png) | ![Preferences UI](github/screenshot.png) |
 
 ## Installation
 
