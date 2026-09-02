@@ -251,7 +251,10 @@ export function buildInsightsPage(settings) {
     stSummaryGroup.add(stBestRow);
     stSummaryGroup.add(stDaysRow);
 
-    const clearStBtn = new Adw.ButtonRow({ title: 'Clear Screen Time Data' });
+    const clearStBtn = new Adw.ActionRow({
+        title: 'Clear Screen Time Data',
+        activatable: true,
+    });
     clearStBtn.connect('activated', () => {
         const dialog = new Adw.AlertDialog({
             heading: 'Clear All Screen Time Data?',
@@ -276,6 +279,9 @@ export function buildInsightsPage(settings) {
         'No screen time data yet',
         'Screen time tracking will appear here once the Screen Time widget is active on your desktop.'
     );
+    const stEmptyGroup = new Adw.PreferencesGroup();
+    stEmptyGroup.add(stEmptyBox);
+    page.add(stEmptyGroup);
 
     const stDayGroup = new Adw.PreferencesGroup({
         title: 'Day Detail',
@@ -331,6 +337,9 @@ export function buildInsightsPage(settings) {
         'No mood data yet',
         'Log your first mood in the Mood Logger widget to start tracking how you feel.'
     );
+    const moodEmptyGroup = new Adw.PreferencesGroup();
+    moodEmptyGroup.add(moodEmptyBox);
+    page.add(moodEmptyGroup);
 
     const moodDayGroup = new Adw.PreferencesGroup({
         title: 'Day Detail',
@@ -381,7 +390,10 @@ export function buildInsightsPage(settings) {
         title: 'Export Data',
         description: 'Save your insights data to a JSON file.',
     });
-    const exportStBtn = new Adw.ButtonRow({ title: 'Export Screen Time Data' });
+    const exportStBtn = new Adw.ActionRow({
+        title: 'Export Screen Time Data',
+        activatable: true,
+    });
     exportStBtn.connect('activated', () => {
         const exportData = buildScreenTimeExportData(stAvailableDates);
         const json = JSON.stringify(exportData, null, 2);
@@ -390,7 +402,10 @@ export function buildInsightsPage(settings) {
     });
     exportGroup.add(exportStBtn);
 
-    const exportMoodBtn = new Adw.ButtonRow({ title: 'Export Mood Data' });
+    const exportMoodBtn = new Adw.ActionRow({
+        title: 'Export Mood Data',
+        activatable: true,
+    });
     exportMoodBtn.connect('activated', () => {
         const exportData = buildMoodExportData(moodAvailableDates);
         const json = JSON.stringify(exportData, null, 2);
@@ -677,11 +692,7 @@ export function buildInsightsPage(settings) {
         }
 
         const hasStData = stAvailableDates.length > 0;
-        if (hasStData) {
-            if (stEmptyBox.get_parent()) page.remove(stEmptyBox);
-        } else {
-            if (!stEmptyBox.get_parent()) page.add(stEmptyBox);
-        }
+        stEmptyGroup.set_visible(!hasStData);
         stDayGroup.set_visible(hasStData);
 
         refreshStSummary();
@@ -697,11 +708,7 @@ export function buildInsightsPage(settings) {
         }
 
         const hasMoodData = moodAvailableDates.length > 0;
-        if (hasMoodData) {
-            if (moodEmptyBox.get_parent()) page.remove(moodEmptyBox);
-        } else {
-            if (!moodEmptyBox.get_parent()) page.add(moodEmptyBox);
-        }
+        moodEmptyGroup.set_visible(!hasMoodData);
         moodDayGroup.set_visible(hasMoodData);
 
         refreshMoodSummary();
