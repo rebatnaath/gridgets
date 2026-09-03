@@ -24,7 +24,6 @@ For a detailed walkthrough of all widgets, customization options, and desktop in
 
 ## Installation
 
-> **Note:** The [Releases](https://github.com/rebatnaath/gridgets/releases) page currently contains an old build. For the latest version, build from source using Option B or C below.
 
 ### Option A: From GitHub Releases
 
