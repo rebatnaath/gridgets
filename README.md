@@ -69,6 +69,7 @@ For a detailed walkthrough of all widgets, customization options, and desktop in
    gnome-extensions pack \
      --extra-source=assets/thumbnails \
      --extra-source=assets/weather \
+     --extra-source=desktopGrid \
      --extra-source=shell \
      --extra-source=schemas \
      --extra-source=utils \
