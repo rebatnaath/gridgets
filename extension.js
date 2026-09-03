@@ -11,6 +11,7 @@ import { clearArtworkCaches } from './widgets/music/artwork.js';
 import { clearRssEngines } from './utils/rssEngine.js';
 import { clearEnsuredDirectories } from './utils/widgetUtils.js';
 import { clearMusicPlaybackState } from './widgets/music/playbackState.js';
+import { screenTimeEngine } from './utils/screenTimeEngine.js';
 
 export default class GridgetsExtension extends Extension {
     enable() {
@@ -31,6 +32,8 @@ export default class GridgetsExtension extends Extension {
         this._settingSignalIds.push(
             this._settings.connect('changed::accent-color-override', () => this._rebuildGrids())
         );
+
+        this._screenTimeRelease = screenTimeEngine.acquire();
 
         this._createAndShowGrids();
 
@@ -71,6 +74,10 @@ export default class GridgetsExtension extends Extension {
         this._settings = null;
 
         this._removeAllGrids();
+        if (this._screenTimeRelease) {
+            this._screenTimeRelease();
+            this._screenTimeRelease = null;
+        }
         clearMoodStoreCache();
         clearGeocodeCache();
         clearArtworkCaches();

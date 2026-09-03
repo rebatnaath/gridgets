@@ -96,7 +96,6 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         selectedDate: null,
         snapshot: null,
         geometry: {},
-        engineRelease: null,
         engineListener: null,
     };
 
@@ -229,7 +228,6 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     });
     rightPanel.add_child(appRowsBox);
 
-    state.engineRelease = screenTimeEngine.acquire();
     state.selectedDate = screenTimeEngine.getTodayDate();
 
     const onEngineTick = () => {
@@ -242,7 +240,6 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
 
     registerWidgetCleanup(container, () => {
         screenTimeEngine.removeListener(state.engineListener);
-        state.engineRelease();
     });
 
     function refreshData() {
