@@ -2,10 +2,10 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
-import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../utils/widgetUtils.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../shell/widgetUIUtils.js';
-import { subscribeToFeed } from '../utils/rssEngine.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
+import { subscribeToFeed } from '../../utils/rssEngine.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const REF_WIDTH_PX = 240;
 const REF_HEIGHT_PX = 240;

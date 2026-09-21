@@ -5,10 +5,10 @@ import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import Soup from 'gi://Soup?version=3.0';
-import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor, saveJsonToFile } from '../utils/widgetUtils.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../shell/widgetUIUtils.js';
-import { applyCornerMask, setImageContentBytes } from './media/mediaCommon.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor, saveJsonToFile } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../shell/widgetUIUtils.js';
+import { applyCornerMask, setImageContentBytes } from '../media/mediaCommon.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const REF_WIDTH_PX = 420;
 const REF_HEIGHT_PX = 200;

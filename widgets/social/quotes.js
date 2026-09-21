@@ -4,9 +4,9 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import Soup from 'gi://Soup?version=3.0';
-import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../utils/widgetUtils.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const QUOTE_ROTATE_INTERVAL_SEC = 30;
 const BORDER_ALPHA = 0.14;

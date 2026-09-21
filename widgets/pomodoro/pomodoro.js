@@ -1,8 +1,8 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba } from '../utils/widgetUtils.js';
-import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../desktopGrid/constants.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba } from '../../utils/widgetUtils.js';
+import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import {
     PHASE_WORK,
     buildPomodoroPhaseConfig,

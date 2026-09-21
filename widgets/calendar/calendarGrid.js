@@ -1,8 +1,8 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveTextOnAccentColor } from '../utils/widgetUtils.js';
-import { createWidgetContainer, attachResponsiveScaler, connectTimerCleanup, startPollingTimer, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../shell/widgetUIUtils.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveTextOnAccentColor } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, attachResponsiveScaler, connectTimerCleanup, startPollingTimer, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../shell/widgetUIUtils.js';
 
 const REF_SIZE_PX = 170;
 const REF_PADDING_PX = 16;

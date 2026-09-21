@@ -1,9 +1,9 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../utils/widgetUtils.js';
-import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../desktopGrid/constants.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import {
     PHASE_WORK,
     PHASE_SHORT_BREAK,

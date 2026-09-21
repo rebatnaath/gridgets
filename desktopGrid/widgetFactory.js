@@ -1,25 +1,17 @@
 import { createTimeNode } from '../widgets/time/index.js';
-import { createWeatherNode } from '../widgets/weather/index.js';
+import { createWeatherNode, createSunScheduleNode } from '../widgets/weather/index.js';
 import { createMusicNode } from '../widgets/music/index.js';
-import { createNotesNode } from '../widgets/notes.js';
-import { createClipboardNode } from '../widgets/clipboard.js';
-import { createCalendarNode } from '../widgets/calendar.js';
-import { createQuotesNode } from '../widgets/quotes.js';
+import { createNotesNode, createClipboardNode, createTodoNode } from '../widgets/productivity/index.js';
+import { createCalendarNode, createCalendarGridNode } from '../widgets/calendar/index.js';
+import { createQuotesNode, createGithubNode, createRssHeadlinesNode } from '../widgets/social/index.js';
 import {
     createCpuRamNode,
     createNetworkSpeedNode,
     createSystemDashboardNode
 } from '../widgets/system/index.js';
-import { createPomodoroNode } from '../widgets/pomodoro.js';
-import { createPomodoroFocusNode } from '../widgets/pomodoroFocus.js';
-import { createAppLauncherNode } from '../widgets/appLauncher.js';
-import { createScreenTimeNode } from '../widgets/screenTimeWidget.js';
-import { createCalendarGridNode } from '../widgets/calendarGrid.js';
-import { createTodoNode } from '../widgets/todo.js';
-import { createGithubNode } from '../widgets/github.js';
-import { createSunScheduleNode } from '../widgets/solarSchedule.js';
-import { createRssHeadlinesNode } from '../widgets/rssHeadlines.js';
-import { createMoodNode } from '../widgets/moodLogger.js';
+import { createPomodoroNode, createPomodoroFocusNode } from '../widgets/pomodoro/index.js';
+import { createAppLauncherNode } from '../widgets/appLauncher/index.js';
+import { createScreenTimeNode, createMoodNode } from '../widgets/wellness/index.js';
 import {
     createStaticImageNode,
     createAnimatedImageNode,

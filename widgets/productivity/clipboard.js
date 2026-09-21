@@ -1,15 +1,15 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetForegroundColor, saveJsonToFile } from '../utils/widgetUtils.js';
+import { SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetForegroundColor, saveJsonToFile } from '../../utils/widgetUtils.js';
 import {
     createWidgetContainer,
     connectTimerCleanup,
     startPollingTimer,
     attachResponsiveScaler
-} from '../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../desktopGrid/constants.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+} from '../../shell/widgetUIUtils.js';
+import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const TICK_INTERVAL_MS = 1000;
 const MAX_HISTORY_LENGTH = 25;

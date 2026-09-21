@@ -1,8 +1,8 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../utils/widgetUtils.js';
-import { createWidgetContainer, connectTimerCleanup, startPollingTimer, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
+import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, connectTimerCleanup, startPollingTimer, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 
 const DATE_POLL_INTERVAL_MS = 60_000;
 const BORDER_ALPHA = 0.14;

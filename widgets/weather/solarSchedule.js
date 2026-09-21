@@ -4,9 +4,9 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Cairo from 'gi://cairo';
 import Soup from 'gi://Soup?version=3.0';
-import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, SECONDARY_OPACITY, cssColorToRgba, parseCssColor, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../utils/widgetUtils.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, startPollingTimer, connectTimerCleanup } from '../shell/widgetUIUtils.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, SECONDARY_OPACITY, cssColorToRgba, parseCssColor, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, startPollingTimer, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const REF_WIDTH_PX = 240;
 const REF_HEIGHT_PX = 240;

@@ -2,9 +2,9 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
-import { SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync } from '../utils/widgetUtils.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, attachButtonFeedback } from '../shell/widgetUIUtils.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, attachButtonFeedback } from '../../shell/widgetUIUtils.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const REF_WIDTH_PX = 360;
 const REF_HEIGHT_PX = 170;

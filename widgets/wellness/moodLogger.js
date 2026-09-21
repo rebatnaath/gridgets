@@ -1,10 +1,10 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { SECONDARY_OPACITY, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../utils/widgetUtils.js';
-import { createWidgetContainer, attachResponsiveScaler, attachButtonFeedback, connectTimerCleanup, startPollingTimer } from '../shell/widgetUIUtils.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
-import { todayDateString, toDateString, loadDatesAsync, getMood, saveMood } from '../utils/moodStore.js';
+import { SECONDARY_OPACITY, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, attachResponsiveScaler, attachButtonFeedback, connectTimerCleanup, startPollingTimer } from '../../shell/widgetUIUtils.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { todayDateString, toDateString, loadDatesAsync, getMood, saveMood } from '../../utils/moodStore.js';
 
 const REF_WIDTH_PX = 380;
 const REF_HEIGHT_PX = 160;

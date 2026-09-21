@@ -2,10 +2,10 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveDesktopAppInfo } from '../utils/widgetUtils.js';
-import { createWidgetContainer, registerWidgetCleanup } from '../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../desktopGrid/constants.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveDesktopAppInfo } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
+import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const MAX_APPS = 8;
 const DEFAULT_APP_ICON = 'application-x-executable-symbolic';

@@ -10,11 +10,11 @@ import {
     CAIRO_OPERATOR_CLEAR,
     CAIRO_OPERATOR_OVER,
     resolveDesktopAppInfo,
-} from '../utils/widgetUtils.js';
-import { MONTH_NAMES_ABBREVIATED as MONTH_NAMES, createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
-import { screenTimeEngine } from '../utils/screenTimeEngine.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
-import { toDateString } from '../utils/moodStore.js';
+} from '../../utils/widgetUtils.js';
+import { MONTH_NAMES_ABBREVIATED as MONTH_NAMES, createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { screenTimeEngine } from '../../utils/screenTimeEngine.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { toDateString } from '../../utils/moodStore.js';
 
 const REF_WIDTH = 360;
 const BORDER_ALPHA = 0.14;

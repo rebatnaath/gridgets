@@ -13,6 +13,8 @@ import { buildSimpleLayout, attachSimpleScaler } from './weatherSimple.js';
 import { buildStandardLayout, attachStandardScaler } from './weatherStandard.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
+export { createSunScheduleNode } from './solarSchedule.js';
+
 export function createWeatherNode(widgetData, width, height, xPosition, yPosition, isDynamicColor, isDynamicImage) {
     const extensionPath = widgetData.extensionPath || '';
     const widgetNode = createWidgetContainer(widgetData, width, height, xPosition, yPosition);

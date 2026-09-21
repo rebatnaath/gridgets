@@ -1,10 +1,10 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync } from '../utils/widgetUtils.js';
-import { createWidgetContainer, registerWidgetCleanup, scheduleDeferredUpdate, attachButtonFeedback, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../desktopGrid/constants.js';
-import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, scheduleDeferredUpdate, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const DEFAULT_NOTE_TEXT = 'Quick Note\n- [ ] Task 1\n- [x] Task 2\n\n**Click the pen icon to edit**';
 const BASE_CONTAINER_WIDTH = 240;
