@@ -2,6 +2,15 @@
 
 Thank you for your interest in contributing to Gridgets. This guide covers how to report issues, request features, and submit code changes.
 
+## Issue Templates
+
+**Please use the provided templates when opening issues.** They ensure we get the information needed to investigate quickly.
+
+- **Bug Reports:** Use the [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.yml) — it requires GNOME Shell version and installation method (see README).
+- **Feature Requests:** Use the [Feature Request template](.github/ISSUE_TEMPLATE/feature_request.yml).
+
+Issues that don't follow the template may not be investigated unless the severity is critical. General questions don't require a template.
+
 ## Code of Conduct
 
 This project is committed to providing a welcoming and inclusive experience for everyone. By participating, you agree to respect all contributors regardless of background or level of experience. Harassment and disrespectful behavior are not tolerated.

@@ -1,0 +1,63 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below.
+  - type: input
+    id: gnome-version
+    attributes:
+      label: GNOME Shell Version
+      description: Run `gnome-shell --version` in terminal
+      placeholder: e.g., 50.4
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation Method
+      description: How did you install Gridgets? (see README)
+      options:
+        - Option A: From GitHub Releases (.zip)
+        - Option B: Manual directory copy from source
+        - Option C: Build zip package (gnome-extensions pack)
+        - Other / Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Clear description of what happened
+      placeholder: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Numbered steps to trigger the bug
+      placeholder: |
+        1. Add weather widget
+        2. Click on it
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs (optional)
+      description: Output from `journalctl --user -g gridgets --since "15 min ago"` or looking-glass
+      render: shell
+    validations:
+      required: false
