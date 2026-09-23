@@ -1,9 +1,34 @@
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
-import { buildGlobalAestheticsGroup, createSwitchRow } from './aestheticControls.js';
-import { DEFAULT_BG_COLOR, DEFAULT_FG_COLOR } from '../utils/widgetUtils.js';
-import { THEMES, applyTheme } from './themes.js';
+import Gio from 'gi://Gio';
+import { buildGlobalAestheticsGroup, createColorRow, createSwitchRow } from './aestheticControls.js';
+import { THEMES, findThemePreset, applyTheme } from './themes.js';
+import { DEFAULT_BG_COLOR, DEFAULT_FG_COLOR, resolveSystemAccentColor } from '../utils/widgetUtils.js';
+
+function isSystemThemeSelected(settings) {
+    return settings.get_string('theme') === 'adwaita';
+}
+
+function getAvailableThemes(followSystemTheme) {
+    return THEMES.filter(theme => {
+        if (theme.id === 'adwaita')
+            return followSystemTheme;
+        if (theme.id === 'adwaita-light' || theme.id === 'adwaita-dark')
+            return !followSystemTheme;
+        return true;
+    });
+}
+
+function getThemeAccentColor(settings) {
+    const themeId = settings.get_string('theme');
+    if (themeId === 'custom') {
+        return settings.get_string('accent-color-override')
+            || resolveSystemAccentColor(Gio.Settings.new('org.gnome.desktop.interface'));
+    }
+    const theme = findThemePreset(themeId);
+    return theme?.accent || resolveSystemAccentColor(Gio.Settings.new('org.gnome.desktop.interface'));
+}
 
 export function buildAppearancePage(settings) {
     const page = new Adw.PreferencesPage({
@@ -13,68 +38,106 @@ export function buildAppearancePage(settings) {
 
     const themeGroup = new Adw.PreferencesGroup({
         title: 'Theme Presets',
-        description: 'Choose a built-in colour scheme. Themes set global defaults; per-widget overrides are preserved.',
+        description: 'Choose a built-in colour scheme. Select Custom to edit global colours.',
     });
 
-    const model = new Gtk.StringList();
-    model.append('No Theme');
-    THEMES.forEach(t => model.append(t.name));
-
-    const currentThemeId = settings.get_string('theme');
-    const matchedThemeIndex = THEMES.findIndex(t => t.id === currentThemeId);
-    const currentIdx = currentThemeId && matchedThemeIndex !== -1 ? matchedThemeIndex + 1 : 0;
+    const followSystemRow = new Adw.SwitchRow({
+        title: 'Follow System Light/Dark Theme',
+        subtitle: 'Use Adwaita System, or select a separate light or dark variant.',
+    });
+    followSystemRow.set_active(isSystemThemeSelected(settings));
+    themeGroup.add(followSystemRow);
 
     const themeRow = new Adw.ComboRow({
         title: 'Color Theme',
-        subtitle: 'Select a preset theme to apply across all widgets.',
-        model,
-        selected: currentIdx,
+        subtitle: 'Adwaita System follows the GNOME light/dark preference.',
+    });
+    themeGroup.add(themeRow);
+
+    const backgroundRow = createColorRow('Global Background Color', 'Editable in Custom mode only.', settings, 'global-background-color', DEFAULT_BG_COLOR);
+    const foregroundRow = createColorRow('Global Foreground/Text Color', 'Editable in Custom mode only.', settings, 'global-foreground-color', DEFAULT_FG_COLOR);
+    themeGroup.add(backgroundRow);
+    themeGroup.add(foregroundRow);
+
+    const accentRow = new Adw.ActionRow({
+        title: 'Accent Color',
+        subtitle: 'Custom accent colour; predefined themes use their own accent.',
+    });
+    const accentButton = new Gtk.ColorButton({ valign: Gtk.Align.CENTER });
+    const accentColor = new Gdk.RGBA();
+    accentRow.add_suffix(accentButton);
+    themeGroup.add(accentRow);
+
+    let updatingThemeModel = false;
+
+    const updateAccentButton = () => {
+        accentColor.parse(getThemeAccentColor(settings));
+        accentButton.set_rgba(accentColor);
+    };
+
+    const updateColorSensitivity = () => {
+        const isCustom = settings.get_string('theme') === 'custom';
+        backgroundRow.set_sensitive(isCustom);
+        foregroundRow.set_sensitive(isCustom);
+        backgroundRow.set_subtitle(isCustom ? 'Custom background applied to all widgets.' : 'Select Custom theme to edit this colour.');
+        foregroundRow.set_subtitle(isCustom ? 'Custom text colour applied to all widgets.' : 'Select Custom theme to edit this colour.');
+        accentRow.set_sensitive(isCustom);
+        accentRow.set_subtitle(isCustom ? 'Custom accent colour applied to all widgets.' : 'Accent follows the selected predefined theme.');
+        updateAccentButton();
+    };
+
+    const updateThemeModel = () => {
+        if (updatingThemeModel) return;
+        updatingThemeModel = true;
+        try {
+            const availableThemes = getAvailableThemes(followSystemRow.get_active());
+            const model = new Gtk.StringList();
+            availableThemes.forEach(theme => model.append(theme.name));
+            themeRow.set_model(model);
+
+            const currentThemeId = settings.get_string('theme');
+            const currentIndex = availableThemes.findIndex(theme => theme.id === currentThemeId);
+            themeRow.selected = currentIndex >= 0 ? currentIndex : 0;
+            updateColorSensitivity();
+        } finally {
+            updatingThemeModel = false;
+        }
+    };
+
+    accentButton.connect('color-set', () => {
+        settings.set_string('accent-color-override', accentButton.get_rgba().to_string());
     });
 
     themeRow.connect('notify::selected', () => {
-        const idx = themeRow.get_selected();
-        if (idx === 0) {
-            settings.set_string('theme', '');
-            settings.set_string('global-background-color', DEFAULT_BG_COLOR);
-            settings.set_string('global-foreground-color', DEFAULT_FG_COLOR);
-            settings.set_string('accent-color-override', '');
-            return;
+        if (updatingThemeModel) return;
+        const theme = getAvailableThemes(followSystemRow.get_active())[themeRow.get_selected()];
+        if (!theme) return;
+        applyTheme(settings, theme.id);
+        updateColorSensitivity();
+    });
+
+    followSystemRow.connect('notify::active', () => {
+        const followSystemTheme = followSystemRow.get_active();
+        const currentThemeId = settings.get_string('theme');
+        if (followSystemTheme && currentThemeId !== 'adwaita') {
+            applyTheme(settings, 'adwaita');
+        } else if (!followSystemTheme && currentThemeId === 'adwaita') {
+            const interfaceSettings = Gio.Settings.new('org.gnome.desktop.interface');
+            const systemTheme = interfaceSettings.get_string('color-scheme');
+            applyTheme(settings, systemTheme === 'prefer-light' || systemTheme === 'default' ? 'adwaita-light' : 'adwaita-dark');
         }
-        const theme = THEMES[idx - 1];
-        if (theme) {
-            applyTheme(settings, theme.id);
-            settings.set_string('theme', theme.id);
-        }
+        updateThemeModel();
     });
 
-    themeGroup.add(themeRow);
-
-    const accentRow = new Adw.ActionRow({
-        title: 'Accent Color Override',
-        subtitle: 'Manually set the accent color. Leave empty to use the system or theme default.',
-    });
-    const accentBtn = new Gtk.ColorButton({ valign: Gtk.Align.CENTER });
-    const accentRgba = new Gdk.RGBA();
-    const currentAccent = settings.get_string('accent-color-override');
-    accentRgba.parse(currentAccent || '#3584e4');
-    accentBtn.set_rgba(accentRgba);
-    accentBtn.connect('color-set', () => {
-        settings.set_string('accent-color-override', accentBtn.get_rgba().to_string());
-    });
-    accentRow.add_suffix(accentBtn);
-    themeGroup.add(accentRow);
-
+    updateThemeModel();
     page.add(themeGroup);
-
     page.add(buildGlobalAestheticsGroup(settings));
 
     const gridGroup = new Adw.PreferencesGroup({
         title: 'Desktop Grid Layout',
         description: 'Configure desktop grid layout visibility.',
     });
-
     gridGroup.add(createSwitchRow('Visualize Grid Overlay', 'Show grid lines on the desktop for easier widget alignment.', settings, 'show-grid').row);
-
     page.add(gridGroup);
     return page;
 }

@@ -10,6 +10,7 @@ import { clearGeocodeCache } from './widgets/weather/weatherCommon.js';
 import { clearArtworkCaches } from './widgets/music/artwork.js';
 import { clearRssEngines } from './utils/rssEngine.js';
 import { clearEnsuredDirectories } from './utils/widgetUtils.js';
+import { findThemePreset } from './utils/themePresets.js';
 import { clearMusicPlaybackState } from './widgets/music/playbackState.js';
 import { clearMusicPolls } from './widgets/music/index.js';
 import { screenTimeEngine } from './utils/screenTimeEngine.js';
@@ -24,11 +25,13 @@ export default class GridgetsExtension extends Extension {
         this._settings = this.getSettings();
         this._interfaceSettings = Gio.Settings.new('org.gnome.desktop.interface');
 
+        this._migrateOldThemeSettings();
+
         this._settingSignalIds.push(
             this._settings.connect('changed::global-monitor', () => this._rebuildGrids())
         );
         this._settingSignalIds.push(
-            this._settings.connect('changed::follow-system-theme', () => this._rebuildGrids())
+            this._settings.connect('changed::theme', () => this._rebuildGrids())
         );
         this._settingSignalIds.push(
             this._settings.connect('changed::accent-color-override', () => this._rebuildGrids())
@@ -43,8 +46,7 @@ export default class GridgetsExtension extends Extension {
         });
 
         this._interfaceSignalId = this._interfaceSettings.connect('changed::color-scheme', () => {
-            if (this._settings.get_boolean('follow-system-theme'))
-                this._rebuildGrids();
+            this._rebuildGrids();
         });
 
         if (this._interfaceSettings.settings_schema.has_key('accent-color')) {
@@ -86,6 +88,12 @@ export default class GridgetsExtension extends Extension {
         clearMusicPlaybackState();
         clearMusicPolls();
         clearEnsuredDirectories();
+    }
+
+    _migrateOldThemeSettings() {
+        const currentTheme = this._settings.get_string('theme');
+        if (!currentTheme || !findThemePreset(currentTheme))
+            this._settings.set_string('theme', 'adwaita');
     }
 
     _spawnGrid(monitorIndex) {

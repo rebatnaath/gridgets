@@ -1,6 +1,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import GioUnix from 'gi://GioUnix';
+import { findThemePreset } from './themePresets.js';
 
 /** Empty string means no font-family override; widgets inherit the system theme font. */
 export const DEFAULT_FONT_FAMILY = '';
@@ -65,6 +66,15 @@ export function calculateGridDimensions(width, height, gridCols) {
 
 /** Corner rounding applied to every widget; not user-configurable. */
 export const DEFAULT_CORNER_RADIUS_PX = 15;
+export const DEFAULT_CHILD_CORNER_RADIUS_PX = 12;
+
+export function resolveChildCornerRadius(baseRadius, scale, options = {}) {
+    const maxRadius = options.maxRadius ?? Math.max(baseRadius, 12);
+    const minRadius = options.minRadius ?? Math.max(1, Math.round(maxRadius / 2));
+    const normalizedScale = Math.max(0, Math.min(1, scale));
+    const preferredRadius = maxRadius - ((maxRadius - minRadius) * normalizedScale);
+    return Math.min(maxRadius, Math.max(minRadius, Math.round(preferredRadius)));
+}
 
 /** Returns whether a CSS color reads as a dark surface (luminance below 0.5). */
 export function isDarkBackgroundColor(cssColor) {
@@ -103,7 +113,7 @@ const ADWAITA_ACCENT_COLORS = Object.freeze({
     purple: '#9141ac',
     slate: '#6f8396',
 });
-const DEFAULT_ACCENT_COLOR = ADWAITA_ACCENT_COLORS.blue;
+export const DEFAULT_ACCENT_COLOR = ADWAITA_ACCENT_COLORS.blue;
 
 /**
  * Reads the system accent color from org.gnome.desktop.interface. The
@@ -116,27 +126,39 @@ export function resolveSystemAccentColor(interfaceSettings) {
     return ADWAITA_ACCENT_COLORS[interfaceSettings.get_string('accent-color')] || DEFAULT_ACCENT_COLOR;
 }
 
-/** Reads global extension settings; when follow-system-theme is enabled, bg/fg follow the GNOME color scheme. */
+/** Reads global extension settings; when theme is 'adwaita', bg/fg follow the GNOME color scheme. */
 export function readGlobalSettings(settings, interfaceSettings = null) {
     let globalBgColor = settings.get_string('global-background-color');
     let globalFgColor = settings.get_string('global-foreground-color');
 
-    if (settings.get_boolean('follow-system-theme') && interfaceSettings) {
+    const currentTheme = settings.get_string('theme');
+    const themePreset = findThemePreset(currentTheme);
+    if (currentTheme === 'adwaita' && interfaceSettings) {
         const schemeColors = resolveSystemSchemeColors(interfaceSettings.get_string('color-scheme'));
         if (schemeColors) {
             globalBgColor = schemeColors.bg;
             globalFgColor = schemeColors.fg;
         }
+    } else if (themePreset?.bg && themePreset?.fg) {
+        globalBgColor = themePreset.bg;
+        globalFgColor = themePreset.fg;
     }
 
     const accentOverride = settings.get_string('accent-color-override');
-    const globalAccentColor = accentOverride || resolveSystemAccentColor(interfaceSettings);
+    const systemAccentColor = resolveSystemAccentColor(interfaceSettings);
+    const isAdwaitaTheme = currentTheme === 'adwaita'
+        || currentTheme === 'adwaita-light'
+        || currentTheme === 'adwaita-dark';
+    const globalAccentColor = isAdwaitaTheme
+        ? systemAccentColor
+        : (themePreset?.accent || accentOverride || systemAccentColor);
 
     return {
         globalBgColor,
         globalFgColor,
         globalAccentColor,
         globalFontFamily: settings.get_string('global-font-family'),
+        globalUseCustomFont: settings.get_boolean('global-use-custom-font'),
         globalAnimateGif: settings.get_boolean('image-animate-gif'),
         globalImageShowCaption: settings.get_boolean('image-show-caption'),
         globalSlideshowShowCaption: settings.get_boolean('slideshow-show-caption'),
@@ -151,15 +173,113 @@ export function readGlobalSettings(settings, interfaceSettings = null) {
 /** Returns Adwaita surface colors for a GNOME color-scheme value, or null for unknown schemes. */
 export function resolveSystemSchemeColors(colorScheme) {
     switch (colorScheme) {
-        case 'prefer-dark':
-            return { bg: '#222226', fg: '#ffffff' };
+        case 'prefer-dark': {
+            const darkTheme = findThemePreset('adwaita-dark');
+            return { bg: darkTheme.bg, fg: darkTheme.fg };
+        }
         case 'prefer-light':
-        case 'default':
-            return { bg: '#fafafb', fg: 'rgba(0, 0, 6, 0.8)' };
+        case 'default': {
+            const lightTheme = findThemePreset('adwaita-light');
+            return { bg: lightTheme.bg, fg: lightTheme.fg };
+        }
         default:
             return null;
     }
 }
+
+const ADWAITA_SURFACE_COLORS = Object.freeze([
+    { base: '#222226', card: 'rgba(255, 255, 255, 0.08)', highlight: 'rgba(255, 255, 255, 0.20)' },
+    { base: '#fafafb', card: '#ebebed', highlight: '#dfdfe1' },
+]);
+
+// Ratios calibrated to reproduce the Adwaita pairs above for other bases.
+const CARD_BLEND_DARK = 0.08;
+const HIGHLIGHT_BLEND_DARK = 0.15;
+const CARD_BLEND_LIGHT = 0.03;
+const HIGHLIGHT_BLEND_LIGHT = 0.11;
+
+function blendSurfaceHex(baseColor, ratio, towardWhite) {
+    const { r, g, b } = parseCssColor(baseColor);
+    const blend = (channel) => {
+        const value = channel * 255;
+        const target = towardWhite ? 255 : 0;
+        return Math.round(value + (target - value) * ratio);
+    };
+    const toHex = (value) => value.toString(16).padStart(2, '0');
+    return `#${toHex(blend(r))}${toHex(blend(g))}${toHex(blend(b))}`;
+}
+
+/** Card and highlight surfaces for any widget base color; non-Adwaita bases are blended to match. */
+export function resolveSurfaceShades(baseColor) {
+    const target = parseCssColor(baseColor);
+    const match = ADWAITA_SURFACE_COLORS.find((scheme) => {
+        const surface = parseCssColor(scheme.base);
+        return surface.r === target.r && surface.g === target.g && surface.b === target.b;
+    });
+    if (match)
+        return { card: match.card, highlight: match.highlight };
+
+    const isDark = isDarkBackgroundColor(baseColor);
+    return {
+        card: blendSurfaceHex(baseColor, isDark ? CARD_BLEND_DARK : CARD_BLEND_LIGHT, isDark),
+        highlight: blendSurfaceHex(baseColor, isDark ? HIGHLIGHT_BLEND_DARK : HIGHLIGHT_BLEND_LIGHT, isDark),
+    };
+}
+
+/** Card and highlight surfaces for a widget config's resolved base color. */
+export function resolveWidgetSurfaces(config) {
+    return resolveSurfaceShades(resolveWidgetBackgroundColor(config));
+}
+
+export function resolveWidgetColors(config) {
+    const background = resolveWidgetBackgroundColor(config);
+    const { card, highlight } = resolveSurfaceShades(background);
+    return {
+        background,
+        subtleBackground: card,
+        highlightBackground: highlight,
+        contentColor: resolveWidgetForegroundColor(config),
+    };
+}
+
+/** The widget's accent color, falling back to the Adwaita default. */
+export function resolveAccentColor(config) {
+    return config.globalAccentColor || DEFAULT_ACCENT_COLOR;
+}
+
+/** GitHub contribution-graph intensity ramp; fixed brand data, not themeable. */
+export const CONTRIBUTION_LEVEL_COLORS = ['#39d353', '#26a641', '#006d32', '#0e4429'];
+
+/** Mood ramp shared by the mood widget and the preferences insights charts. */
+export const MOOD_LEVELS = Object.freeze([
+    { level: 1, label: 'Sad', icon: 'face-sad-symbolic', color: '#F43F5E' },
+    { level: 2, label: 'Worried', icon: 'face-worried-symbolic', color: '#F97316' },
+    { level: 3, label: 'Neutral', icon: 'face-plain-symbolic', color: '#EAB308' },
+    { level: 4, label: 'Happy', icon: 'face-smile-symbolic', color: '#22C55E' },
+    { level: 5, label: 'Ecstatic', icon: 'face-laugh-symbolic', color: '#3B82F6' },
+]);
+
+/** Legibility scrim over album artwork; the fade itself requires alpha over arbitrary art. */
+export const ARTWORK_SCRIM_STYLE = 'background-gradient-direction: vertical; background-gradient-start: rgba(0,0,0,0); background-gradient-end: rgba(0,0,0,0.75);';
+
+export const TEXT_COLOR_ON_LIGHT_BG = '#000000';
+export const TEXT_COLOR_ON_DARK_BG = '#ffffff';
+
+/** Per-condition sky gradients for dynamic weather backgrounds, as [start, end]. */
+export const WEATHER_SKY_GRADIENTS = Object.freeze({
+    clear: { day: ['#2b84d4', '#1a5a9e'], night: ['#121e33', '#0a1221'] },
+    partlyCloudy: { day: ['#5b8cbd', '#3d6a94'], night: ['#25354a', '#152335'] },
+    cloudy: { day: ['#121D2B', '#1a2a3d'], night: ['#14181a', '#0c0f12'] },
+    overcast: { day: ['#0e1520', '#162030'], night: ['#0c0f12', '#0a0d10'] },
+    fog: { day: ['#a1aba3', '#7a8480'], night: ['#3c403e', '#252825'] },
+    dust: { day: ['#c2a884', '#a08460'], night: ['#4a3d2c', '#302618'] },
+    sleet: { day: ['#5a8f9c', '#3d6e78'], night: ['#1d343b', '#112126'] },
+    hail: { day: ['#7b8c9c', '#5a6b7a'], night: ['#212a33', '#131a22'] },
+    rain: { day: ['#121D2B', '#1a2a3d'], night: ['#14181a', '#0c0f12'] },
+    thunderstorms: { day: ['#232533', '#151622'], night: ['#232533', '#151622'] },
+    snowBlizzard: { day: ['#b8d6eb', '#8bb5d0'], night: ['#465661', '#2e3b44'] },
+    snow: { day: ['#8dafc4', '#6d92a8'], night: ['#243a4a', '#162633'] },
+});
 
 /** Checks if a filename has an extension that supports animation (.gif, .webp). */
 export function isAnimatedImageFile(filename) {
@@ -248,8 +368,8 @@ const LUMINANCE_RED_WEIGHT = 0.299;
 const LUMINANCE_GREEN_WEIGHT = 0.587;
 const LUMINANCE_BLUE_WEIGHT = 0.114;
 const LUMINANCE_LIGHT_THRESHOLD = 0.55;
-export const LIGHT_TEXT_ON_ACCENT = 'rgba(255, 255, 255, 0.92)';
-export const DARK_TEXT_ON_ACCENT = 'rgba(30, 30, 30, 0.92)';
+export const LIGHT_TEXT_ON_ACCENT = '#ffffff';
+export const DARK_TEXT_ON_ACCENT = '#1e1e1e';;
 
 /** Returns a readable text color for content drawn on top of the accent color. */
 export function resolveTextOnAccentColor(accentHex) {
@@ -404,9 +524,12 @@ export function resolveWidgetBackgroundColor(config) {
     );
 }
 
+export function resolveWidgetCornerRadius(config) {
+    return config?.appliedBorderRadius ?? DEFAULT_CORNER_RADIUS_PX;
+}
+
 export function buildBaseWidgetStyle(config) {
-    const borderRadius = config.appliedBorderRadius || DEFAULT_CORNER_RADIUS_PX;
-    return `border-radius: ${borderRadius}px;`;
+    return `border-radius: ${resolveWidgetCornerRadius(config)}px;`;
 }
 
 export function resolveWidgetForegroundColor(config) {
@@ -425,7 +548,9 @@ export function resolveWidgetForegroundColor(config) {
  * family; DEFAULT_FONT_FAMILY is only a prefs-side display fallback.
  */
 export function resolveExplicitFontFamily(config) {
-    return (config && (config.fontFamily || config.globalFontFamily)) || '';
+    if (!config) return '';
+    if (config.globalUseCustomFont === false && !config.fontFamily) return '';
+    return (config.fontFamily || config.globalFontFamily) || '';
 }
 
 /**

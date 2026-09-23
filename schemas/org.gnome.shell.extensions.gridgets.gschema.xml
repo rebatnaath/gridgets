@@ -6,11 +6,6 @@
       <summary>Widgets JSON data</summary>
       <description>Stores the JSON representation of all active widgets.</description>
     </key>
-    <key name="follow-system-theme" type="b">
-      <default>false</default>
-      <summary>Follow System Theme</summary>
-      <description>If true, widgets use Adwaita light/dark colors based on the GNOME color scheme instead of the global background and foreground colors.</description>
-    </key>
     <key name="global-background-color" type="s">
       <default>'#222226'</default>
       <summary>Global Background Color</summary>
@@ -30,6 +25,11 @@
       <default>''</default>
       <summary>Global Font Family</summary>
       <description>The font family to use across widgets.</description>
+    </key>
+    <key name="global-use-custom-font" type="b">
+      <default>false</default>
+      <summary>Use Custom Font</summary>
+      <description>If true, widgets use the configured custom font family instead of the system font.</description>
     </key>
     <key name="weather-dynamic-color" type="b">
       <default>true</default>
@@ -82,14 +82,14 @@
       <description>Internal key set when right-clicking a widget to open its edit dialog in preferences.</description>
     </key>
     <key name="theme" type="s">
-      <default>''</default>
+      <default>'adwaita'</default>
       <summary>Active Theme</summary>
-      <description>The currently selected theme preset ID. Empty means no theme has been applied.</description>
+      <description>The currently selected theme preset ID.</description>
     </key>
     <key name="accent-color-override" type="s">
       <default>''</default>
       <summary>Accent Color Override</summary>
-      <description>Custom accent color hex (e.g. '#3584e4'). Empty falls back to the system accent color.</description>
+      <description>Accent color used by the Custom theme. Adwaita themes use the GNOME system accent.</description>
     </key>
   </schema>
 </schemalist>
