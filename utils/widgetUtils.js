@@ -19,7 +19,7 @@ export const CAIRO_LINE_CAP_ROUND = 1;
 
 export const COLUMNS_COUNT = 50;
 export const ROWS_COUNT = 16;
-export const GRID_GAP_PX = 4;
+export const GRID_GAP_PX = 15;
 export const GRID_MARGIN_PX = 4;
 
 
@@ -64,7 +64,7 @@ export function calculateGridDimensions(width, height, gridCols) {
 }
 
 /** Corner rounding applied to every widget; not user-configurable. */
-export const DEFAULT_CORNER_RADIUS_PX = 12;
+export const DEFAULT_CORNER_RADIUS_PX = 15;
 
 /** Returns whether a CSS color reads as a dark surface (luminance below 0.5). */
 export function isDarkBackgroundColor(cssColor) {
