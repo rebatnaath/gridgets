@@ -1,7 +1,8 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba } from '../../utils/widgetUtils.js';
+import { resolveExplicitFontFamily, resolveWidgetColors, resolveAccentColor } from '../../utils/widgetUtils.js';
 import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, ICON_OPACITY_SECONDARY, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import {
     PHASE_WORK,
@@ -18,28 +19,36 @@ const POMODORO_ARC_LINE_WIDTH_RATIO = 0.06;
 const BASE_CONTAINER_SIZE = 220;
 const BASE_ARC_MARGIN = 24;
 const BASE_ARC_MIN_SIZE = 80;
-const BORDER_ALPHA = 0.14;
+const CONTROL_BUTTON_RADIUS_PX = 99;
+const CONTROL_BUTTON_MIN_SIZE_PX = 32;
+const CONTROL_BUTTON_PADDING_PX = 12;
+const CONTROL_BUTTON_MARGIN_PX = 0;
 
 export function createPomodoroNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-    const textColor = resolveWidgetForegroundColor(config);
-    const accentHex = config.globalAccentColor || '#3584e4';
+    const {
+        highlightBackground,
+        contentColor: textColor,
+    } = resolveWidgetColors(config);
+    const accentHex = resolveAccentColor(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
-    container.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
 
-    let scale = Math.min(width, height) / BASE_CONTAINER_SIZE;
+    let scale = clampWidgetScale(Math.min(width, height) / BASE_CONTAINER_SIZE);
     let arcMargin = Math.round(BASE_ARC_MARGIN * scale);
     let arcSize = Math.max(BASE_ARC_MIN_SIZE, Math.min(width, height) - arcMargin);
 
-    let phaseFontSize = Math.max(1, Math.round(13 * scale));
-    let timerFontSize = Math.max(1, Math.round(28 * scale));
+    let phaseFontSize = scaleFontSize(TYPOGRAPHY_SIZE.body, scale, MIN_FONT_SIZE.label);
+    let timerFontSize = scaleFontSize(TYPOGRAPHY_SIZE.timer, scale, MIN_FONT_SIZE.primary);
     let dotSize = Math.max(1, Math.round(8 * scale));
     let dotRadius = Math.round(dotSize / 2);
     let playIconSize = Math.max(1, Math.round(24 * scale));
     let secIconSize = Math.max(1, Math.round(20 * scale));
 
-    const timer = createPomodoroTimer(config, PHASE_CONFIG, () => updateDisplay());
+    const timer = createPomodoroTimer(config, PHASE_CONFIG, () => {
+        updateDisplay();
+        syncPlayPauseIcon();
+    });
     const { state } = timer;
 
     const canvasActor = new St.DrawingArea({
@@ -54,7 +63,7 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         const [canvasWidth, canvasHeight] = area.get_surface_size();
         const phaseDurationSeconds = getPhaseDurationSeconds(PHASE_CONFIG, config, state.phase);
         const progress = 1 - (state.secondsRemaining / phaseDurationSeconds);
-        drawCircularArc(ctx, canvasWidth, canvasHeight, progress, accentHex, POMODORO_ARC_LINE_WIDTH_RATIO);
+        drawCircularArc(ctx, canvasWidth, canvasHeight, progress, accentHex, POMODORO_ARC_LINE_WIDTH_RATIO, highlightBackground);
         ctx.$dispose();
     });
     canvasActor.queue_repaint();
@@ -71,13 +80,13 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
     const phaseLabel = new St.Label({
         text: PHASE_CONFIG[PHASE_WORK].label,
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; font-size: ${phaseFontSize}px; opacity: 0.55; margin-bottom: 2px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${phaseFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; opacity: ${TEXT_OPACITY.secondary}; margin-bottom: ${Math.max(1, Math.round(2 * scale))}px;`,
     });
 
     const timerLabel = new St.Label({
         text: formatSeconds(getPhaseDurationSeconds(PHASE_CONFIG, config, PHASE_WORK)),
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; font-size: ${timerFontSize}px; font-weight: 300;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${timerFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`,
     });
 
     const sessionDotsBox = new St.BoxLayout({
@@ -87,26 +96,34 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
 
     for (let i = 0; i < getSessionsBeforeLongBreak(config); i++) {
         const dot = new St.Widget({
-            style: `background-color: ${textColor}; opacity: 0.2; width: ${dotSize}px; height: ${dotSize}px; border-radius: ${dotRadius}px; margin: 0px 3px;`,
+            style: `background-color: ${textColor}; width: ${dotSize}px; height: ${dotSize}px; border-radius: ${dotRadius}px; margin: 0px 3px;`,
         });
         sessionDotsBox.add_child(dot);
     }
 
+        // Single source of truth for the three control buttons, so the build-time
+    // and resize paths cannot drift apart.
+    const controlButtonStyle = iconSize => {
+        const size = Math.max(CONTROL_BUTTON_MIN_SIZE_PX, iconSize + CONTROL_BUTTON_PADDING_PX);
+        return `border-radius: ${CONTROL_BUTTON_RADIUS_PX}px; margin: 0px ${CONTROL_BUTTON_MARGIN_PX}px; `
+            + `width: ${size}px; height: ${size}px;`;
+    };
+
     const controlsRow = new St.BoxLayout({
         x_align: Clutter.ActorAlign.CENTER,
-        style: `margin-top: ${Math.round(8 * scale)}px;`,
+        style: `margin-top: ${Math.round(8 * scale)}px; spacing: 1px;`,
     });
 
-    const playPauseBtn = new St.Button({ reactive: true, can_focus: true, style: 'border-radius: 99px; margin: 0px 4px;' });
+    const playPauseBtn = new St.Button({ reactive: true, can_focus: true, style: controlButtonStyle(playIconSize) });
     const playPauseIcon = new St.Icon({ icon_name: 'media-playback-start-symbolic', icon_size: playIconSize, style: `color: ${textColor};` });
     playPauseBtn.set_child(playPauseIcon);
 
-    const resetBtn = new St.Button({ reactive: true, can_focus: true, style: 'border-radius: 99px; margin: 0px 4px;' });
-    const resetIcon = new St.Icon({ icon_name: 'view-refresh-symbolic', icon_size: secIconSize, style: `color: ${textColor}; opacity: 0.7;` });
+    const resetBtn = new St.Button({ reactive: true, can_focus: true, style: controlButtonStyle(secIconSize) });
+    const resetIcon = new St.Icon({ icon_name: 'view-refresh-symbolic', icon_size: secIconSize, style: `color: ${textColor}; opacity: ${ICON_OPACITY_SECONDARY};` });
     resetBtn.set_child(resetIcon);
 
-    const skipBtn = new St.Button({ reactive: true, can_focus: true, style: 'border-radius: 99px; margin: 0px 4px;' });
-    const skipIcon = new St.Icon({ icon_name: 'media-skip-forward-symbolic', icon_size: secIconSize, style: `color: ${textColor}; opacity: 0.7;` });
+    const skipBtn = new St.Button({ reactive: true, can_focus: true, style: controlButtonStyle(secIconSize) });
+    const skipIcon = new St.Icon({ icon_name: 'media-skip-forward-symbolic', icon_size: secIconSize, style: `color: ${textColor}; opacity: ${ICON_OPACITY_SECONDARY};` });
     skipBtn.set_child(skipIcon);
 
     controlsRow.add_child(resetBtn);
@@ -125,13 +142,13 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
 
     const updateSessionDots = () => {
         let dotIndex = 0;
-        let child = sessionDotsBox.get_first_child();
-        while (child) {
+        let sessionDot = sessionDotsBox.get_first_child();
+        while (sessionDot) {
             const isCompleted = dotIndex < state.completedSessions;
-            child.style = `background-color: ${isCompleted ? accentHex : textColor};`
-                + `opacity: ${isCompleted ? '1.0' : '0.2'};`
+            sessionDot.style = `background-color: ${isCompleted ? accentHex : textColor};`
+                + `opacity: ${isCompleted ? TEXT_OPACITY.primary : TEXT_OPACITY.disabled};`
                 + `width: ${dotSize}px; height: ${dotSize}px; border-radius: ${dotRadius}px; margin: 0px 3px;`;
-            child = child.get_next_sibling();
+            sessionDot = sessionDot.get_next_sibling();
             dotIndex++;
         }
     };
@@ -144,11 +161,11 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         updateSessionDots();
     };
 
-    const syncPlayPauseIcon = () => {
+    function syncPlayPauseIcon() {
         playPauseIcon.set_icon_name(timer.state.isRunning
             ? 'media-playback-pause-symbolic'
             : 'media-playback-start-symbolic');
-    };
+    }
 
     playPauseBtn.connect('button-press-event', (_actor, event) => {
         if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
@@ -179,11 +196,11 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
     updateDisplay();
 
     function applyScale(newScale) {
-        scale = newScale;
+        scale = clampWidgetScale(newScale);
         arcMargin = Math.round(BASE_ARC_MARGIN * scale);
         arcSize = Math.max(BASE_ARC_MIN_SIZE, Math.min(container.width, container.height) - arcMargin);
-        phaseFontSize = Math.max(1, Math.round(13 * scale));
-        timerFontSize = Math.max(1, Math.round(28 * scale));
+        phaseFontSize = scaleFontSize(TYPOGRAPHY_SIZE.body, scale, MIN_FONT_SIZE.label);
+        timerFontSize = scaleFontSize(TYPOGRAPHY_SIZE.timer, scale, MIN_FONT_SIZE.primary);
         dotSize = Math.max(1, Math.round(8 * scale));
         dotRadius = Math.round(dotSize / 2);
         playIconSize = Math.max(1, Math.round(24 * scale));
@@ -191,18 +208,21 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
 
         canvasActor.set_size(arcSize, arcSize);
         canvasActor.queue_repaint();
-        phaseLabel.style = `${fontCss}color: ${textColor}; font-size: ${phaseFontSize}px; opacity: 0.55; margin-bottom: 2px;`;
-        timerLabel.style = `${fontCss}color: ${textColor}; font-size: ${timerFontSize}px; font-weight: 300;`;
+        phaseLabel.style = `${fontCss}color: ${textColor}; font-size: ${phaseFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; opacity: ${TEXT_OPACITY.secondary}; margin-bottom: ${Math.max(1, Math.round(2 * scale))}px;`;
+        timerLabel.style = `${fontCss}color: ${textColor}; font-size: ${timerFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`;
         sessionDotsBox.style = `margin-top: ${Math.round(6 * scale)}px;`;
         controlsRow.style = `margin-top: ${Math.round(8 * scale)}px;`;
+        playPauseBtn.style = controlButtonStyle(playIconSize);
+        resetBtn.style = controlButtonStyle(secIconSize);
+        skipBtn.style = controlButtonStyle(secIconSize);
         playPauseIcon.icon_size = playIconSize;
         resetIcon.icon_size = secIconSize;
         skipIcon.icon_size = secIconSize;
         updateSessionDots();
     }
 
-    attachResponsiveScaler(container, BASE_CONTAINER_SIZE, BASE_CONTAINER_SIZE, (_ratio, w, h) => {
-        applyScale(Math.min(w, h) / BASE_CONTAINER_SIZE);
+    attachResponsiveScaler(container, BASE_CONTAINER_SIZE, BASE_CONTAINER_SIZE, (scale) => {
+        applyScale(scale);
     });
 
     return container;

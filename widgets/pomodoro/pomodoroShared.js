@@ -1,18 +1,18 @@
 import GLib from 'gi://GLib';
 
-export const POMODORO_DEFAULTS = Object.freeze({
+const POMODORO_DEFAULTS = Object.freeze({
     WORK_MINUTES: 25,
     SHORT_BREAK_MINUTES: 5,
     LONG_BREAK_MINUTES: 15,
     SESSIONS_BEFORE_LONG_BREAK: 4,
 });
 
-export const POMODORO_TICK_INTERVAL_MS = 1000;
+const POMODORO_TICK_INTERVAL_MS = 1000;
 const SECONDS_PER_MINUTE = 60;
 
 export const PHASE_WORK = 'work';
 export const PHASE_SHORT_BREAK = 'short_break';
-export const PHASE_LONG_BREAK = 'long_break';
+const PHASE_LONG_BREAK = 'long_break';
 
 // Builds the phase configuration lookup table with widget-specific labels.
 export function buildPomodoroPhaseConfig(workLabel, shortBreakLabel) {

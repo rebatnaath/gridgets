@@ -1,9 +1,10 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetColors, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, resolveAccentColor } from '../../utils/widgetUtils.js';
 import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import {
     PHASE_WORK,
     PHASE_SHORT_BREAK,
@@ -18,29 +19,30 @@ const PHASE_CONFIG = buildPomodoroPhaseConfig('Work', 'Break');
 
 const REF_WIDTH_PX = 360;
 const REF_HEIGHT_PX = 180;
-const CONTAINER_PADDING_V_PX = 16;
+const CONTAINER_PADDING_V_PX = 6;
 const CONTAINER_PADDING_H_PX = 20;
-const GAUGE_SIZE_PX = 130;
+const GAUGE_SIZE_PX = 200;
 const ARC_LINE_WIDTH_RATIO = 0.065;
-const TIMER_FONT_SIZE_PX = 26;
-const CAPTION_FONT_SIZE_PX = 9;
-const MODE_FONT_SIZE_PX = 11;
-const BUTTON_FONT_SIZE_PX = 12;
-const COUNTER_FONT_SIZE_PX = 11;
-const BORDER_ALPHA = 0.14;
+const TIMER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.timer;
+const CAPTION_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
+const MODE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
+const BUTTON_FONT_SIZE_PX = TYPOGRAPHY_SIZE.button;
+const COUNTER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
+const MAIN_BOX_SPACING_PX = 14;
 
 export function createPomodoroFocusNode(config, width, height, xPosition, yPosition) {
-    const bgColor = resolveWidgetBackgroundColor(config);
-    const textColor = resolveWidgetForegroundColor(config);
+    const {
+        subtleBackground,
+        highlightBackground,
+        contentColor: textColor,
+    } = resolveWidgetColors(config);
+    const accentHex = resolveAccentColor(config);
+    const textOnAccent = resolveTextOnAccentColor(accentHex);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-    const borderRadius = config.appliedBorderRadius || 0;
-    const accentHex = config.globalAccentColor || '#3584e4';
-    const textOnAccent = resolveTextOnAccentColor(accentHex);
-    const textRgba = (alpha) => cssColorToRgba(textColor, alpha);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
-    let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
+    let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
 
     const timer = createPomodoroTimer(config, PHASE_CONFIG, () => {
         updateDisplay();
@@ -52,7 +54,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         orientation: Clutter.Orientation.HORIZONTAL,
         x_expand: true,
         y_expand: true,
-        style: 'spacing: 14px;',
+        style: `spacing: ${MAIN_BOX_SPACING_PX}px;`,
     });
     container.add_child(mainBox);
 
@@ -67,7 +69,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         const [canvasWidth] = area.get_surface_size();
         const phaseDurationSeconds = getPhaseDurationSeconds(PHASE_CONFIG, config, state.phase);
         const progress = 1 - (state.secondsRemaining / phaseDurationSeconds);
-        drawCircularArc(ctx, canvasWidth, canvasWidth, progress, accentHex, ARC_LINE_WIDTH_RATIO);
+        drawCircularArc(ctx, canvasWidth, canvasWidth, progress, accentHex, ARC_LINE_WIDTH_RATIO, highlightBackground, 10);
         ctx.$dispose();
     });
     const gaugeOverlay = new St.BoxLayout({
@@ -177,41 +179,43 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     };
 
     const refreshControlStyles = () => {
-        const px = (v) => Math.max(1, Math.round(v * scale));
+        const px = value => scaleFontSize(value, scale);
+        const fontPx = (value, minimum) => scaleFontSize(value, scale, minimum);
         const isWork = state.phase === PHASE_WORK;
-        const activeBg = cssColorToRgba(accentHex, 0.22);
-        const inactiveText = `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
+        const inactiveText = `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
         const activeText = `color: ${textColor};`;
 
-        modeSelector.style = `background-color: ${textRgba(0.06)};`
-            + `padding: ${px(3)}px; border-radius: ${px(10)}px;`;
-        const modeButtonStyle = (isActive) => `${fontCss}font-size: ${px(MODE_FONT_SIZE_PX)}px;`
-            + `padding: ${px(6)}px 0; border-radius: ${px(7)}px;`
-            + `background-color: ${isActive ? activeBg : 'transparent'};`
+        modeSelector.style = `background-color: ${subtleBackground};`
+            + `padding: ${px(3)}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`;
+        const modeButtonStyle = isActive => `${fontCss}font-size: ${fontPx(MODE_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${isActive ? TYPOGRAPHY_WEIGHT.bold : TYPOGRAPHY_WEIGHT.medium};`
+            + `padding: ${px(4)}px 0; min-height: 28px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
+            + `background-color: ${isActive ? highlightBackground : 'transparent'};`
             + `${isActive ? activeText : inactiveText}`;
         workBtn.style = modeButtonStyle(isWork);
         breakBtn.style = modeButtonStyle(!isWork);
 
-        counterPrefixLabel.style = `${fontCss}font-size: ${px(COUNTER_FONT_SIZE_PX)}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY}; margin-right: ${px(4)}px;`;
-        counterValueLabel.style = `${fontCss}font-size: ${px(COUNTER_FONT_SIZE_PX)}px;`
-            + `color: ${textColor}; margin-right: ${px(2)}px;`;
-        counterTotalLabel.style = `${fontCss}font-size: ${px(COUNTER_FONT_SIZE_PX)}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
+        counterPrefixLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; margin-right: ${px(4)}px;`;
+        counterValueLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-right: ${px(2)}px;`;
+        counterTotalLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
 
-        startBtn.style = `${fontCss}font-size: ${px(BUTTON_FONT_SIZE_PX)}px;`
-            + `padding: ${px(10)}px 0; border-radius: ${px(10)}px;`
-            + `background-color: ${cssColorToRgba(accentHex, 1)};`
+        startBtn.style = `${fontCss}font-size: ${fontPx(BUTTON_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`
+            + `padding: ${px(4)}px 0; min-height: 28px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
+            + `margin: 0 ${px(2)}px;`
+            + `background-color: ${accentHex};`
             + `color: ${textOnAccent};`;
-        resetBtn.style = `${fontCss}font-size: ${px(BUTTON_FONT_SIZE_PX)}px;`
-            + `padding: ${px(10)}px 0; border-radius: ${px(10)}px;`
-            + `background-color: transparent;`
-            + `border: 1px solid ${textRgba(BORDER_ALPHA)}; color: ${textColor}; opacity: 0.75;`;
+        resetBtn.style = `${fontCss}font-size: ${fontPx(BUTTON_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`
+            + `padding: ${px(4)}px 0; min-height: 28px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
+            + `margin: 0 ${px(2)}px;`
+            + `background-color: ${subtleBackground};`
+            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
 
-        timerLabel.style = `${fontCss}font-size: ${px(TIMER_FONT_SIZE_PX)}px;`
-            + `font-weight: 300; color: ${textColor};`;
-        phaseCaption.style = `${fontCss}font-size: ${px(CAPTION_FONT_SIZE_PX)}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
+        timerLabel.style = `${fontCss}font-size: ${fontPx(TIMER_FONT_SIZE_PX, MIN_FONT_SIZE.primary)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
+        phaseCaption.style = `${fontCss}font-size: ${fontPx(CAPTION_FONT_SIZE_PX, MIN_FONT_SIZE.metadata)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`;
 
         startBtn.child.text = state.isRunning ? 'Pause' : 'Start';
     };
@@ -239,18 +243,16 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
 
     function applyLayout(currentWidth, currentHeight) {
         if (!currentWidth || !currentHeight) return;
-        scale = Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX);
+        scale = clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
         const px = (v) => Math.max(1, Math.round(v * scale));
 
-        container.style = `${fontCss}background-color: ${bgColor}; border-radius: ${borderRadius}px;`
-            + `border: 1px solid ${textRgba(BORDER_ALPHA)};`;
-        mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(14)}px;`;
+        mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
 
         const gaugeSize = Math.min(currentHeight - px(CONTAINER_PADDING_V_PX) * 2, px(GAUGE_SIZE_PX));
         gaugeWrap.set_size(gaugeSize, gaugeSize);
         canvasActor.set_size(gaugeSize, gaugeSize);
 
-        actionButtons.style = `spacing: ${px(8)}px; margin-top: ${px(6)}px;`;
+        actionButtons.style = `spacing: ${px(4)}px; margin-top: ${px(6)}px; padding: 0 ${px(4)}px;`;
         counterRow.style = `margin-top: ${px(10)}px;`;
 
         updateDisplay();
