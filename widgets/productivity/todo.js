@@ -2,7 +2,8 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
-import { SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync } from '../../utils/widgetUtils.js';
+import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveAccentColor, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, saveJsonToFile, saveJsonToFileSync } from '../../utils/widgetUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, attachButtonFeedback } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
@@ -11,26 +12,25 @@ const REF_HEIGHT_PX = 170;
 const CONTAINER_PADDING_V_PX = 14;
 const CONTAINER_PADDING_H_PX = 20;
 const LEFT_COLUMN_WIDTH_PX = 90;
-const TITLE_FONT_SIZE_PX = 13;
-const COUNT_FONT_SIZE_PX = 24;
+const TITLE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
+const COUNT_FONT_SIZE_PX = TYPOGRAPHY_SIZE.displayXL;
 const ADD_BUTTON_SIZE_PX = 32;
-const TASK_ROW_RADIUS_PX = 12;
+const TASK_ROW_RADIUS_PX = DEFAULT_CHILD_CORNER_RADIUS_PX;
 const TASK_ROW_PADDING_V_PX = 9;
 const TASK_ROW_PADDING_H_PX = 14;
-const TASK_TEXT_FONT_SIZE_PX = 13;
+const TASK_TEXT_FONT_SIZE_PX = 15;
 const CHECKBOX_SIZE_PX = 16;
 const ROW_SPACING_PX = 8;
-const BORDER_ALPHA = 0.14;
 const COUNTER_ROW_MARGIN_TOP_PX = 6;
 const COUNTER_ROW_SPACING_PX = 8;
 const LIST_ICON_SIZE_PX = 20;
 const ADD_BUTTON_ICON_SIZE_PX = 18;
 const PILL_RADIUS_PX = 9999;
 const TASK_ROW_SPACING_PX = 10;
+const TASK_LIST_SPACING_PX = 8;
 const CHECKBOX_BORDER_WIDTH_PX = 1.5;
 const CHECKMARK_ICON_SIZE_PX = 10;
 const DELETE_ICON_SIZE_PX = 13;
-const DELETE_BUTTON_OPACITY = 0.45;
 
 const DEFAULT_TASKS = [
     { text: 'Make tea', done: false },
@@ -42,15 +42,12 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(config);
+    const { card, highlight } = resolveWidgetSurfaces(config);
+    const accentHex = resolveAccentColor(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
-    const textRgba = (alpha) => cssColorToRgba(textColor, alpha);
-    container.style += ` border: 1px solid ${textRgba(BORDER_ALPHA)};`;
 
-    const accentHex = config.globalAccentColor || '#3584e4';
-    const accent = parseCssColor(accentHex);
-    const accentBytes = `${Math.round(accent.r * 255)},${Math.round(accent.g * 255)},${Math.round(accent.b * 255)}`;
     const accentStyle = `color: ${accentHex};`;
-    const rowBackgroundStyle = `background-color: rgba(${accentBytes},0.1);`;
+    const rowBackgroundStyle = `background-color: ${card};`;
 
     const todosFilePath = GLib.build_filenamev([
         getGridgetsDataDir('todos'),
@@ -78,7 +75,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     const titleLabel = new St.Label({
         text: 'Tasks',
         style: `${fontCss}font-size: ${TITLE_FONT_SIZE_PX}px; `
-            + `font-weight: 700; color: ${textColor}; opacity: ${SECONDARY_OPACITY};`,
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`,
     });
 
     const counterRow = new St.BoxLayout({
@@ -96,7 +93,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     const countLabel = new St.Label({
         text: '0',
         style: `${fontCss}font-size: ${COUNT_FONT_SIZE_PX}px; `
-            + `font-weight: 300; color: ${textColor};`,
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.black}; color: ${textColor};`,
         y_align: Clutter.ActorAlign.CENTER,
     });
 
@@ -111,7 +108,6 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
         }),
         reactive: true,
         can_focus: true,
-        style_class: 'todo-add-button',
     });
 
     leftColumn.add_child(titleLabel);
@@ -139,14 +135,14 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     const taskList = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
-        style: 'spacing: 8px;',
+        style: `spacing: ${TASK_LIST_SPACING_PX}px;`,
     });
     scrollView.set_child(taskList);
 
     const entryRow = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         x_expand: true,
-        style: rowBackgroundStyle + ` border-radius: ${TASK_ROW_RADIUS_PX}px;`
+        style: rowBackgroundStyle + ` border-radius: ${resolveChildCornerRadius(TASK_ROW_RADIUS_PX, scale)}px;`
             + `padding: ${TASK_ROW_PADDING_V_PX - 3}px ${TASK_ROW_PADDING_H_PX}px;`,
     });
 
@@ -167,18 +163,18 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px;`;
         leftColumn.set_style(`width: ${px(LEFT_COLUMN_WIDTH_PX)}px;`);
-        titleLabel.style = `${fontCss}font-size: ${px(TITLE_FONT_SIZE_PX)}px; `
-            + `font-weight: 700; color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
-        countLabel.style = `${fontCss}font-size: ${px(COUNT_FONT_SIZE_PX)}px; `
-            + `font-weight: 300; color: ${textColor};`;
+        titleLabel.style = `${fontCss}font-size: ${scaleFontSize(TITLE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px; `
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+        countLabel.style = `${fontCss}font-size: ${scaleFontSize(COUNT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; `
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.black}; color: ${textColor};`;
         listIcon.icon_size = px(LIST_ICON_SIZE_PX);
-        addButton.style = rowBackgroundStyle + ` border-radius: ${PILL_RADIUS_PX}px;`
+        addButton.style = rowBackgroundStyle + ` border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
             + `width: ${px(ADD_BUTTON_SIZE_PX)}px; height: ${px(ADD_BUTTON_SIZE_PX)}px;`;
         addButton.child.icon_size = px(ADD_BUTTON_ICON_SIZE_PX);
 
         rightColumn.style = `spacing: ${px(TASK_ROW_SPACING_PX)}px; padding-left: ${px(TASK_ROW_PADDING_H_PX)}px;`;
         taskList.style = `spacing: ${px(ROW_SPACING_PX)}px;`;
-        entryRow.style = rowBackgroundStyle + ` border-radius: ${px(TASK_ROW_RADIUS_PX)}px;`
+        entryRow.style = rowBackgroundStyle + ` border-radius: ${resolveChildCornerRadius(TASK_ROW_RADIUS_PX, scale)}px;`
             + `padding: ${Math.max(1, px(TASK_ROW_PADDING_V_PX) - 3)}px ${px(TASK_ROW_PADDING_H_PX)}px;`;
 
         renderTasks();
@@ -191,13 +187,13 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
 
     function buildTaskRow(task) {
         const px = (v) => Math.max(1, Math.round(v * scale));
-        const fontSize = px(TASK_TEXT_FONT_SIZE_PX);
+        const fontSize = scaleFontSize(TASK_TEXT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.body);
         const checkboxSize = px(CHECKBOX_SIZE_PX);
 
         const row = new St.BoxLayout({
             orientation: Clutter.Orientation.HORIZONTAL,
             x_expand: true,
-            style: rowBackgroundStyle + ` border-radius: ${px(TASK_ROW_RADIUS_PX)}px;`
+            style: rowBackgroundStyle + ` border-radius: ${resolveChildCornerRadius(TASK_ROW_RADIUS_PX, scale)}px;`
                 + `padding: ${px(TASK_ROW_PADDING_V_PX)}px ${px(TASK_ROW_PADDING_H_PX)}px;`
                 + `spacing: ${px(TASK_ROW_SPACING_PX)}px;`,
         });
@@ -208,7 +204,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
             style: task.done
                 ? `background-color: ${accentHex}; border-radius: ${PILL_RADIUS_PX}px;`
                     + `width: ${checkboxSize}px; height: ${checkboxSize}px;`
-                : `border: ${CHECKBOX_BORDER_WIDTH_PX}px solid ${textRgba(0.35)}; border-radius: ${PILL_RADIUS_PX}px;`
+                : `border: ${CHECKBOX_BORDER_WIDTH_PX}px solid ${highlight}; border-radius: ${PILL_RADIUS_PX}px;`
                     + `width: ${checkboxSize}px; height: ${checkboxSize}px;`,
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -227,8 +223,8 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
         const textLabel = new St.Label({
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
-            style: `${fontCss}font-size: ${fontSize}px;`
-                + `color: ${textColor}; opacity: ${task.done ? 0.5 : 1.0};`,
+            style: `${fontCss}font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`
+                + `color: ${textColor}; opacity: ${task.done ? TEXT_OPACITY.metadata : TEXT_OPACITY.primary};`,
         });
         textLabel.clutter_text.use_markup = true;
         textLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -248,7 +244,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
             }),
             reactive: true,
             can_focus: true,
-            style: `opacity: ${DELETE_BUTTON_OPACITY};`,
+            style: `opacity: ${TEXT_OPACITY.disabled};`,
             y_align: Clutter.ActorAlign.CENTER,
         });
         deleteButton.connect('clicked', () => {
@@ -278,8 +274,8 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
             const emptyLabel = new St.Label({
                 text: 'No tasks yet — press + to add one',
                 x_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}font-size: ${px(TASK_TEXT_FONT_SIZE_PX)}px;`
-                    + `color: ${textColor}; opacity: 0.5;`,
+                style: `${fontCss}font-size: ${scaleFontSize(TASK_TEXT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.body)}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`
+                    + `color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`,
             });
             taskList.add_child(emptyLabel);
             return;
@@ -314,8 +310,12 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
 
     addButton.connect('clicked', () => {
         if (isActorDestroyed(container)) return;
-        if (state.entryVisible) hideEntry();
-        else showEntry();
+        if (state.entryVisible) {
+            if (taskEntry.text.trim()) commitTask();
+            else hideEntry();
+        } else {
+            showEntry();
+        }
     });
 
     taskEntry.clutter_text.connect('key-press-event', (_actor, event) => {
@@ -339,9 +339,9 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     });
 
     applyScale(scale);
-    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (_ratio, w, h) => {
+    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (scale) => {
         if (isActorDestroyed(container)) return;
-        applyScale(Math.min(w / REF_WIDTH_PX, h / REF_HEIGHT_PX));
+        applyScale(scale);
     });
 
     loadJsonFromFileAsync(todosFilePath, (savedData, loadError) => {
