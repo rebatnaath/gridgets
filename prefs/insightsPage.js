@@ -4,27 +4,35 @@ import Adw from 'gi://Adw';
 import GLib from 'gi://GLib';
 import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
-import { getGridgetsDataDir, todayDateString, resolveDesktopAppInfo } from '../utils/widgetUtils.js';
+import { DESKTOP_APP_KEY, getGridgetsDataDir, todayDateString, resolveDesktopAppInfo } from '../utils/widgetUtils.js';
 import { listMoodDatesSync, getMood, loadDatesSync } from '../utils/moodStore.js';
 import { clearBox } from './displayUtils.js';
 
 const CSS_DATA = `
-    .mood-level-1 { color: #F43F5E; }
-    .mood-level-2 { color: #F97316; }
-    .mood-level-3 { color: #EAB308; }
-    .mood-level-4 { color: #22C55E; }
-    .mood-level-5 { color: #3B82F6; }
-    .mood-none { color: rgba(128, 128, 128, 0.5); }
-    .insights-empty-title { font-size: 14px; font-weight: bold; }
-    .insights-empty-desc { font-size: 12px; color: alpha(currentColor, 0.55); }
+    .mood-level-1 { color: var(--destructive-color); }
+    .mood-level-2 { color: var(--warning-color); }
+    .mood-level-3 { color: var(--accent-color); }
+    .mood-level-4 { color: var(--success-color); }
+    .mood-level-5 { color: var(--blue-2); }
+    .mood-none { color: color-mix(in srgb, currentColor 55%, transparent); }
+    .insights-empty-title { font-weight: bold; }
+    .insights-empty-desc { color: color-mix(in srgb, currentColor 55%, transparent); }
 `;
-const CSS_PROVIDER = new Gtk.CssProvider();
-CSS_PROVIDER.load_from_data(CSS_DATA, CSS_DATA.length);
-Gtk.StyleContext.add_provider_for_display(
-    Gdk.Display.get_default(),
-    CSS_PROVIDER,
-    Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-);
+
+// Installed per page rather than at import time, and removed with the page so
+// the provider is not left attached to the display.
+function applyInsightsStyles(page) {
+    const provider = new Gtk.CssProvider();
+    provider.load_from_data(CSS_DATA, CSS_DATA.length);
+    Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default(),
+        provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    );
+    page.connect('destroy', () => {
+        Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(), provider);
+    });
+}
 
 const HOURS_PER_DAY = 24;
 
@@ -66,6 +74,7 @@ function daysAgoDate(days) {
 }
 
 function resolveAppName(appId) {
+    if (appId === DESKTOP_APP_KEY) return 'Desktop';
     const appInfo = resolveDesktopAppInfo(appId);
     if (appInfo) {
         const name = appInfo.get_display_name();
@@ -166,10 +175,12 @@ function buildDayNavRow(title) {
     const prevBtn = new Gtk.Button({
         icon_name: 'go-previous-symbolic',
         valign: Gtk.Align.CENTER,
+        tooltip_text: 'Previous date',
     });
     const nextBtn = new Gtk.Button({
         icon_name: 'go-next-symbolic',
         valign: Gtk.Align.CENTER,
+        tooltip_text: 'Next date',
     });
     row.add_suffix(prevBtn);
     row.add_suffix(nextBtn);
@@ -211,10 +222,14 @@ export function buildInsightsPage(settings) {
         title: 'Insights',
         icon_name: 'org.gnome.Extensions-symbolic',
     });
+    applyInsightsStyles(page);
 
     let selectedRange = 2;
     let stAvailableDates = [];
     let stSelectedDate = '';
+    let stAppPage = 0;
+    let stAppEntries = [];
+    const stAppsPerPage = 5;
     let moodAvailableDates = [];
     let moodSelectedDate = '';
 
@@ -291,7 +306,14 @@ export function buildInsightsPage(settings) {
     stDayGroup.add(stNav.row);
     const stDayTotalRow = new Adw.ActionRow({ title: 'Total Time' });
     stDayGroup.add(stDayTotalRow);
-    const stAppsBox = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 4 });
+    const stAppsNav = buildDayNavRow('Applications');
+    stDayGroup.add(stAppsNav.row);
+    const stAppsBox = new Gtk.ListBox({
+        selection_mode: Gtk.SelectionMode.NONE,
+        margin_top: 4,
+        margin_bottom: 4,
+        css_classes: ['boxed-list'],
+    });
     stDayGroup.add(stAppsBox);
     page.add(stDayGroup);
 
@@ -312,6 +334,17 @@ export function buildInsightsPage(settings) {
             stSelectedDate = stAvailableDates[newIdx];
             refreshStDayDetail();
         }
+    });
+    stAppsNav.prevBtn.connect('clicked', () => {
+        if (stAppPage <= 0) return;
+        stAppPage--;
+        renderStApps();
+    });
+    stAppsNav.nextBtn.connect('clicked', () => {
+        const pageCount = Math.ceil(stAppEntries.length / stAppsPerPage);
+        if (stAppPage >= pageCount - 1) return;
+        stAppPage++;
+        renderStApps();
     });
 
     const moodSummaryGroup = new Adw.PreferencesGroup({
@@ -515,8 +548,10 @@ export function buildInsightsPage(settings) {
             const summary = loadDaySummary(dateStr);
             if (summary) {
                 grandTotal += summary.totalSeconds;
-                for (const app of summary.apps)
+                for (const app of summary.apps) {
+                    if (app.key === DESKTOP_APP_KEY) continue;
                     appAgg[app.key] = (appAgg[app.key] || 0) + app.seconds;
+                }
                 if (summary.totalSeconds > bestDay.total)
                     bestDay = { date: summary.date, total: summary.totalSeconds };
             }
@@ -528,8 +563,73 @@ export function buildInsightsPage(settings) {
         stBestRow.set_subtitle(bestDay.date ? `${formatDateString(bestDay.date)}  ·  ${formatCompactDuration(bestDay.total)}` : 'None');
     }
 
+    function renderStApps() {
+        clearBox(stAppsBox);
+        const pageCount = Math.max(1, Math.ceil(stAppEntries.length / stAppsPerPage));
+        stAppPage = Math.max(0, Math.min(stAppPage, pageCount - 1));
+        const start = stAppPage * stAppsPerPage;
+        const pageApps = stAppEntries.slice(start, start + stAppsPerPage);
+        const dayTotal = stDayTotalSeconds;
+
+        stAppsNav.row.set_visible(stAppEntries.length > 0);
+        stAppsNav.row.set_subtitle(stAppEntries.length > 0
+            ? `${start + 1}–${start + pageApps.length} of ${stAppEntries.length}`
+            : 'No applications');
+        stAppsNav.prevBtn.set_sensitive(stAppPage > 0);
+        stAppsNav.nextBtn.set_sensitive(stAppPage < pageCount - 1);
+
+        for (const app of pageApps) {
+            const appInfo = resolveDesktopAppInfo(app.key);
+            const gicon = appInfo ? appInfo.get_icon() : null;
+            const row = new Adw.ActionRow({
+                title: resolveAppName(app.key),
+                subtitle: `${formatCompactDuration(app.seconds)}  ·  ${Math.round((app.seconds / dayTotal) * 100)}%`,
+                width_request: 170,
+            });
+            const icon = new Gtk.Image({
+                icon_name: gicon ? null : 'application-x-generic-symbolic',
+                pixel_size: 32,
+                valign: Gtk.Align.CENTER,
+            });
+            if (gicon)
+                icon.gicon = gicon;
+            const percentage = Math.round((app.seconds / dayTotal) * 100);
+            const progress = new Gtk.ProgressBar({
+                fraction: dayTotal > 0 ? app.seconds / dayTotal : 0,
+                show_text: false,
+                valign: Gtk.Align.CENTER,
+                width_request: 120,
+                tooltip_text: `${percentage}% of selected day`,
+            });
+            const percentageLabel = new Gtk.Label({
+                label: `${percentage}%`,
+                valign: Gtk.Align.CENTER,
+                width_request: 42,
+            });
+            row.add_prefix(icon);
+            row.add_suffix(progress);
+            row.add_suffix(percentageLabel);
+            stAppsBox.append(row);
+        }
+
+        if (stAppEntries.length === 0) {
+            stAppsBox.append(buildEmptyState(
+                'application-x-generic-symbolic',
+                'No application activity',
+                'Applications used on this day will appear here.'
+            ));
+        }
+
+    }
+
+    let stDayTotalSeconds = 0;
+
     function refreshStDayDetail() {
         clearBox(stAppsBox);
+        stAppEntries = [];
+        stAppPage = 0;
+        stDayTotalSeconds = 0;
+        stAppsNav.row.set_visible(false);
         if (!stSelectedDate) {
             stNav.row.set_subtitle('No data');
             stDayTotalRow.set_subtitle('—');
@@ -554,21 +654,9 @@ export function buildInsightsPage(settings) {
             return;
         }
         stDayTotalRow.set_subtitle(formatCompactDuration(summary.totalSeconds));
-        for (const app of summary.apps) {
-            const appName = resolveAppName(app.key);
-            const pct = summary.totalSeconds > 0 ? Math.round((app.seconds / summary.totalSeconds) * 100) : 0;
-            const row = new Adw.ActionRow({
-                title: appName,
-                subtitle: `${formatCompactDuration(app.seconds)}  ·  ${pct}%`,
-            });
-            const appInfo = resolveDesktopAppInfo(app.key);
-            const gicon = appInfo ? appInfo.get_icon() : null;
-            if (gicon) {
-                const img = new Gtk.Image({ gicon, pixel_size: 24 });
-                row.add_prefix(img);
-            }
-            stAppsBox.append(row);
-        }
+        stDayTotalSeconds = summary.totalSeconds;
+        stAppEntries = summary.apps.filter(app => app.key !== DESKTOP_APP_KEY);
+        renderStApps();
         updateNavButtons();
     }
 
