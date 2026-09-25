@@ -8,6 +8,7 @@ const FETCH_TIMEOUT_SECONDS = 30;
 const MAX_SUMMARY_LENGTH = 300;
 
 const decoder = new TextDecoder('utf-8');
+const feedCache = new Map();
 
 /** Minimal RSS 2.0 / Atom extractor — tag-level parsing avoids a full DOM parser. */
 
@@ -27,8 +28,9 @@ function decodeXmlEntities(text) {
 function cleanFeedText(rawText) {
     if (!rawText) return '';
     const withoutCdata = rawText.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
-    const withoutTags = withoutCdata.replace(/<[^>]+>/g, ' ');
-    return decodeXmlEntities(withoutTags).replace(/\s+/g, ' ').trim();
+    const withoutTags = withoutCdata.replace(/<!--([\s\S]*?)-->|<[^>]+>/g, ' ');
+    const decoded = decodeXmlEntities(withoutTags);
+    return decoded.replace(/<!--([\s\S]*?)-->|<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** Returns the inner text of the first `<tag>` occurrence inside `block`. */
@@ -115,7 +117,7 @@ class RssFeedEngine {
         this.subscribers = new Map();
         this.timerId = null;
         this.cancellable = null;
-        this.lastItems = [];
+        this.lastItems = feedCache.get(feedUrl) || [];
         this.etag = null;
         this.lastModified = null;
         this.lastFetchFailed = false;
@@ -146,6 +148,10 @@ class RssFeedEngine {
                 this._startTimer(fastestInterval);
             return;
         }
+        this.destroy();
+    }
+
+    destroy() {
         if (this.timerId) {
             GLib.Source.remove(this.timerId);
             this.timerId = null;
@@ -155,7 +161,6 @@ class RssFeedEngine {
             this.cancellable = null;
         }
         this.session.abort();
-        this.lastItems = [];
     }
 
     _startTimer(intervalSeconds) {
@@ -220,6 +225,7 @@ class RssFeedEngine {
 
             const parsed = parseFeed(bodyText);
             this.lastItems = parsed ? parsed.items : this.lastItems;
+            feedCache.set(this.feedUrl, this.lastItems);
             this._notifySubscribers(this.lastItems);
         });
     }
@@ -244,24 +250,15 @@ const activeEngines = new Map();
 
 /** Clears all cached engines; called from the extension's disable(). */
 export function clearRssEngines() {
-    for (const engine of activeEngines.values()) {
-        if (engine.timerId) {
-            GLib.Source.remove(engine.timerId);
-            engine.timerId = null;
-        }
-        if (engine.cancellable) {
-            engine.cancellable.cancel();
-            engine.cancellable = null;
-        }
-        engine.session.abort();
-        engine.lastItems = [];
-    }
+    for (const engine of activeEngines.values())
+        engine.destroy();
     activeEngines.clear();
+    feedCache.clear();
 }
 
 /**
- * Acquires (or creates) the shared engine for a feed URL and subscribes to it.
- * The returned function releases the subscription and must be called on destroy.
+ * Gets (or creates) the shared engine for a feed URL and subscribes to it.
+ * The returned function releases the subscription and has to be called on destroy.
  */
 export function subscribeToFeed(feedUrl, intervalSeconds, callback) {
     let engine = activeEngines.get(feedUrl);
