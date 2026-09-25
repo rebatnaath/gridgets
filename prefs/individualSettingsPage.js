@@ -5,21 +5,22 @@ import { populateActiveWidgets } from './activeWidgetsList.js';
 export function buildIndividualSettingsPage(window, settings) {
     const page = new Adw.PreferencesPage({
         title: 'Individual Settings',
+        description: 'Configure the widgets currently placed on your desktop.',
         icon_name: 'org.gnome.tweaks-symbolic',
         name: 'individual-settings',
     });
 
     let isListDirty = true;
+    let navigateMappedSignalId = 0;
+    let navigateRetrySourceId = 0;
+    let pendingNavigateWidgetId = null;
 
     const isPageVisible = () => window.get_visible_page() === page;
+
     const refreshActiveWidgets = () => {
         populateActiveWidgets(window, settings, page);
         isListDirty = false;
     };
-
-    if (isPageVisible()) {
-        refreshActiveWidgets();
-    }
 
     const markDirtyOnVisible = () => {
         if (isPageVisible()) {
@@ -29,84 +30,36 @@ export function buildIndividualSettingsPage(window, settings) {
         isListDirty = true;
     };
 
-    const widgetsChangedSignalId = settings.connect('changed::widgets', markDirtyOnVisible);
-    const globalMonitorChangedSignalId = settings.connect('changed::global-monitor', markDirtyOnVisible);
-
-    const visiblePageChangedSignalId = window.connect('notify::visible-page', () => {
-        if (isPageVisible() && isListDirty) {
-            refreshActiveWidgets();
-        }
-    });
-
-    const openEditWidgetChangedId = settings.connect('changed::open-edit-widget-id', () => {
-        consumePendingEditRequest();
-    });
-
-    // Safety net for cross-process dconf lag: by the time the window maps,
-    // a write made just before the prefs process spawned is guaranteed visible.
-    const pendingEditMapCheckSignalId = window.connect('map', () => consumePendingEditRequest());
-
-    let navigateMappedSignalId = 0;
-    let navigateRetrySourceId = 0;
-    let pendingNavigateWidgetId = null;
-
-    page.connect('unrealize', () => {
-        if (widgetsChangedSignalId) {
-            settings.disconnect(widgetsChangedSignalId);
-        }
-        if (globalMonitorChangedSignalId) {
-            settings.disconnect(globalMonitorChangedSignalId);
-        }
-        if (visiblePageChangedSignalId) {
-            window.disconnect(visiblePageChangedSignalId);
-        }
-        if (openEditWidgetChangedId) {
-            settings.disconnect(openEditWidgetChangedId);
-        }
-        if (pendingEditMapCheckSignalId) {
-            window.disconnect(pendingEditMapCheckSignalId);
-        }
-        if (navigateMappedSignalId) {
-            window.disconnect(navigateMappedSignalId);
-            navigateMappedSignalId = 0;
-        }
-        if (navigateRetrySourceId) {
-            GLib.Source.remove(navigateRetrySourceId);
-            navigateRetrySourceId = 0;
-        }
-        pendingNavigateWidgetId = null;
-    });
-
-    const clearPendingEditId = (widgetId) => {
-        if (settings.get_string('open-edit-widget-id') === widgetId) {
+    const clearPendingEditId = widgetId => {
+        if (settings.get_string('open-edit-widget-id') === widgetId)
             settings.set_string('open-edit-widget-id', '');
-        }
     };
 
-    const navigateToWidget = (widgetId) => {
+    const navigateToWidget = widgetId => {
         window.set_visible_page(page);
-        if (isListDirty) {
+        if (isListDirty)
             refreshActiveWidgets();
-        }
+
         const targetRow = page.activeRows.find(row => row.widgetId === widgetId);
-        if (targetRow) {
+        if (targetRow)
             targetRow.set_expanded(true);
-        }
         return Boolean(targetRow);
     };
 
-    // Replaces any in-flight retry so a newer request takes precedence.
     const finishOrRetryNavigation = () => {
         const widgetId = pendingNavigateWidgetId;
-        if (!widgetId) return;
+        if (!widgetId)
+            return;
+
         if (navigateToWidget(widgetId)) {
             clearPendingEditId(widgetId);
             pendingNavigateWidgetId = null;
             return;
         }
 
-        // Rows may not exist yet on first present; give the list one more tick.
-        if (navigateRetrySourceId) return;
+        if (navigateRetrySourceId)
+            return;
+
         navigateRetrySourceId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             navigateRetrySourceId = 0;
             const retryId = pendingNavigateWidgetId;
@@ -120,19 +73,21 @@ export function buildIndividualSettingsPage(window, settings) {
         });
     };
 
-    const scheduleNavigateToWidget = (widgetId) => {
-        if (!widgetId || widgetId.trim() === '') return;
-        if (pendingNavigateWidgetId === widgetId) return;
-        pendingNavigateWidgetId = widgetId;
+    const scheduleNavigateToWidget = widgetId => {
+        if (!widgetId || widgetId.trim() === '' || pendingNavigateWidgetId === widgetId)
+            return;
 
+        pendingNavigateWidgetId = widgetId;
         if (navigateMappedSignalId) {
             window.disconnect(navigateMappedSignalId);
             navigateMappedSignalId = 0;
         }
+
         if (window.get_mapped()) {
             finishOrRetryNavigation();
             return;
         }
+
         navigateMappedSignalId = window.connect('map', () => {
             window.disconnect(navigateMappedSignalId);
             navigateMappedSignalId = 0;
@@ -140,15 +95,39 @@ export function buildIndividualSettingsPage(window, settings) {
         });
     };
 
-    // Does NOT clear the key here; it is cleared only after navigation succeeds.
-    function consumePendingEditRequest() {
-        const id = settings.get_string('open-edit-widget-id');
-        if (id && id.trim() !== '') {
-            scheduleNavigateToWidget(id);
+    const consumePendingEditRequest = () => {
+        const widgetId = settings.get_string('open-edit-widget-id');
+        if (widgetId && widgetId.trim() !== '')
+            scheduleNavigateToWidget(widgetId);
+    };
+
+    const widgetsChangedId = settings.connect('changed::widgets', markDirtyOnVisible);
+    const globalMonitorChangedId = settings.connect('changed::global-monitor', markDirtyOnVisible);
+    const visiblePageChangedId = window.connect('notify::visible-page', () => {
+        if (isPageVisible() && isListDirty)
+            refreshActiveWidgets();
+    });
+    const openEditChangedId = settings.connect('changed::open-edit-widget-id', consumePendingEditRequest);
+    const pendingEditMapId = window.connect('map', consumePendingEditRequest);
+
+    page.connect('destroy', () => {
+        settings.disconnect(widgetsChangedId);
+        settings.disconnect(globalMonitorChangedId);
+        settings.disconnect(openEditChangedId);
+        window.disconnect(visiblePageChangedId);
+        window.disconnect(pendingEditMapId);
+        if (navigateMappedSignalId) {
+            window.disconnect(navigateMappedSignalId);
+            navigateMappedSignalId = 0;
         }
-    }
+        if (navigateRetrySourceId) {
+            GLib.Source.remove(navigateRetrySourceId);
+            navigateRetrySourceId = 0;
+        }
+        pendingNavigateWidgetId = null;
+    });
 
+    refreshActiveWidgets();
     consumePendingEditRequest();
-
     return page;
 }

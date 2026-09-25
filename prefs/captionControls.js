@@ -1,5 +1,4 @@
 import Gtk from 'gi://Gtk';
-import Pango from 'gi://Pango';
 import Gdk from 'gi://Gdk';
 
 export function buildCaptionRows(grid, startRow, placeholderText) {
@@ -34,6 +33,16 @@ export function buildCaptionControls(grid, rowIdx, widget, settings, defaultCapt
     grid.attach(captionEntry, 1, rowIdx, 1, 1);
     rowIdx++;
 
+    const followGlobalLabel = new Gtk.Label({ label: 'Use Global Setting:', xalign: 0, hexpand: true });
+    const followGlobalSwitch = new Gtk.Switch({
+        halign: Gtk.Align.END,
+        valign: Gtk.Align.CENTER,
+    });
+    followGlobalSwitch.set_active(widget.captionFollowGlobal === true);
+    grid.attach(followGlobalLabel, 0, rowIdx, 1, 1);
+    grid.attach(followGlobalSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
+
     const showCaptionLabel = new Gtk.Label({ label: 'Show Caption:', xalign: 0, hexpand: true });
     const showCaptionSwitch = new Gtk.Switch({
         halign: Gtk.Align.END,
@@ -41,6 +50,9 @@ export function buildCaptionControls(grid, rowIdx, widget, settings, defaultCapt
     });
     const globalCaptionKey = widget.type === 'slideshow' ? 'slideshow-show-caption' : 'image-show-caption';
     showCaptionSwitch.set_active(widget.showCaption !== undefined ? widget.showCaption : settings.get_boolean(globalCaptionKey));
+    const updateCaptionSensitivity = () => showCaptionSwitch.set_sensitive(!followGlobalSwitch.get_active());
+    followGlobalSwitch.connect('notify::active', updateCaptionSensitivity);
+    updateCaptionSensitivity();
     grid.attach(showCaptionLabel, 0, rowIdx, 1, 1);
     grid.attach(showCaptionSwitch, 1, rowIdx, 1, 1);
     rowIdx++;
@@ -54,5 +66,5 @@ export function buildCaptionControls(grid, rowIdx, widget, settings, defaultCapt
     grid.attach(fgColorBtn, 1, rowIdx, 1, 1);
     rowIdx++;
 
-    return { captionEntry, showCaptionSwitch, fgColorBtn, rowIdx };
+    return { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, rowIdx };
 }
