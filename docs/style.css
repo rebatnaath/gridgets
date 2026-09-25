@@ -58,7 +58,7 @@ img {
   outline-offset: 3px;
 }
 
-/* ===== HERO (full-screen WebM background) ===== */
+/* HERO (full-screen WebM background) */
 .hero {
   position: relative;
   display: flex;
@@ -102,7 +102,7 @@ img {
   background: radial-gradient(ellipse at center, transparent 50%, rgba(8, 9, 14, 0.4) 100%);
 }
 
-/* ===== HERO CONTENT ===== */
+/* HERO CONTENT */
 .hero-content {
   position: relative;
   z-index: 2;
@@ -184,7 +184,7 @@ img {
   box-shadow: none;
 }
 
-/* ===== SECTIONS ===== */
+/* SECTIONS */
 .main {
   position: relative;
   z-index: 1;
