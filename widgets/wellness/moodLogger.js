@@ -1,7 +1,8 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { SECONDARY_OPACITY, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, MOOD_LEVELS } from '../../utils/widgetUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, attachResponsiveScaler, attachButtonFeedback, connectTimerCleanup, startPollingTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { todayDateString, toDateString, loadDatesAsync, getMood, saveMood } from '../../utils/moodStore.js';
@@ -12,27 +13,22 @@ const CONTAINER_PADDING_PX = 20;
 const PANEL_GAP_PX = 24;
 const LEFT_COLUMN_WIDTH_PX = 140;
 
-const GREETING_FONT_SIZE_PX = 18;
-const DATE_FONT_SIZE_PX = 14;
-const HISTORY_LABEL_FONT_SIZE_PX = 12;
+const GREETING_FONT_SIZE_PX = TYPOGRAPHY_SIZE.title;
+const DATE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
+const HISTORY_LABEL_FONT_SIZE_PX = TYPOGRAPHY_SIZE.body;
 const PICKER_ROW_PADDING_PX = 6;
-const PICKER_ROW_RADIUS_PX = 16;
-const FACE_ICON_SIZE_PX = 22;
+const PICKER_ROW_RADIUS_PX = DEFAULT_CHILD_CORNER_RADIUS_PX;
+const FACE_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconLg;
 const DOT_SIZE_PX = 12;
 const DOT_GRID_GAP_PX = 8;
 const GRID_COLUMNS = 7;
 const TOTAL_DAYS = 28;
 const TODAY_DOT_BORDER_PX = 2;
-const BORDER_ALPHA = 0.14;
-
-// Mood ramp; Adwaita face icons double as pickers, colors drive the history grid.
-const MOOD_LEVELS = [
-    { level: 1, iconName: 'face-sad-symbolic', color: '#F43F5E' },
-    { level: 2, iconName: 'face-worried-symbolic', color: '#F97316' },
-    { level: 3, iconName: 'face-plain-symbolic', color: '#EAB308' },
-    { level: 4, iconName: 'face-smile-symbolic', color: '#22C55E' },
-    { level: 5, iconName: 'face-laugh-symbolic', color: '#3B82F6' },
-];
+const PILL_RADIUS_PX = 999;
+const CLUTTER_OPACITY_OPAQUE = 255;
+const ACTION_PANEL_SPACING_PX = 4;
+const GREETING_WIDTH_PX = 100;
+const HISTORY_LABEL_MARGIN_BOTTOM_PX = 12;
 
 function buildTrailingDateKeys() {
     const now = GLib.DateTime.new_now_local();
@@ -44,10 +40,10 @@ function buildTrailingDateKeys() {
 }
 
 function greetingForHour(hour) {
-    if (hour < 5) return 'Good night';
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 5) return 'Good\nnight';
+    if (hour < 12) return 'Good\nmorning';
+    if (hour < 17) return 'Good\nafternoon';
+    return 'Good\nevening';
 }
 
 function formatDisplayDate(dateTime) {
@@ -56,15 +52,14 @@ function formatDisplayDate(dateTime) {
 
 export function createMoodNode(config, width, height, xPosition, yPosition) {
     const textColor = resolveWidgetForegroundColor(config);
+    const { card, highlight } = resolveWidgetSurfaces(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
-    const textBytes = parseCssColor(textColor);
-    const textRgb = () => `${Math.round(textBytes.r * 255)},${Math.round(textBytes.g * 255)},${Math.round(textBytes.b * 255)}`;
-    container.style += ` border: 1px solid rgba(${textRgb()}, ${BORDER_ALPHA});`;
 
     let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
+    const px = value => Math.max(1, Math.round(value * scale));
 
     const state = { dateKeys: buildTrailingDateKeys(), moodButtons: [] };
 
@@ -104,9 +99,9 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
             can_focus: true,
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
-            child: new St.Icon({ icon_name: mood.iconName, icon_size: FACE_ICON_SIZE_PX }),
+            child: new St.Icon({ icon_name: mood.icon, icon_size: FACE_ICON_SIZE_PX }),
         });
-        button.moodLevel = mood.level;
+        button.mood = mood;
         button.connect('clicked', () => setMood(mood.level));
         faceRow.add_child(button);
         attachButtonFeedback(button);
@@ -135,41 +130,44 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
 
     function applyScale(newScale) {
         scale = newScale;
-        const px = (v) => Math.max(1, Math.round(v * scale));
+        const fontPx = (value, minimum) => scaleFontSize(value, scale, minimum);
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_PX)}px; spacing: ${px(PANEL_GAP_PX)}px;`;
-        actionPanel.style = `width: ${px(LEFT_COLUMN_WIDTH_PX)}px; spacing: 4px;`;
-        greetingLabel.style = `${fontCss}font-size: ${px(GREETING_FONT_SIZE_PX)}px; `
-            + `font-weight: 300; color: ${textColor};`;
-        dateLabel.style = `${fontCss}font-size: ${px(DATE_FONT_SIZE_PX)}px; `
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
+        actionPanel.style = `width: ${px(LEFT_COLUMN_WIDTH_PX)}px; spacing: ${px(ACTION_PANEL_SPACING_PX)}px;`;
+        greetingLabel.style = `${fontCss}font-size: ${fontPx(GREETING_FONT_SIZE_PX, MIN_FONT_SIZE.title)}px; `
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.extrabold}; color: ${textColor};`;
+        greetingLabel.width = px(GREETING_WIDTH_PX);
+        greetingLabel.clutter_text.line_wrap = false;
+        dateLabel.style = `${fontCss}font-size: ${fontPx(DATE_FONT_SIZE_PX, MIN_FONT_SIZE.subtitle)}px; `
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
 
-        faceRow.style = `background-color: rgba(${textRgb()}, 0.08);`
-            + `padding: ${px(PICKER_ROW_PADDING_PX)}px; border-radius: ${px(PICKER_ROW_RADIUS_PX)}px;`;
+        faceRow.style = `background-color: ${card};`
+            + `padding: ${px(PICKER_ROW_PADDING_PX)}px; border-radius: ${resolveChildCornerRadius(PICKER_ROW_RADIUS_PX, scale)}px;`;
 
-        for (const button of state.moodButtons) {
-            const level = MOOD_LEVELS.find(mood => mood.level === button.moodLevel);
-            const isActive = getMood(todayDateString()) === level.level;
-            applyButtonStyle(button, level, isActive, px(FACE_ICON_SIZE_PX));
-        }
+        applyMoodSelection(getMood(todayDateString()));
 
-        historyLabel.style = `${fontCss}font-size: ${px(HISTORY_LABEL_FONT_SIZE_PX)}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`
-            + `margin-bottom: ${px(12)}px;`;
+        historyLabel.style = `${fontCss}font-size: ${fontPx(HISTORY_LABEL_FONT_SIZE_PX, MIN_FONT_SIZE.body)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`
+            + `margin-bottom: ${px(HISTORY_LABEL_MARGIN_BOTTOM_PX)}px;`;
 
         renderDotGrid();
     }
 
-    function applyButtonStyle(button, level, isActive, iconSizePx) {
-        button.child.icon_size = iconSizePx;
-        button.child.opacity = isActive ? 255 : 115;
+    function applyButtonStyle(button, isActive) {
+        button.child.icon_size = px(FACE_ICON_SIZE_PX);
+        button.child.opacity = isActive ? CLUTTER_OPACITY_OPAQUE : Math.round(CLUTTER_OPACITY_OPAQUE * ICON_OPACITY_SECONDARY);
         button.style = isActive
-            ? `border-radius: 9999px; background-color: rgba(${textRgb()}, 0.1);`
-            : 'border-radius: 9999px;';
+            ? `border-radius: ${PILL_RADIUS_PX}px; background-color: ${highlight};`
+            : `border-radius: ${PILL_RADIUS_PX}px;`;
+    }
+
+    // Single place that reflects the active mood on the face picker buttons.
+    function applyMoodSelection(activeLevel) {
+        for (const button of state.moodButtons)
+            applyButtonStyle(button, button.mood.level === activeLevel);
     }
 
     function buildDot(dateKey, isToday) {
-        const px = (v) => Math.max(1, Math.round(v * scale));
         const level = getMood(dateKey);
         const size = isToday ? px(DOT_SIZE_PX + TODAY_DOT_BORDER_PX) : px(DOT_SIZE_PX);
 
@@ -180,12 +178,11 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
             y_align: Clutter.ActorAlign.CENTER,
         });
 
-        let dotStyle = `border-radius: 9999px; width: ${size}px; height: ${size}px;`;
+        let dotStyle = `border-radius: ${PILL_RADIUS_PX}px; width: ${size}px; height: ${size}px;`;
         if (level > 0) {
-            const mood = MOOD_LEVELS.find(entry => entry.level === level);
-            dotStyle += `background-color: ${mood.color};`;
+            dotStyle += `background-color: ${MOOD_LEVELS[level - 1].color};`;
         } else {
-            dotStyle += `background-color: rgba(${textRgb()}, 0.15);`;
+            dotStyle += `background-color: ${card};`;
         }
         if (isToday) {
             dotStyle += `border: ${px(TODAY_DOT_BORDER_PX)}px solid ${textColor};`;
@@ -218,28 +215,14 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
             loadDatesAsync(state.dateKeys, () => {
                 if (isActorDestroyed(container)) return;
                 renderDotGrid();
-                applyTodayButtonStates();
+                applyMoodSelection(getMood(todayDateString()));
             });
         }
     }
 
-    // Reflects today's stored mood on the face picker buttons.
-    function applyTodayButtonStates() {
-        const todayLevel = getMood(todayDateString());
-        for (const button of state.moodButtons) {
-            const mood = MOOD_LEVELS.find(entry => entry.level === button.moodLevel);
-            applyButtonStyle(button, mood, mood.level === todayLevel, Math.max(1, Math.round(FACE_ICON_SIZE_PX * scale)));
-        }
-    }
-
     function setMood(level) {
-        const todayKey = todayDateString();
-        saveMood(todayKey, level);
-
-        for (const button of state.moodButtons) {
-            const mood = MOOD_LEVELS.find(entry => entry.level === button.moodLevel);
-            applyButtonStyle(button, mood, mood.level === level, Math.max(1, Math.round(FACE_ICON_SIZE_PX * scale)));
-        }
+        saveMood(todayDateString(), level);
+        applyMoodSelection(level);
         renderDotGrid();
     }
 
@@ -251,15 +234,12 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
     loadDatesAsync(state.dateKeys, () => {
         if (isActorDestroyed(container)) return;
         renderDotGrid();
-        const todayLevel = getMood(todayDateString());
-        if (todayLevel > 0) {
-            setMood(todayLevel);
-        }
+        applyMoodSelection(getMood(todayDateString()));
     });
 
-    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (_ratio, w, h) => {
+    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (scale) => {
         if (isActorDestroyed(container)) return;
-        applyScale(Math.min(w / REF_WIDTH_PX, h / REF_HEIGHT_PX));
+        applyScale(scale);
     });
 
     return container;

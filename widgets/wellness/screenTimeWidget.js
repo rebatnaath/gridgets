@@ -10,18 +10,22 @@ import {
     CAIRO_OPERATOR_CLEAR,
     CAIRO_OPERATOR_OVER,
     resolveDesktopAppInfo,
-} from '../../utils/widgetUtils.js';
+    resolveWidgetSurfaces,
+    resolveChildCornerRadius,
+    DEFAULT_CHILD_CORNER_RADIUS_PX,
+    DESKTOP_APP_KEY,
+    resolveAccentColor } from '../../utils/widgetUtils.js';
 import { MONTH_NAMES_ABBREVIATED as MONTH_NAMES, createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { screenTimeEngine } from '../../utils/screenTimeEngine.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { toDateString } from '../../utils/moodStore.js';
+import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, GRAPHICS_OPACITY, scaleFontSize } from '../../utils/typography.js';
 
 const REF_WIDTH = 360;
-const BORDER_ALPHA = 0.14;
 const REF_HEIGHT = 170;
 
 const MAIN_PANEL_WIDTH_RATIO = 0.65;
-const SIDE_PANEL_LIGHTEN = 0.08;
 
 const Y_AXIS_WIDTH_PX = 35;
 const X_AXIS_HEIGHT_PX = 15;
@@ -41,37 +45,38 @@ function computeScaleMaxSeconds(hours) {
     return Math.ceil(base / MIN_SCALE_SECONDS) * MIN_SCALE_SECONDS;
 }
 
-const HEADER_FONT_SIZE_PX = 32;
-const DATE_LABEL_FONT_SIZE_PX = 11;
-const AXIS_LABEL_FONT_SIZE_PX = 10;
-const APP_TIME_FONT_SIZE_PX = 13;
+const HEADER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.displayLG;
+const DATE_LABEL_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
+const AXIS_LABEL_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
+const APP_TIME_FONT_SIZE_PX = TYPOGRAPHY_SIZE.label;
 const NAV_BUTTON_SIZE_PX = 26;
-const NAV_ICON_SIZE_PX = 16;
-const APP_ICON_SIZE_PX = 20;
+const NAV_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconMd;
+const APP_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconMd;
 const MAX_VISIBLE_APPS = 4;
-const SECONDARY_TEXT_OPACITY = 0.63;
-const DISABLED_CONTROL_OPACITY = Math.round(255 * SECONDARY_TEXT_OPACITY);
-const GRID_LINE_ALPHA = 0.3;
+const SECONDARY_TEXT_OPACITY = TEXT_OPACITY.secondary;
+const DISABLED_CONTROL_OPACITY = Math.round(255 * TEXT_OPACITY.disabled);
 const PANEL_PADDING_TOP_PX = 16;
 const PANEL_PADDING_BOTTOM_PX = 16;
 const PANEL_PADDING_LEFT_PX = 20;
 const PANEL_PADDING_RIGHT_PX = 12;
 
 const HEADER_PADDING_RIGHT_PX = 5;
-const NAV_BUTTON_BORDER_RADIUS_PX = 6;
+const CONTROLS_COLUMN_SPACING_PX = 6;
+const NAV_BUTTONS_SPACING_PX = 6;
+const APP_ROW_ITEM_SPACING_PX = 10;
 const AXIS_LABEL_SPACING_PX = 4;
 const AXIS_MARGIN_BOTTOM_PX = 6;
 const APP_ROWS_SPACING_PX = 14;
 
 function addDays(dateString, delta) {
-    const [y, m, d] = dateString.split('-').map(Number);
-    const next = GLib.DateTime.new_local(y, m, d + delta, 12, 0, 0);
+    const [year, month, day] = dateString.split('-').map(Number);
+    const next = GLib.DateTime.new_local(year, month, day + delta, 12, 0, 0);
     return toDateString(next);
 }
 
 function formatShortDate(dateString) {
-    const [y, m, d] = dateString.split('-').map(Number);
-    return `${d} ${MONTH_NAMES[m - 1]}`;
+    const [, month, day] = dateString.split('-').map(Number);
+    return `${day} ${MONTH_NAMES[month - 1]}`;
 }
 
 function formatCompactDuration(totalSeconds) {
@@ -82,31 +87,24 @@ function formatCompactDuration(totalSeconds) {
     return `${minutes}m`;
 }
 
-function shadePanelColor(cssColor, amount) {
-    const { r, g, b } = parseCssColor(cssColor);
-    const isDark = (r * 0.299 + g * 0.587 + b * 0.114) < 0.5;
-    const mix = (channel) => isDark
-        ? Math.round(((channel * (1 - amount)) + amount) * 255)
-        : Math.round(channel * 255 * (1 - amount));
-    return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
-}
+
 
 export function createScreenTimeNode(config, width, height, xPosition, yPosition) {
-    const bgColor = resolveWidgetBackgroundColor(config);
     const textColor = resolveWidgetForegroundColor(config);
+    const { card } = resolveWidgetSurfaces(config);
+    const backgroundColor = resolveWidgetBackgroundColor(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const borderRadius = config.appliedBorderRadius || 0;
-    const accentHex = config.globalAccentColor || '#3584e4';
+    const accentHex = resolveAccentColor(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
-    const textRgba = (alpha) => cssColorToRgba(textColor, alpha);
-    container.style += ` border: 1px solid ${textRgba(BORDER_ALPHA)};`;
+    connectShortClick(container, () => launchApplication('gnome-control-center wellbeing'));
 
     const state = {
         selectedDate: null,
         snapshot: null,
         geometry: {},
-        engineListener: null,
+        lastAppListSignature: null,
     };
 
     const splitBox = new St.BoxLayout({
@@ -119,15 +117,14 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     const leftPanel = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         y_expand: true,
-        style: `background-color: ${bgColor}; border-radius: ${borderRadius}px 0 0 ${borderRadius}px;`,
+        style: `background-color: ${backgroundColor}; border-radius: ${borderRadius}px 0 0 ${borderRadius}px;`,
     });
     splitBox.add_child(leftPanel);
 
-    const sideBgColor = shadePanelColor(bgColor, SIDE_PANEL_LIGHTEN);
     const rightPanel = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         y_expand: true,
-        style: `background-color: ${sideBgColor}; border-radius: 0 ${borderRadius}px ${borderRadius}px 0;`,
+        style: `background-color: ${card}; border-radius: 0 ${borderRadius}px ${borderRadius}px 0;`,
     });
     splitBox.add_child(rightPanel);
 
@@ -138,25 +135,25 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         text: '0m',
         x_expand: true,
         y_align: Clutter.ActorAlign.START,
-        style: `${fontCss}color: ${textColor}; font-size: ${HEADER_FONT_SIZE_PX}px; font-weight: 300;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${HEADER_FONT_SIZE_PX}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`,
     });
     headerBox.add_child(totalTimeLabel);
 
     const controlsColumn = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_align: Clutter.ActorAlign.END,
-        style: 'spacing: 6px;',
+        style: `spacing: ${CONTROLS_COLUMN_SPACING_PX}px;`,
     });
     headerBox.add_child(controlsColumn);
 
     const dateLabel = new St.Label({
         text: '',
         style: `${fontCss}color: ${textColor}; font-size: ${DATE_LABEL_FONT_SIZE_PX}px; `
-            + `font-weight: 600; opacity: ${SECONDARY_TEXT_OPACITY};`,
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`,
     });
     controlsColumn.add_child(dateLabel);
 
-    const navButtonsRow = new St.BoxLayout({ style: 'spacing: 6px;' });
+    const navButtonsRow = new St.BoxLayout({ style: `spacing: ${NAV_BUTTONS_SPACING_PX}px;` });
     controlsColumn.add_child(navButtonsRow);
 
     const buildNavButton = (iconName, action) => {
@@ -164,7 +161,8 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
             reactive: true,
             can_focus: true,
             style: `width: ${NAV_BUTTON_SIZE_PX}px; height: ${NAV_BUTTON_SIZE_PX}px;`
-                + `border: 1px solid ${textRgba(0.14)}; border-radius: 6px; background-color: transparent;`,
+                + `border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
+                + `border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, 1)}px; background-color: transparent;`,
             child: new St.Icon({
                 icon_name: iconName,
                 icon_size: NAV_ICON_SIZE_PX,
@@ -205,7 +203,7 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         y_align: yAxisAlignments[index],
         x_align: Clutter.ActorAlign.END,
         style: `${fontCss}color: ${textColor}; font-size: ${AXIS_LABEL_FONT_SIZE_PX}px; `
-            + `opacity: ${SECONDARY_TEXT_OPACITY};`,
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; opacity: ${SECONDARY_TEXT_OPACITY};`,
     }));
     const yAxisBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -220,8 +218,8 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         x_expand: true,
         x_align: xAxisAlignments[index],
         style: `${fontCss}color: ${textColor}; font-size: ${AXIS_LABEL_FONT_SIZE_PX}px; `
-            + `opacity: ${SECONDARY_TEXT_OPACITY};`,
-    }));
+                    + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`,
+            }));
     const xAxisBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
     });
@@ -234,7 +232,7 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         y_expand: true,
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
-        style: 'spacing: 14px;',
+        style: `spacing: ${APP_ROWS_SPACING_PX}px;`,
     });
     rightPanel.add_child(appRowsBox);
 
@@ -245,11 +243,10 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
             refreshData();
     };
 
-    state.engineListener = onEngineTick;
     screenTimeEngine.addListener(onEngineTick);
 
     registerWidgetCleanup(container, () => {
-        screenTimeEngine.removeListener(state.engineListener);
+        screenTimeEngine.removeListener(onEngineTick);
     });
 
     function refreshData() {
@@ -266,9 +263,11 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         }
     }
 
-    // Cheap fingerprint of the visible app list.
     function appListSignature(snapshot) {
-        return JSON.stringify(snapshot.apps.slice(0, MAX_VISIBLE_APPS).map(app => [app.key, app.seconds]));
+        return JSON.stringify(snapshot.apps
+            .filter(app => app.key !== DESKTOP_APP_KEY)
+            .slice(0, MAX_VISIBLE_APPS)
+            .map(app => [app.key, app.seconds]));
     }
 
     function renderDynamic() {
@@ -304,43 +303,46 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     function rebuildAppList() {
         appRowsBox.destroy_all_children();
 
-        const apps = state.snapshot.apps.slice(0, MAX_VISIBLE_APPS);
+        const apps = state.snapshot.apps
+            .filter(app => app.key !== DESKTOP_APP_KEY)
+            .slice(0, MAX_VISIBLE_APPS);
         if (apps.length === 0) {
             appRowsBox.add_child(new St.Label({
                 text: 'No activity recorded',
                 x_expand: true,
                 x_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}color: ${textColor}; font-size: ${APP_TIME_FONT_SIZE_PX}px; `
+                style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
                     + `opacity: ${SECONDARY_TEXT_OPACITY};`,
             }));
             return;
         }
 
         for (const app of apps) {
-            const s = state.geometry.scale || 1;
-            const px = (v) => Math.max(1, Math.round(v * s));
+            const scale = state.geometry.scale || 1;
+            const scalePixels = value => Math.max(1, Math.round(value * scale));
 
             // Icon pinned left, duration immediately after it — every value
             // starts at the same x so short ("6m") and long ("1h 53m") stay aligned.
             const row = new St.BoxLayout({
                 orientation: Clutter.Orientation.HORIZONTAL,
                 x_align: Clutter.ActorAlign.FILL,
-                style: 'spacing: 10px;',
+                style: `spacing: ${APP_ROW_ITEM_SPACING_PX}px;`,
             });
 
             const iconSlot = new St.Widget({
                 layout_manager: new Clutter.BinLayout(),
-                width: px(APP_ICON_SIZE_PX),
-                height: px(APP_ICON_SIZE_PX),
+                width: scalePixels(APP_ICON_SIZE_PX),
+                height: scalePixels(APP_ICON_SIZE_PX),
             });
             const appIcon = new St.Icon({
                 icon_name: 'application-x-generic',
-                icon_size: px(APP_ICON_SIZE_PX),
+                icon_size: scalePixels(APP_ICON_SIZE_PX),
             });
             const appInfo = resolveDesktopAppInfo(app.key);
             const gicon = appInfo ? appInfo.get_icon() : null;
-            if (gicon)
+            if (gicon) {
                 appIcon.gicon = gicon;
+            }
             iconSlot.add_child(appIcon);
             row.add_child(iconSlot);
 
@@ -348,8 +350,8 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
                 text: formatCompactDuration(app.seconds),
                 x_expand: true,
                 y_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}color: ${textColor}; font-size: ${px(APP_TIME_FONT_SIZE_PX)}px; `
-                    + `opacity: ${SECONDARY_TEXT_OPACITY};`,
+                style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
+                    + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`,
             }));
 
             appRowsBox.add_child(row);
@@ -360,24 +362,24 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         const ctx = area.get_context();
         const [canvasWidth, canvasHeight] = area.get_surface_size();
         const { r, g, b } = parseCssColor(textColor);
-        const s = state.geometry.scale || 1;
+        const scale = state.geometry.scale || 1;
 
         ctx.setOperator(CAIRO_OPERATOR_CLEAR);
         ctx.paint();
         ctx.setOperator(CAIRO_OPERATOR_OVER);
 
-        ctx.setSourceRGBA(r, g, b, GRID_LINE_ALPHA);
+        ctx.setSourceRGBA(r, g, b, GRAPHICS_OPACITY.gridLine);
         ctx.setLineWidth(1);
-        ctx.setDash([3 * s, 3 * s], 0);
+        ctx.setDash([3 * scale, 3 * scale], 0);
 
-        for (let i = 0; i < 3; i++) {
-            const y = Math.round((canvasHeight / 2) * i) + 0.5;
-            ctx.moveTo(0, y);
-            ctx.lineTo(canvasWidth, y);
+        for (let gridIndex = 0; gridIndex < 3; gridIndex++) {
+            const gridY = Math.round((canvasHeight / 2) * gridIndex) + 0.5;
+            ctx.moveTo(0, gridY);
+            ctx.lineTo(canvasWidth, gridY);
 
-            const x = Math.round((canvasWidth / 2) * i) + 0.5;
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, canvasHeight);
+            const gridX = Math.round((canvasWidth / 2) * gridIndex) + 0.5;
+            ctx.moveTo(gridX, 0);
+            ctx.lineTo(gridX, canvasHeight);
         }
         ctx.stroke();
         ctx.setDash([], 0);
@@ -386,21 +388,21 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         const scaleMax = computeScaleMaxSeconds(hours);
         const accent = parseCssColor(accentHex);
         ctx.setSourceRGBA(accent.r, accent.g, accent.b, 1);
-        const barWidth = Math.round(BAR_WIDTH_PX * s);
-        const barRadius = Math.round(BAR_WIDTH_PX / 2 * s);
+        const barWidth = Math.round(BAR_WIDTH_PX * scale);
+        const barRadius = Math.round(BAR_WIDTH_PX / 2 * scale);
 
         for (let hour = 0; hour < hours.length; hour++) {
             if (hours[hour] <= 0) continue;
             const barHeight = Math.max(barWidth, (hours[hour] / scaleMax) * canvasHeight);
             const centerX = ((hour + 0.5) / HOURS_PER_DAY) * canvasWidth;
-            const x = centerX - (barWidth / 2);
-            const y = canvasHeight - barHeight;
+            const barX = centerX - (barWidth / 2);
+            const barY = canvasHeight - barHeight;
 
             ctx.newSubPath();
-            ctx.arc(x + barRadius, y + barRadius, barRadius, Math.PI, 1.5 * Math.PI);
-            ctx.arc(x + barWidth - barRadius, y + barRadius, barRadius, 1.5 * Math.PI, 2 * Math.PI);
-            ctx.lineTo(x + barWidth, canvasHeight);
-            ctx.lineTo(x, canvasHeight);
+            ctx.arc(barX + barRadius, barY + barRadius, barRadius, Math.PI, 1.5 * Math.PI);
+            ctx.arc(barX + barWidth - barRadius, barY + barRadius, barRadius, 1.5 * Math.PI, 2 * Math.PI);
+            ctx.lineTo(barX + barWidth, canvasHeight);
+            ctx.lineTo(barX, canvasHeight);
             ctx.closePath();
         }
         ctx.fill();
@@ -411,30 +413,41 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         // Skip until the container has real dimensions; otherwise scale and
         // plot extents collapse to NaN and Clutter allocates INT32_MIN.
         if (!currentWidth || !currentHeight) return;
-        const s = Math.min(currentWidth / REF_WIDTH, currentHeight / REF_HEIGHT);
-        if (!isFinite(s) || s <= 0) return;
-        state.geometry.scale = s;
+        const scale = Math.min(currentWidth / REF_WIDTH, currentHeight / REF_HEIGHT);
+        if (!isFinite(scale) || scale <= 0) return;
+        state.geometry.scale = scale;
 
         const totalWidth = currentWidth;
         const mainWidth = Math.round(totalWidth * MAIN_PANEL_WIDTH_RATIO);
         leftPanel.set_width(mainWidth);
         rightPanel.set_width(totalWidth - mainWidth);
 
-        const padTop = Math.round(PANEL_PADDING_TOP_PX * s);
-        const padBottom = Math.round(PANEL_PADDING_BOTTOM_PX * s);
-        const padLeft = Math.round(PANEL_PADDING_LEFT_PX * s);
-        const padRight = Math.round(PANEL_PADDING_RIGHT_PX * s);
-        leftPanel.style = `background-color: ${bgColor}; border-radius: ${borderRadius}px 0 0 ${borderRadius}px;`
+        const padTop = Math.round(PANEL_PADDING_TOP_PX * scale);
+        const padBottom = Math.round(PANEL_PADDING_BOTTOM_PX * scale);
+        const padLeft = Math.round(PANEL_PADDING_LEFT_PX * scale);
+        const padRight = Math.round(PANEL_PADDING_RIGHT_PX * scale);
+        leftPanel.style = `background-color: ${backgroundColor}; border-radius: ${borderRadius}px 0 0 ${borderRadius}px;`
             + `padding: ${padTop}px ${padRight}px ${padBottom}px ${padLeft}px;`;
 
-        rightPanel.style = `background-color: ${sideBgColor}; border-radius: 0 ${borderRadius}px ${borderRadius}px 0;`
+        rightPanel.style = `background-color: ${card}; border-radius: 0 ${borderRadius}px ${borderRadius}px 0;`
             + `padding: ${padTop}px ${padLeft}px;`;
 
-        headerBox.style = `margin-bottom: ${Math.round(HEADER_MARGIN_BOTTOM_PX * s)}px; padding-right: ${Math.round(HEADER_PADDING_RIGHT_PX * s)}px;`;
-        totalTimeLabel.style = `${fontCss}color: ${textColor}; font-size: ${Math.round(HEADER_FONT_SIZE_PX * s)}px; font-weight: 300;`;
+        headerBox.style = `margin-bottom: ${Math.round(HEADER_MARGIN_BOTTOM_PX * scale)}px; padding-right: ${Math.round(HEADER_PADDING_RIGHT_PX * scale)}px;`;
+        totalTimeLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`;
+        dateLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DATE_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+        yAxisLabels.forEach(label => {
+            label.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(AXIS_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
+                + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+        });
+        xAxisLabels.forEach(label => {
+            label.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(AXIS_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
+                + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+        });
 
-        prevButton.style = `width: ${Math.round(NAV_BUTTON_SIZE_PX * s)}px; height: ${Math.round(NAV_BUTTON_SIZE_PX * s)}px;`
-            + `border: 1px solid ${textRgba(0.14)}; border-radius: ${Math.round(NAV_BUTTON_BORDER_RADIUS_PX * s)}px; background-color: transparent;`;
+        prevButton.style = `width: ${Math.round(NAV_BUTTON_SIZE_PX * scale)}px; height: ${Math.round(NAV_BUTTON_SIZE_PX * scale)}px;`
+            + `border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
+            + `border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px; background-color: transparent;`;
         nextButton.style = prevButton.style;
 
         const chartWrapWidth = mainWidth - padLeft - padRight;
@@ -442,22 +455,24 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         // (date label 14 + spacing 6 + nav buttons 26), so the plot top — and
         // therefore the max scale mark — rises to the prev/next button level.
         const chartWrapHeight = currentHeight - padTop - padBottom
-            - Math.round((HEADER_RESERVED_HEIGHT_PX + HEADER_MARGIN_BOTTOM_PX) * s);
-        const plotWidth = Math.max(1, chartWrapWidth - Math.round(Y_AXIS_WIDTH_PX * s));
-        const plotHeight = Math.max(1, chartWrapHeight - Math.round(X_AXIS_HEIGHT_PX * s));
-        Object.assign(state.geometry, { plotWidth, plotHeight });
+            - Math.round((HEADER_RESERVED_HEIGHT_PX + HEADER_MARGIN_BOTTOM_PX) * scale);
+        const plotWidth = Math.max(1, chartWrapWidth - Math.round(Y_AXIS_WIDTH_PX * scale));
+        const axisBottomMargin = scale < 1 ? Math.round(AXIS_MARGIN_BOTTOM_PX * scale) : 0;
+        const axisSpace = Math.round(X_AXIS_HEIGHT_PX * scale) + axisBottomMargin;
+        const plotHeight = Math.max(1, chartWrapHeight - axisSpace);
+        Object.assign(state.geometry, { plotWidth });
 
         chartCanvas.set_position(0, 0);
         chartCanvas.set_size(plotWidth, plotHeight);
 
         yAxisBox.set_position(plotWidth, 0);
-        yAxisBox.set_size(Math.round(Y_AXIS_WIDTH_PX * s), plotHeight);
+        yAxisBox.set_size(Math.round(Y_AXIS_WIDTH_PX * scale), plotHeight);
 
-        xAxisBox.set_position(0, plotHeight + Math.round(4 * s));
-        xAxisBox.set_size(plotWidth, Math.round(X_AXIS_HEIGHT_PX * s));
-        xAxisBox.style = `margin-bottom: ${Math.round(AXIS_MARGIN_BOTTOM_PX * s)}px;`;
+        xAxisBox.set_position(0, plotHeight + Math.round(AXIS_LABEL_SPACING_PX * scale));
+        xAxisBox.set_size(plotWidth, Math.round(X_AXIS_HEIGHT_PX * scale));
+        xAxisBox.style = `margin-bottom: ${axisBottomMargin}px;`;
 
-        appRowsBox.style = `spacing: ${Math.round(APP_ROWS_SPACING_PX * s)}px;`;
+        appRowsBox.style = `spacing: ${Math.round(APP_ROWS_SPACING_PX * scale)}px;`;
 
         renderDynamic();
     }
