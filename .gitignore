@@ -1,0 +1,7 @@
+run-nested.sh
+shell.nix
+venv/
+gridgets@rebatnaath.github.com.shell-extension.zip
+.ideas-and-sketchpad
+
+schemas/gschemas.compiled
