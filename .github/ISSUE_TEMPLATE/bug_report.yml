@@ -19,7 +19,7 @@ body:
     id: distro
     attributes:
       label: Distribution
-      description: Run `cat /etc/os-release` in terminal, or `gnome-shell --version`
+      description: Run `cat /etc/os-release` in terminal
       placeholder: e.g., Fedora 43, Arch Linux, NixOS 25.11, Ubuntu 25.10
     validations:
       required: true
