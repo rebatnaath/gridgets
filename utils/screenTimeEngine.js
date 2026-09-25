@@ -1,7 +1,7 @@
 import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
-import { getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile, todayDateString } from './widgetUtils.js';
-
+import { DESKTOP_APP_KEY, getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile, todayDateString } from './widgetUtils.js';
+export { DESKTOP_APP_KEY } from './widgetUtils.js';
 
 const TICK_INTERVAL_MS = 1000;
 const SAVE_THROTTLE_MS = 15000;
@@ -15,7 +15,7 @@ function dayFilePath(dateString) {
 
 /**
  * Shared focus-tracking engine. Accumulates per-app, per-hour seconds while any
- * consumer holds a reference, persisting one JSON file per day.
+ * consumer holds a reference, writing one JSON file per day.
  */
 export const screenTimeEngine = {
     _refCount: 0,
@@ -100,15 +100,15 @@ export const screenTimeEngine = {
 
     _start() {
         this._currentDate = todayDateString();
-        this._focusedKey = this._resolveFocusedKey();
-        this._focusStartMicro = this._focusedKey ? GLib.get_real_time() : null;
+        this._focusedKey = this._resolveFocusedKey() || DESKTOP_APP_KEY;
+        this._focusStartMicro = GLib.get_real_time();
         this._focusSignalId = global.display.connect('notify::focus-window', () => this._onFocusChanged());
         this._tickId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TICK_INTERVAL_MS, () => {
             this._tick();
             return GLib.SOURCE_CONTINUE;
         });
 
-        // Seed in-memory state from today's persisted file so reloads keep history.
+        // Seed in-memory state from today's saved file so reloads keep history.
         const loadDate = this._currentDate;
         this._loadRawAsync(loadDate, (loadedMap) => {
             if (this._refCount === 0 || this._currentDate !== loadDate)
@@ -140,8 +140,8 @@ export const screenTimeEngine = {
     _onFocusChanged() {
         const now = GLib.get_real_time();
         this._flushFocused(now);
-        this._focusedKey = this._resolveFocusedKey();
-        this._focusStartMicro = this._focusedKey ? now : null;
+        this._focusedKey = this._resolveFocusedKey() || DESKTOP_APP_KEY;
+        this._focusStartMicro = now;
     },
 
     _tick() {
@@ -223,11 +223,5 @@ export const screenTimeEngine = {
             date: this._currentDate,
             apps: Object.fromEntries(this._appHours),
         });
-    },
-
-    /** Force-stops tracking regardless of ref count; safety net for disable(). */
-    forceCleanup() {
-        this._refCount = 0;
-        this._stop();
     },
 };
