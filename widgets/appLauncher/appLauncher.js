@@ -1,21 +1,18 @@
 import St from 'gi://St';
-import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveDesktopAppInfo } from '../../utils/widgetUtils.js';
-import { createWidgetContainer, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveDesktopAppInfo, resolveWidgetSurfaces, normalizeAppLauncherApps, DEFAULT_CHILD_CORNER_RADIUS_PX, resolveChildCornerRadius } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 
-const MAX_APPS = 8;
 const DEFAULT_APP_ICON = 'application-x-executable-symbolic';
+const REFERENCE_WIDTH_PX = 140;
+const REFERENCE_HEIGHT_PX = 100;
 const DRAG_THRESHOLD_PIXELS = 10;
 const OUTER_MARGIN = 12;
 const GRID_GAP = 10;
-const TILE_RADIUS = 14;
-const TILE_BASE_ALPHA = 0.07;
-const TILE_HOVER_ALPHA = 0.13;
-const BORDER_ALPHA = 0.14;
 const TILE_PADDING_RATIO = 0.1;
 const TILE_PADDING_MIN = 3;
 const TILE_PADDING_MAX = 10;
@@ -32,20 +29,20 @@ function computeGridLayout(appCount) {
     return { cols: 4, rows: 2 };
 }
 
-function buildTileStyle(tileRgba, padding) {
-    return `background-color: ${tileRgba}; border-radius: ${TILE_RADIUS}px; padding: ${padding}px;`;
+function buildTileStyle(tileRgba, padding, tileRadius) {
+    return `background-color: ${tileRgba}; border-radius: ${tileRadius}px; padding: ${padding}px;`;
 }
 
 export function createAppLauncherNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(config);
+    const { card, highlight } = resolveWidgetSurfaces(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
-    const tileBaseBg = cssColorToRgba(textColor, TILE_BASE_ALPHA);
-    const tileHoverBg = cssColorToRgba(textColor, TILE_HOVER_ALPHA);
-    container.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
+    const tileBaseBg = card;
+    const tileHoverBg = highlight;
 
-    const apps = Array.isArray(config.apps) ? config.apps.slice(0, MAX_APPS) : [];
+    const apps = normalizeAppLauncherApps(config.apps);
 
     if (apps.length === 0) {
         const emptyLabel = new St.Label({
@@ -54,9 +51,16 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
             y_expand: true,
-            style: `${fontCss}color: ${textColor}; opacity: 0.55; font-size: 14px;`,
         });
+        const updateEmptyLabel = scale => {
+            const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.body, scale, MIN_FONT_SIZE.body);
+            emptyLabel.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
+        };
+        updateEmptyLabel(Math.min(width / REFERENCE_WIDTH_PX, height / REFERENCE_HEIGHT_PX));
         container.add_child(emptyLabel);
+        attachResponsiveScaler(container, REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX, (ratio) => {
+            updateEmptyLabel(ratio);
+        });
         return container;
     }
 
@@ -100,9 +104,10 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
         Main.notify('App Launcher', `Could not launch ${displayName}`);
     };
 
-    const updateCell = (cell, padding, iconSize) => {
+    const updateCell = (cell, padding, iconSize, tileRadius) => {
         cell.padding = padding;
-        cell.button.set_style(buildTileStyle(cell.hovered ? tileHoverBg : tileBaseBg, padding));
+        cell.tileRadius = tileRadius;
+        cell.button.set_style(buildTileStyle(cell.hovered ? tileHoverBg : tileBaseBg, padding, tileRadius));
         cell.icon.set_icon_size(iconSize);
     };
 
@@ -123,14 +128,14 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
 
             const app = apps[appIndex];
             const appInfo = resolveDesktopAppInfo(app.id);
-            const displayName = (app.name && app.name.trim() !== '') ? app.name : app.id.replace(/\.desktop$/i, '');
+            const displayName = app.name;
 
             const button = new St.Button({
                 reactive: true,
                 can_focus: true,
                 x_expand: true,
                 y_expand: true,
-                style: buildTileStyle(tileBaseBg, TILE_PADDING_MIN),
+                style: buildTileStyle(tileBaseBg, TILE_PADDING_MIN, DEFAULT_CHILD_CORNER_RADIUS_PX),
                 x_align: Clutter.ActorAlign.CENTER,
                 y_align: Clutter.ActorAlign.CENTER,
             });
@@ -157,16 +162,25 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             button.set_child(cellBox);
             rowBox.add_child(button);
 
-            const cell = { icon: appIcon, button, padding: TILE_PADDING_MIN, hovered: false, pressX: 0, pressY: 0 };
+            const cell = {
+                appInfo,
+                icon: appIcon,
+                button,
+                padding: TILE_PADDING_MIN,
+                tileRadius: resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, 1),
+                hovered: false,
+                pressX: 0,
+                pressY: 0,
+            };
 
             button.connect('enter-event', () => {
                 cell.hovered = true;
-                button.set_style(buildTileStyle(tileHoverBg, cell.padding));
+                button.set_style(buildTileStyle(tileHoverBg, cell.padding, cell.tileRadius));
                 return Clutter.EVENT_PROPAGATE;
             });
             button.connect('leave-event', () => {
                 cell.hovered = false;
-                button.set_style(buildTileStyle(tileBaseBg, cell.padding));
+                button.set_style(buildTileStyle(tileBaseBg, cell.padding, cell.tileRadius));
                 return Clutter.EVENT_PROPAGATE;
             });
 
@@ -188,7 +202,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
                     && Math.abs(releaseY - cell.pressY) < DRAG_THRESHOLD_PIXELS;
 
                 if (isClickNotDrag) {
-                    launchApp(appInfo, app, displayName);
+                    launchApp(cell.appInfo, app, displayName);
                 }
                 return Clutter.EVENT_STOP;
             });
@@ -197,43 +211,34 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
         }
     }
 
-    const updateScaling = () => {
+    const updateScaling = (ratio, currentWidth, currentHeight) => {
         if (isActorDestroyed(container)) return;
-        const currentWidth = container.width || width || 240;
-        const currentHeight = container.height || height || 180;
-        const contentWidth = Math.max(1, currentWidth - (OUTER_MARGIN * 2));
-        const contentHeight = Math.max(1, currentHeight - (OUTER_MARGIN * 2));
+        const safeWidth = currentWidth || container.width || width;
+        const safeHeight = currentHeight || container.height || height;
+        const contentWidth = Math.max(1, safeWidth - (OUTER_MARGIN * 2));
+        const contentHeight = Math.max(1, safeHeight - (OUTER_MARGIN * 2));
 
         const cellWidth = (contentWidth - (GRID_GAP * (cols - 1))) / cols;
         const cellHeight = (contentHeight - (GRID_GAP * (rows - 1))) / rows;
         const minCell = Math.max(MIN_ICON_SIZE, Math.min(cellWidth, cellHeight));
 
         const padding = Math.min(TILE_PADDING_MAX, Math.max(TILE_PADDING_MIN, Math.round(minCell * TILE_PADDING_RATIO)));
+        const tileRadius = resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, minCell / 80);
         const available = Math.max(MIN_ICON_SIZE, minCell - (padding * 2));
 
         const iconSize = Math.min(MAX_ICON_SIZE, Math.max(MIN_ICON_SIZE, Math.round(available * ICON_SIZE_RATIO)));
 
         for (const cell of cells) {
-            updateCell(cell, padding, iconSize);
+            updateCell(cell, padding, iconSize, tileRadius);
         }
     };
 
-    container.connect('notify::width', updateScaling);
-    container.connect('notify::height', updateScaling);
-
-    let idleSourceId = null;
     registerWidgetCleanup(container, () => {
-        if (idleSourceId) {
-            GLib.Source.remove(idleSourceId);
-            idleSourceId = null;
-        }
+        for (const cell of cells)
+            cell.appInfo = null;
     });
 
-    idleSourceId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-        idleSourceId = null;
-        updateScaling();
-        return GLib.SOURCE_REMOVE;
-    });
+    attachResponsiveScaler(container, REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX, updateScaling);
 
     return container;
 }
