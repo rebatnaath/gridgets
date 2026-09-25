@@ -1,20 +1,33 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveUse24h, SECONDARY_OPACITY } from '../../utils/widgetUtils.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveUse24h } from '../../utils/widgetUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, formatTimeParts, startMinuteAlignedTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 
 const BASE_CONTAINER_WIDTH = 180;
 const BASE_CONTAINER_HEIGHT = 100;
-const BASE_TIME_FONT_SIZE = 34;
-const BASE_AMPM_FONT_SIZE = 13;
-const BASE_DATE_FONT_SIZE = 14;
+const BASE_TIME_FONT_SIZE = TYPOGRAPHY_SIZE.displayLG;
+const BASE_AMPM_FONT_SIZE = TYPOGRAPHY_SIZE.metadata;
+const BASE_DATE_FONT_SIZE = TYPOGRAPHY_SIZE.metadata;
 const TIME_MARGIN_RIGHT_PX = 5;
 const AMPM_MARGIN_BOTTOM_PX = 4;
-const BORDER_ALPHA = 0.14;
 
-function buildTimeAndDateLabels({ is24h, timeFontSize, ampmFontSize, dateFontSize, fontCss, textColor }) {
+function timeLabelStyle({ fontCss, textColor, timeFontSize }) {
+    return `${fontCss}color: ${textColor}; font-weight: ${TYPOGRAPHY_WEIGHT.black}; font-size: ${timeFontSize}px; margin-right: ${TIME_MARGIN_RIGHT_PX}px;`;
+}
+
+function ampmLabelStyle({ fontCss, textColor, ampmFontSize }) {
+    return `${fontCss}color: ${textColor}; font-size: ${ampmFontSize}px; opacity: ${TEXT_OPACITY.secondary}; margin-bottom: ${AMPM_MARGIN_BOTTOM_PX}px;`;
+}
+
+function dateLabelStyle({ fontCss, textColor, dateFontSize }) {
+    return `${fontCss}color: ${textColor}; font-size: ${dateFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${TEXT_OPACITY.secondary};`;
+}
+
+function buildTimeAndDateLabels({ is24h, fontCss, textColor, timeFontSize, ampmFontSize, dateFontSize }) {
     const timeRow = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         y_align: Clutter.ActorAlign.END,
@@ -23,7 +36,7 @@ function buildTimeAndDateLabels({ is24h, timeFontSize, ampmFontSize, dateFontSiz
 
     const timeLabel = new St.Label({
         text: '00:00',
-        style: `${fontCss}color: ${textColor}; font-weight: 300; font-size: ${timeFontSize}px; margin-right: ${TIME_MARGIN_RIGHT_PX}px;`
+        style: timeLabelStyle({ fontCss, textColor, timeFontSize }),
     });
     timeRow.add_child(timeLabel);
 
@@ -31,18 +44,27 @@ function buildTimeAndDateLabels({ is24h, timeFontSize, ampmFontSize, dateFontSiz
     if (!is24h) {
         ampmLabel = new St.Label({
             text: 'AM',
-            style: `${fontCss}color: ${textColor}; font-size: ${ampmFontSize}px; opacity: ${SECONDARY_OPACITY}; margin-bottom: ${AMPM_MARGIN_BOTTOM_PX}px;`
+            style: ampmLabelStyle({ fontCss, textColor, ampmFontSize }),
         });
         timeRow.add_child(ampmLabel);
     }
 
     const dateLabel = new St.Label({
         text: 'Monday, Jan 1',
-        style: `${fontCss}color: ${textColor}; font-size: ${dateFontSize}px; opacity: ${SECONDARY_OPACITY};`,
-        x_align: Clutter.ActorAlign.CENTER
+        style: dateLabelStyle({ fontCss, textColor, dateFontSize }),
+        x_align: Clutter.ActorAlign.CENTER,
     });
 
-    return { timeRow, timeLabel, ampmLabel, dateLabel };
+    return { timeRow, timeLabel, ampmLabel, dateLabel, is24h };
+}
+
+// Resize restyles the existing labels instead of rebuilding the actor tree,
+// which would otherwise churn actors on every resize event.
+function applyLabelTypography(elements, typography) {
+    elements.timeLabel.style = timeLabelStyle(typography);
+    if (elements.ampmLabel)
+        elements.ampmLabel.style = ampmLabelStyle(typography);
+    elements.dateLabel.style = dateLabelStyle(typography);
 }
 
 function updateTimeAndDate(elements, is24h) {
@@ -61,7 +83,7 @@ export function createDigitalTimeNode(widgetData, width, height, xPosition, yPos
     const textColor = resolveWidgetForegroundColor(widgetData);
 
     const widgetNode = createWidgetContainer(widgetData, width, height, xPosition, yPosition);
-    widgetNode.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
+    connectShortClick(widgetNode, () => launchApplication('gnome-clocks'));
 
     const textLayout = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -75,23 +97,27 @@ export function createDigitalTimeNode(widgetData, width, height, xPosition, yPos
     let timeElements = null;
 
     const applyScale = (scale) => {
-        const scaled = (base) => Math.max(1, Math.round(base * scale));
-        const nextElements = buildTimeAndDateLabels({
-            is24h,
-            timeFontSize: scaled(BASE_TIME_FONT_SIZE),
-            ampmFontSize: scaled(BASE_AMPM_FONT_SIZE),
-            dateFontSize: scaled(BASE_DATE_FONT_SIZE),
+        const typography = {
             fontCss,
             textColor,
-        });
+            timeFontSize: scaleFontSize(BASE_TIME_FONT_SIZE, scale, MIN_FONT_SIZE.primary),
+            ampmFontSize: scaleFontSize(BASE_AMPM_FONT_SIZE, scale, MIN_FONT_SIZE.metadata),
+            dateFontSize: scaleFontSize(BASE_DATE_FONT_SIZE, scale, MIN_FONT_SIZE.metadata),
+        };
 
-        if (timeElements) {
-            const oldTimeRow = timeElements.timeRow;
-            const oldDateLabel = timeElements.dateLabel;
-            textLayout.replace_child(oldTimeRow, nextElements.timeRow);
-            textLayout.replace_child(oldDateLabel, nextElements.dateLabel);
-            oldTimeRow.destroy();
-            oldDateLabel.destroy();
+        // The actor tree only depends on 12/24h, so restyle in place until that changes.
+        if (timeElements && timeElements.is24h === is24h) {
+            applyLabelTypography(timeElements, typography);
+            return;
+        }
+
+        const previous = timeElements;
+        const nextElements = buildTimeAndDateLabels({ is24h, ...typography });
+        if (previous) {
+            textLayout.replace_child(previous.timeRow, nextElements.timeRow);
+            textLayout.replace_child(previous.dateLabel, nextElements.dateLabel);
+            previous.timeRow.destroy();
+            previous.dateLabel.destroy();
         } else {
             textLayout.add_child(nextElements.timeRow);
             textLayout.add_child(nextElements.dateLabel);

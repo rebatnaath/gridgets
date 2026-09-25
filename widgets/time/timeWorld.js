@@ -1,20 +1,21 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, cssColorToRgba, resolveUse24h, SECONDARY_OPACITY } from '../../utils/widgetUtils.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveUse24h } from '../../utils/widgetUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, formatTimeParts, startMinuteAlignedTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 
 const BASE_CONTAINER_WIDTH = 260;
 const BASE_CONTAINER_HEIGHT = 240;
-const TOP_CITY_BASE_FONT_SIZE = 16;
-const TOP_TIME_BASE_FONT_SIZE = 40;
-const TOP_GMT_BASE_FONT_SIZE = 15;
-const SEC_CITY_BASE_FONT_SIZE = 14;
-const SEC_TIME_BASE_FONT_SIZE = 22;
-const SEC_GMT_BASE_FONT_SIZE = 13;
+const TOP_CITY_BASE_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
+const TOP_TIME_BASE_FONT_SIZE = TYPOGRAPHY_SIZE.displayLG;
+const TOP_GMT_BASE_FONT_SIZE = TYPOGRAPHY_SIZE.label;
+const SEC_CITY_BASE_FONT_SIZE = TYPOGRAPHY_SIZE.compact;
+const SEC_TIME_BASE_FONT_SIZE = TYPOGRAPHY_SIZE.title;
+const SEC_GMT_BASE_FONT_SIZE = TYPOGRAPHY_SIZE.metadata;
 const CONTAINER_PADDING_PX = 20;
-const BORDER_ALPHA = 0.14;
 const TOP_AMPM_MARGIN_BOTTOM_PX = 6;
 const TOP_AMPM_MARGIN_LEFT_PX = 4;
 const SEC_AMPM_MARGIN_BOTTOM_PX = 3;
@@ -62,11 +63,12 @@ function buildWorldClockUI(layoutBox, fontCss, textColor, cities) {
     const rightSecondaryCity = cities[2] || DEFAULT_CITIES[2];
 
     // Label style builder reused by the responsive scaler.
-    const labelStyle = (sizePx, { secondary = false, light = false, marginLeftPx = 0, alignRight = false } = {}) => {
+    const labelStyle = (sizePx, { secondary = false, weight = null, marginLeftPx = 0, marginBottomPx = 0, alignRight = false } = {}) => {
         let style = `${fontCss}font-size: ${Math.max(1, Math.round(sizePx))}px; color: inherit;`;
-        if (light) style += ' font-weight: 300;';
-        if (secondary) style += ` opacity: ${SECONDARY_OPACITY};`;
+        if (weight !== null) style += ` font-weight: ${weight};`;
+        if (secondary) style += ` opacity: ${TEXT_OPACITY.secondary};`;
         if (marginLeftPx > 0) style += ` margin-left: ${marginLeftPx}px;`;
+        if (marginBottomPx > 0) style += ` margin-bottom: ${marginBottomPx}px;`;
         if (alignRight) style += ' text-align: right;';
         return style;
     };
@@ -92,7 +94,7 @@ function buildWorldClockUI(layoutBox, fontCss, textColor, cities) {
 
     const topCityLabel = new St.Label({
         text: primaryCity.name,
-        style: labelStyle(TOP_CITY_BASE_FONT_SIZE, { secondary: true }),
+        style: labelStyle(TOP_CITY_BASE_FONT_SIZE, { secondary: true, weight: TYPOGRAPHY_WEIGHT.medium }),
     });
 
     const topGmtLabel = new St.Label({
@@ -109,13 +111,12 @@ function buildWorldClockUI(layoutBox, fontCss, textColor, cities) {
     });
     const topTimeLabel = new St.Label({
         text: '00:00',
-        style: labelStyle(TOP_TIME_BASE_FONT_SIZE, { light: true }),
+        style: labelStyle(TOP_TIME_BASE_FONT_SIZE, { weight: TYPOGRAPHY_WEIGHT.extrabold }),
     });
     const topAmpmLabel = new St.Label({
         text: '',
-        style: labelStyle(TOP_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: TOP_AMPM_MARGIN_LEFT_PX }),
+        style: labelStyle(TOP_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: TOP_AMPM_MARGIN_LEFT_PX, marginBottomPx: TOP_AMPM_MARGIN_BOTTOM_PX }),
         y_align: Clutter.ActorAlign.END,
-        margin_bottom: TOP_AMPM_MARGIN_BOTTOM_PX,
     });
     topTimeBox.add_child(topTimeLabel);
     topTimeBox.add_child(topAmpmLabel);
@@ -143,7 +144,7 @@ function buildWorldClockUI(layoutBox, fontCss, textColor, cities) {
     });
     const leftCityLabel = new St.Label({
         text: leftSecondaryCity.name,
-        style: labelStyle(SEC_CITY_BASE_FONT_SIZE, { secondary: true }),
+        style: labelStyle(SEC_CITY_BASE_FONT_SIZE, { secondary: true, weight: TYPOGRAPHY_WEIGHT.medium }),
     });
     const leftTimeBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
@@ -151,13 +152,12 @@ function buildWorldClockUI(layoutBox, fontCss, textColor, cities) {
     });
     const leftTimeLabel = new St.Label({
         text: '00:00',
-        style: labelStyle(SEC_TIME_BASE_FONT_SIZE),
+        style: labelStyle(SEC_TIME_BASE_FONT_SIZE, { weight: TYPOGRAPHY_WEIGHT.semibold }),
     });
     const leftAmpmLabel = new St.Label({
         text: '',
-        style: labelStyle(SEC_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX }),
+        style: labelStyle(SEC_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX, marginBottomPx: SEC_AMPM_MARGIN_BOTTOM_PX }),
         y_align: Clutter.ActorAlign.END,
-        margin_bottom: SEC_AMPM_MARGIN_BOTTOM_PX,
     });
     leftTimeBox.add_child(leftTimeLabel);
     leftTimeBox.add_child(leftAmpmLabel);
@@ -177,7 +177,7 @@ function buildWorldClockUI(layoutBox, fontCss, textColor, cities) {
     });
     const rightCityLabel = new St.Label({
         text: rightSecondaryCity.name,
-        style: labelStyle(SEC_CITY_BASE_FONT_SIZE, { secondary: true, alignRight: true }),
+        style: labelStyle(SEC_CITY_BASE_FONT_SIZE, { secondary: true, weight: TYPOGRAPHY_WEIGHT.medium, alignRight: true }),
         x_align: Clutter.ActorAlign.END,
     });
     const rightTimeBox = new St.BoxLayout({
@@ -187,15 +187,14 @@ function buildWorldClockUI(layoutBox, fontCss, textColor, cities) {
     });
     const rightTimeLabel = new St.Label({
         text: '00:00',
-        style: labelStyle(SEC_TIME_BASE_FONT_SIZE, { alignRight: true }),
+        style: labelStyle(SEC_TIME_BASE_FONT_SIZE, { weight: TYPOGRAPHY_WEIGHT.semibold, alignRight: true }),
         x_align: Clutter.ActorAlign.END,
     });
     const rightAmpmLabel = new St.Label({
         text: '',
-        style: labelStyle(SEC_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX, alignRight: true }),
+        style: labelStyle(SEC_GMT_BASE_FONT_SIZE, { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX, marginBottomPx: SEC_AMPM_MARGIN_BOTTOM_PX, alignRight: true }),
         x_align: Clutter.ActorAlign.END,
         y_align: Clutter.ActorAlign.END,
-        margin_bottom: SEC_AMPM_MARGIN_BOTTOM_PX,
     });
     rightTimeBox.add_child(rightTimeLabel);
     rightTimeBox.add_child(rightAmpmLabel);
@@ -263,7 +262,7 @@ export function createWorldTimeNode(widgetData, width, height, xPosition, yPosit
     const textColor = resolveWidgetForegroundColor(widgetData);
 
     const widgetNode = createWidgetContainer(widgetData, width, height, xPosition, yPosition);
-    widgetNode.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
+    connectShortClick(widgetNode, () => launchApplication('gnome-clocks'));
 
     const cities = widgetData.cities || DEFAULT_CITIES;
     // Keep a stable left/right mapping so the responsive scaler updates the same labels.
@@ -289,21 +288,21 @@ export function createWorldTimeNode(widgetData, width, height, xPosition, yPosit
     attachResponsiveScaler(widgetNode, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT, (scale) => {
         if (isActorDestroyed(widgetNode)) return;
 
-        const scaled = (base) => base * scale;
-        ui.topCityLabel.style = ui.labelStyle(scaled(TOP_CITY_BASE_FONT_SIZE), { secondary: true });
-        ui.topTimeLabel.style = ui.labelStyle(scaled(TOP_TIME_BASE_FONT_SIZE), { light: true });
-        ui.topAmpmLabel.style = ui.labelStyle(scaled(TOP_GMT_BASE_FONT_SIZE), { secondary: true, marginLeftPx: TOP_AMPM_MARGIN_LEFT_PX });
-        ui.topGmtLabel.style = ui.labelStyle(scaled(TOP_GMT_BASE_FONT_SIZE), { secondary: true });
+        const scaled = (base, minimum) => scaleFontSize(base, scale, minimum);
+        ui.topCityLabel.style = ui.labelStyle(scaled(TOP_CITY_BASE_FONT_SIZE, MIN_FONT_SIZE.subtitle), { secondary: true, weight: TYPOGRAPHY_WEIGHT.medium });
+        ui.topTimeLabel.style = ui.labelStyle(scaled(TOP_TIME_BASE_FONT_SIZE, MIN_FONT_SIZE.primary), { weight: TYPOGRAPHY_WEIGHT.extrabold });
+        ui.topAmpmLabel.style = ui.labelStyle(scaled(TOP_GMT_BASE_FONT_SIZE, MIN_FONT_SIZE.label), { secondary: true, marginLeftPx: TOP_AMPM_MARGIN_LEFT_PX, marginBottomPx: TOP_AMPM_MARGIN_BOTTOM_PX });
+        ui.topGmtLabel.style = ui.labelStyle(scaled(TOP_GMT_BASE_FONT_SIZE, MIN_FONT_SIZE.label), { secondary: true });
 
-        ui.leftCityLabel.style = ui.labelStyle(scaled(SEC_CITY_BASE_FONT_SIZE), { secondary: true });
-        ui.leftTimeLabel.style = ui.labelStyle(scaled(SEC_TIME_BASE_FONT_SIZE));
-        ui.leftAmpmLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE), { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX });
-        ui.leftGmtLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE), { secondary: true });
+        ui.leftCityLabel.style = ui.labelStyle(scaled(SEC_CITY_BASE_FONT_SIZE, MIN_FONT_SIZE.label), { secondary: true, weight: TYPOGRAPHY_WEIGHT.medium });
+        ui.leftTimeLabel.style = ui.labelStyle(scaled(SEC_TIME_BASE_FONT_SIZE, MIN_FONT_SIZE.subtitle), { weight: TYPOGRAPHY_WEIGHT.semibold });
+        ui.leftAmpmLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE, MIN_FONT_SIZE.metadata), { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX, marginBottomPx: SEC_AMPM_MARGIN_BOTTOM_PX });
+        ui.leftGmtLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE, MIN_FONT_SIZE.metadata), { secondary: true });
 
-        ui.rightCityLabel.style = ui.labelStyle(scaled(SEC_CITY_BASE_FONT_SIZE), { secondary: true, alignRight: true });
-        ui.rightTimeLabel.style = ui.labelStyle(scaled(SEC_TIME_BASE_FONT_SIZE), { alignRight: true });
-        ui.rightAmpmLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE), { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX, alignRight: true });
-        ui.rightGmtLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE), { secondary: true, alignRight: true });
+        ui.rightCityLabel.style = ui.labelStyle(scaled(SEC_CITY_BASE_FONT_SIZE, MIN_FONT_SIZE.label), { secondary: true, weight: TYPOGRAPHY_WEIGHT.medium, alignRight: true });
+        ui.rightTimeLabel.style = ui.labelStyle(scaled(SEC_TIME_BASE_FONT_SIZE, MIN_FONT_SIZE.subtitle), { weight: TYPOGRAPHY_WEIGHT.semibold, alignRight: true });
+        ui.rightAmpmLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE, MIN_FONT_SIZE.metadata), { secondary: true, marginLeftPx: SEC_AMPM_MARGIN_LEFT_PX, marginBottomPx: SEC_AMPM_MARGIN_BOTTOM_PX, alignRight: true });
+        ui.rightGmtLabel.style = ui.labelStyle(scaled(SEC_GMT_BASE_FONT_SIZE, MIN_FONT_SIZE.metadata), { secondary: true, alignRight: true });
     });
 
     return widgetNode;
