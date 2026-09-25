@@ -24,7 +24,7 @@ export function createGridOverlay(gridCols, gridRows, cellTotalWidth, gridMargin
     const cellSize = step - GRID_GAP_PX;
     const overlayWidth = gridCols * step + GRID_GAP_PX;
     const overlayHeight = gridRows * step + GRID_GAP_PX;
-    const cornerRadius = Math.min(GRID_GAP_PX, cellSize / 2);
+    const cornerRadius = 2;
 
     const canvas = new St.DrawingArea({
         x: gridMargin - GRID_GAP_PX,

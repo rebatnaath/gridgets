@@ -22,8 +22,12 @@ import { isAnimatedImageFile } from '../utils/widgetUtils.js';
 const WIDGET_CREATORS = {
     'time': (data, w, h, x, y) => createTimeNode(data, w, h, x, y),
     'weather': (data, w, h, x, y) => {
-    const dynamicColor = data.dynamicColor !== undefined ? data.dynamicColor : (data.globalWeatherDynamicColor !== false);
-    const dynamicImage = data.dynamicImage !== undefined ? data.dynamicImage : (data.globalWeatherDynamicImage !== false);
+        const dynamicColor = data.weatherDynamicColorFollowGlobal === true
+            ? (data.globalWeatherDynamicColor !== false)
+            : (data.dynamicColor !== undefined ? data.dynamicColor : (data.globalWeatherDynamicColor !== false));
+        const dynamicImage = data.weatherDynamicImageFollowGlobal === true
+            ? (data.globalWeatherDynamicImage !== false)
+            : (data.dynamicImage !== undefined ? data.dynamicImage : (data.globalWeatherDynamicImage !== false));
         return createWeatherNode(data, w, h, x, y, dynamicColor, dynamicImage);
     },
     'music': (data, w, h, x, y) => createMusicNode(data, w, h, x, y),
@@ -43,7 +47,6 @@ const WIDGET_CREATORS = {
     'github': (data, w, h, x, y) => createGithubNode(data, w, h, x, y),
     'sun-schedule': (data, w, h, x, y) => createSunScheduleNode(data, w, h, x, y),
     'rss-headlines': (data, w, h, x, y) => createRssHeadlinesNode(data, w, h, x, y),
-    'rss-feed': (data, w, h, x, y) => createRssHeadlinesNode(data, w, h, x, y),
     'mood': (data, w, h, x, y) => createMoodNode(data, w, h, x, y),
     'slideshow': (data, w, h, x, y) => createSlideshowNode(data, w, h, x, y),
     'image': (data, w, h, x, y) => {

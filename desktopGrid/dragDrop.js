@@ -2,7 +2,6 @@ import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {
     COLUMNS_COUNT,
-    ROWS_COUNT,
     GRID_MARGIN_PX,
     checkOverlap,
     calculateResizedDimensions,
@@ -90,7 +89,7 @@ function endDrag(state, grid, node, widgetData) {
             } else {
                 const activeWidgets = getWidgetsForMonitor(widgets, grid.targetMonitorIndex, true);
                 const gridCols = grid.gridCols || COLUMNS_COUNT;
-                const gridRows = grid.gridRows || ROWS_COUNT;
+                const gridRows = grid.gridRows;
                 const otherWidgets = activeWidgets.filter(widget => widget.id !== widgetData.id);
 
                 const targetCol = Math.max(0, Math.min(gridCols - targetWidget.width, Math.round((node.x - GRID_MARGIN_PX) / grid.cellTotalWidth)));
@@ -170,7 +169,6 @@ export function attachDragHandlers(grid, node, widgetData) {
 
                 if (!state.isDragging && (Math.abs(dx) > DRAG_MOTION_THRESHOLD_PX || Math.abs(dy) > DRAG_MOTION_THRESHOLD_PX)) {
                     state.isDragging = true;
-                    grid.constructor.toggleAllGridOverlays(true);
                 }
 
                 if (state.isDragging) {
@@ -214,7 +212,7 @@ export function onWidgetResized(grid, widgetId, newCols, newRows, newX) {
 
     const otherWidgets = activeWidgets.filter(activeWidget => activeWidget.id !== widgetId);
     const gridCols = grid.gridCols || COLUMNS_COUNT;
-    const gridRows = grid.gridRows || ROWS_COUNT;
+    const gridRows = grid.gridRows;
     const { validCols, validRows, validX } = calculateResizedDimensions(widget, newCols, newRows, newX, otherWidgets, gridCols, gridRows);
 
     if (!checkOverlap(validX, widget.y, validCols, validRows, otherWidgets)) {

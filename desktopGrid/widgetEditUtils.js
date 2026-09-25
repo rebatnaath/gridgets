@@ -5,7 +5,6 @@ import {
     GRID_GAP_PX,
     GRID_MARGIN_PX,
     COLUMNS_COUNT,
-    ROWS_COUNT
 } from '../utils/widgetUtils.js';
 import { BUTTON_PRIMARY } from './constants.js';
 import { isActorDestroyed } from '../utils/actorLifecycle.js';
@@ -25,7 +24,7 @@ export function toggleWidgetResizeHandle(
     onResizeEnd,
     allWidgets = [],
     maxCols = COLUMNS_COUNT,
-    maxRows = ROWS_COUNT
+    maxRows = Number.POSITIVE_INFINITY
 ) {
     if (widgetNode.actionOverlay) {
         widgetNode.actionOverlay.destroy();

@@ -7,7 +7,7 @@ import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { toggleWidgetResizeHandle } from './widgetEditUtils.js';
 import { onWidgetResized, onWidgetDeleted } from './dragDrop.js';
-import { COLUMNS_COUNT, ROWS_COUNT, getWidgets, supportsSizePresets, SIZE_PRESET_TIERS } from '../utils/widgetUtils.js';
+import { COLUMNS_COUNT, getWidgets, supportsSizePresets, SIZE_PRESET_TIERS } from '../utils/widgetUtils.js';
 
 export function createPopupMenuAt(grid, event) {
     if (grid._contextMenuCloseIdleId) {
@@ -99,7 +99,7 @@ export function openWidgetContextMenu(grid, event, node, widgetData) {
         resizeItem.connect('activate', () => {
             const allWidgets = getWidgets(grid.settings);
             const gridCols = grid.gridCols || COLUMNS_COUNT;
-            const gridRows = grid.gridRows || ROWS_COUNT;
+            const gridRows = grid.gridRows;
             toggleWidgetResizeHandle(
                 node,
                 widgetData,

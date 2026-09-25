@@ -5,7 +5,6 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import {
     COLUMNS_COUNT,
-    ROWS_COUNT,
     GRID_GAP_PX,
     GRID_MARGIN_PX,
     checkOverlap,
@@ -58,8 +57,6 @@ export const DesktopGrid = GObject.registerClass(
             this.extensionPath = extensionPath;
             this.settings = settings;
             this.metadata = metadata;
-            // Shared shell-side schema owned by the extension; created only as a fallback.
-            this._ownInterfaceSettings = !interfaceSettings;
             this.interfaceSettings = interfaceSettings || Gio.Settings.new('org.gnome.desktop.interface');
             this.targetMonitorIndex = targetMonitorIndex;
             this.signalIds = [];
@@ -70,6 +67,13 @@ export const DesktopGrid = GObject.registerClass(
             this.contextMenu = null;
             this._menuManager = null;
             this._lastAppliedWidgetsJson = null;
+
+            const initialLayout = calculateGridDimensions(this.width, this.height, COLUMNS_COUNT);
+            this.cellSize = initialLayout.cellSize;
+            this.cellTotalWidth = initialLayout.cellTotalWidth;
+            this.cellTotalHeight = initialLayout.cellTotalHeight;
+            this.gridCols = COLUMNS_COUNT;
+            this.gridRows = initialLayout.gridRows;
 
             if (!DesktopGrid._activeInstances) {
                 DesktopGrid._activeInstances = new Set();
@@ -147,12 +151,16 @@ export const DesktopGrid = GObject.registerClass(
             // Global style keys are baked at construction, so rebuild instead of patching.
             connectSetting('global-background-color', () => this._rebuildGrid());
             connectSetting('global-foreground-color', () => this._rebuildGrid());
+            connectSetting('global-card-color', () => this._rebuildGrid());
+            connectSetting('global-highlight-color', () => this._rebuildGrid());
             connectSetting('global-font-family', () => this._rebuildGrid());
+            connectSetting('global-use-custom-font', () => this._rebuildGrid());
             connectSetting('accent-color-override', () => this._rebuildGrid());
             connectSetting('image-animate-gif', () => this._rebuildGrid());
             connectSetting('image-show-caption', () => this._rebuildGrid());
             connectSetting('slideshow-show-caption', () => this._rebuildGrid());
             connectSetting('weather-use-fahrenheit', () => this._rebuildGrid());
+            connectSetting('time-format-24h', () => this._rebuildGrid());
             connectSetting('weather-dynamic-color', () => this._rebuildGrid());
             connectSetting('weather-dynamic-image', () => this._rebuildGrid());
             connectSetting('show-grid', () => this._toggleGridLines());
@@ -247,10 +255,11 @@ export const DesktopGrid = GObject.registerClass(
                 globalUseFahrenheit: globalSettings.globalUseFahrenheit,
                 globalWeatherDynamicColor: globalSettings.globalWeatherDynamicColor,
                 globalWeatherDynamicImage: globalSettings.globalWeatherDynamicImage,
-                globalWeatherCity: globalSettings.globalWeatherCity,
                 globalUse24h: globalSettings.globalUse24h,
                 globalAccentColor: globalSettings.globalAccentColor,
+                globalUseCustomFont: globalSettings.globalUseCustomFont,
                 extensionPath: this.extensionPath,
+                settings: this.settings,
             });
 
             const node = createWidgetNode(resolvedData, widgetWidth, widgetHeight, posX, posY);
@@ -284,7 +293,7 @@ export const DesktopGrid = GObject.registerClass(
                 const accent = parseCssColor(accentColor);
                 this._gridLineCanvas = createGridOverlay(
                     this.gridCols || COLUMNS_COUNT,
-                    this.gridRows || ROWS_COUNT,
+                    this.gridRows,
                     this.cellTotalWidth,
                     this.gridMargin,
                     accent.r, accent.g, accent.b, GRID_LINE_ALPHA
@@ -294,8 +303,8 @@ export const DesktopGrid = GObject.registerClass(
             }
         }
 
-        // Saves widget configs and pre-seeds the echo guard so our own write's
-        // settings echo is recognized as self-inflicted.
+        // Saves widget configs and pre-seeds the echo guard so the resulting
+        // settings change is not mistaken for an external one.
         _saveLocalWidgets(widgets) {
             this._lastAppliedWidgetsJson = serializeWidgets(widgets);
             saveWidgets(this.settings, widgets);
@@ -389,8 +398,8 @@ export const DesktopGrid = GObject.registerClass(
         }
 
         // Applies widget settings changes incrementally: unchanged nodes are
-        // left untouched (async widgets don't refetch). Deliberately does NOT
-        // touch grid size — resizing while children are alive causes allocation
+        // left untouched (async widgets don't refetch). Grid size is left alone
+        // here, since resizing while children are alive causes allocation
         // issues. Monitor geometry changes arrive via 'monitors-changed'.
         _applyWidgetChanges() {
             this._lastAppliedWidgetsJson = this.settings.get_string('widgets');
@@ -480,7 +489,7 @@ export const DesktopGrid = GObject.registerClass(
                 const accent = parseCssColor(accentColor);
                 const canvas = createGridOverlay(
                     this.gridCols || COLUMNS_COUNT,
-                    this.gridRows || ROWS_COUNT,
+                    this.gridRows,
                     this.cellTotalWidth,
                     this.gridMargin,
                     accent.r, accent.g, accent.b, EDIT_OVERLAY_ALPHA
