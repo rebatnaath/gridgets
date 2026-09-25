@@ -1,5 +1,4 @@
 import Gdk from 'gi://Gdk';
-import Gtk from 'gi://Gtk';
 import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import { buildAppearancePage } from './prefs/appearancePage.js';
 import { buildStorePage } from './prefs/storePage.js';

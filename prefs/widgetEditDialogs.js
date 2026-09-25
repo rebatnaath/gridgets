@@ -34,7 +34,6 @@ export function buildWidgetEditPanel(parentWindow, widget, settings, onSavedCall
 
     switch (widget.type) {
         case 'rss-headlines':
-        case 'rss-feed':
             rowIdx = buildRssSettings(grid, rowIdx, widget, saveHandlers);
             break;
         case 'sun-schedule':
@@ -68,7 +67,7 @@ export function buildWidgetEditPanel(parentWindow, widget, settings, onSavedCall
 
     const saveButton = new Gtk.Button({
         label: 'Save Changes',
-        css_classes: ['suggested-action', 'pill'],
+        css_classes: ['suggested-action'],
         halign: Gtk.Align.END,
         margin_top: 10,
     });

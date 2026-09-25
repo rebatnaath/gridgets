@@ -103,8 +103,8 @@ function compareSectionKeys(leftKey, rightKey) {
 function buildWidgetSubtitle(widget) {
     const detailText = getWidgetDetailText(widget);
     const monitorText = formatMonitorLabel(widget.monitor);
-    const metadataText = `Position: (Col: ${widget.x ?? 0}, Row: ${widget.y ?? 0}) • Size: ${widget.width ?? 0}x${widget.height ?? 0} • Monitor: ${monitorText}`;
-    return detailText ? `${detailText} • ${metadataText}` : metadataText;
+    const metadataText = `${widget.width ?? 0}×${widget.height ?? 0} · ${monitorText}`;
+    return detailText ? `${detailText} · ${metadataText}` : metadataText;
 }
 
 function createWidgetRow(window, settings, widget) {
