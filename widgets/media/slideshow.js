@@ -4,10 +4,13 @@ import Clutter from 'gi://Clutter';
 import { createAnimatedImageNode } from './gif.js';
 import { listImagesInFolder, attachCaptionOverlay } from './mediaCommon.js';
 import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveExplicitFontFamily, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
-import { WidgetActor, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
+import { WidgetActor, connectTimerCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
 
 const DEFAULT_SLIDE_INTERVAL_SECONDS = 10;
+const REFERENCE_WIDTH_PX = 240;
+const REFERENCE_HEIGHT_PX = 160;
 const MILLISECONDS_PER_SECOND = 1000;
 const CROSSFADE_DURATION_MS = 800;
 const CLUTTER_OPACITY_OPAQUE = 255;
@@ -15,7 +18,7 @@ const CLUTTER_OPACITY_TRANSPARENT = 0;
 function createImageLayer(imagePath, borderRadius, width, height, animateGif) {
     if (imagePath.toLowerCase().endsWith('.gif')) {
         const gifWidget = createAnimatedImageNode({
-            imagePath: imagePath,
+            imagePath,
             appliedBorderRadius: borderRadius
         }, width, height, 0, 0, animateGif);
 
@@ -68,14 +71,24 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(widgetData);
     const placeholderLabel = new St.Label({
-        text: 'Loading images\u2026',
+        text: 'Loading images…',
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
         x_expand: true,
         y_expand: true,
-        style: `${fontCss}color: ${textColor}; font-size: 14px; opacity: 0.6;`,
     });
+    watchActorLifecycle(placeholderLabel);
+    const updatePlaceholderScale = scale => {
+        if (isActorDestroyed(placeholderLabel)) return;
+        const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label);
+        placeholderLabel.style = `${fontCss}color: ${textColor}; font-size: ${fontSize}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; opacity: ${TEXT_OPACITY.secondary};`;
+    };
+    updatePlaceholderScale(1);
     container.add_child(placeholderLabel);
+    attachResponsiveScaler(container, REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX, (scale) => {
+        updatePlaceholderScale(scale);
+    });
 
     listImagesInFolder(folderPath).then((images) => {
         if (isActorDestroyed(container)) return;

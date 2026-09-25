@@ -4,7 +4,7 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import { buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
-import { WidgetActor, connectTimerCleanup, scheduleDeferredUpdate } from '../../shell/widgetUIUtils.js';
+import { WidgetActor, connectTimerCleanup, registerWidgetCleanup, scheduleDeferredUpdate } from '../../shell/widgetUIUtils.js';
 import { ASPECT_RATIO_TOLERANCE, GIF_FRAME_INTERVAL_MS, applyCornerMask, attachCaptionOverlay, setImageContentBytes } from './mediaCommon.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
 
@@ -30,6 +30,8 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
     const state = {
         timerId: null,
     };
+    const loadCancellable = new Gio.Cancellable();
+    registerWidgetCleanup(widgetNode, () => loadCancellable.cancel());
 
     const applyStaticFallback = () => {
         widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
@@ -162,7 +164,7 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
     (async () => {
         const file = Gio.File.new_for_path(imagePath);
         const stream = await new Promise((resolve, reject) => {
-            file.read_async(GLib.PRIORITY_DEFAULT, null, (_source, result) => {
+            file.read_async(GLib.PRIORITY_DEFAULT, loadCancellable, (_source, result) => {
                 try {
                     resolve(file.read_finish(result));
                 } catch (error) {
@@ -171,7 +173,7 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
             });
         });
         const animation = await new Promise((resolve, reject) => {
-            GdkPixbuf.PixbufAnimation.new_from_stream_async(stream, null, (_source, result) => {
+            GdkPixbuf.PixbufAnimation.new_from_stream_async(stream, loadCancellable, (_source, result) => {
                 try {
                     resolve(GdkPixbuf.PixbufAnimation.new_from_stream_finish(result));
                 } catch (error) {
@@ -185,8 +187,9 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
         stream.close_async(GLib.PRIORITY_DEFAULT, null, null);
         if (!isActorDestroyed(widgetNode)) startAnimation(animation);
     })().catch((e) => {
+        if (isActorDestroyed(widgetNode)) return;
         console.error(`Failed to load GIF animation: ${e.message}`);
-        if (!isActorDestroyed(widgetNode)) applyStaticFallback();
+        applyStaticFallback();
     });
 
     attachCaptionOverlay(widgetNode, widgetData, width, height, true);

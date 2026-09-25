@@ -3,7 +3,8 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { PACKAGE_VERSION } from 'resource:///org/gnome/shell/misc/config.js';
-import { createCaptionOverlay } from '../../shell/widgetUIUtils.js';
+import { createCaptionOverlay, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
+import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.svg', '.gif'];
 
@@ -19,10 +20,10 @@ const ALPHA_CHANNEL_OFFSET = 3;
 const PIXEL_CENTER_OFFSET = 0.5;
 const FILE_ENUM_BATCH_SIZE = 64;
 
-export function isSupportedImage(filename) {
+function isSupportedImage(filename) {
     if (!filename) return false;
     const lower = filename.toLowerCase();
-    return SUPPORTED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext));
+    return SUPPORTED_IMAGE_EXTENSIONS.some(extension => lower.endsWith(extension));
 }
 
 /**
@@ -91,13 +92,16 @@ export async function listImagesInFolder(folderPath) {
 }
 
 function isCaptionVisible(widgetData) {
-    if (widgetData.showCaption !== undefined)
-        return widgetData.showCaption;
-
     const isSlideshow = widgetData.type === 'slideshow';
-    return isSlideshow
+    const globalVisible = isSlideshow
         ? (widgetData.globalSlideshowShowCaption !== false)
         : (widgetData.globalImageShowCaption !== false);
+
+    if (widgetData.captionFollowGlobal === true)
+        return globalVisible;
+    if (widgetData.showCaption !== undefined)
+        return widgetData.showCaption;
+    return globalVisible;
 }
 
 export function attachCaptionOverlay(widgetNode, widgetData, width, height, isWrappedContainer = false) {
@@ -105,6 +109,12 @@ export function attachCaptionOverlay(widgetNode, widgetData, width, height, isWr
     if (!isCaptionVisible(widgetData) || caption.length === 0) return;
 
     const overlay = createCaptionOverlay(widgetData, caption);
+    const updateCaptionScale = () => {
+        if (isActorDestroyed(overlay)) return;
+        const currentWidth = widgetNode.width || width;
+        const currentHeight = widgetNode.height || height;
+        overlay.updateCaptionScale(Math.min(currentWidth / width, currentHeight / height));
+    };
 
     if (isWrappedContainer) {
         const textOverlay = new St.Widget({
@@ -115,10 +125,26 @@ export function attachCaptionOverlay(widgetNode, widgetData, width, height, isWr
         textOverlay.add_child(overlay);
         widgetNode.add_child(textOverlay);
 
-        widgetNode.connect('notify::width', () => textOverlay.set_width(widgetNode.width));
-        widgetNode.connect('notify::height', () => textOverlay.set_height(widgetNode.height));
+        const widthSignalId = widgetNode.connect('notify::width', () => {
+            textOverlay.set_width(widgetNode.width);
+            updateCaptionScale();
+        });
+        const heightSignalId = widgetNode.connect('notify::height', () => {
+            textOverlay.set_height(widgetNode.height);
+            updateCaptionScale();
+        });
+        registerWidgetCleanup(widgetNode, () => {
+            widgetNode.disconnect(widthSignalId);
+            widgetNode.disconnect(heightSignalId);
+        });
     } else {
         widgetNode.add_child(overlay);
+        const widthSignalId = widgetNode.connect('notify::width', updateCaptionScale);
+        const heightSignalId = widgetNode.connect('notify::height', updateCaptionScale);
+        registerWidgetCleanup(widgetNode, () => {
+            widgetNode.disconnect(widthSignalId);
+            widgetNode.disconnect(heightSignalId);
+        });
     }
 }
 
