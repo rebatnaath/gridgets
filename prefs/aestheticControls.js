@@ -3,7 +3,7 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
-import { DEFAULT_FONT_FAMILY, DEFAULT_BG_COLOR, DEFAULT_FG_COLOR } from '../utils/widgetUtils.js';
+import { DEFAULT_FONT_FAMILY, DEFAULT_FG_COLOR } from '../utils/widgetUtils.js';
 
 // Fallback point size when input has no explicit size.
 const DEFAULT_FONT_SIZE_PT = 11;
@@ -19,17 +19,26 @@ export function createNormalizedFontDescription(currentFont) {
     return fontDesc;
 }
 
-function createColorRow(title, subtitle, settings, key, defaultVal = DEFAULT_FG_COLOR) {
+export function createColorRow(title, subtitle, settings, key, defaultVal = DEFAULT_FG_COLOR) {
     const row = new Adw.ActionRow({ title, subtitle });
     const btn = new Gtk.ColorButton({ valign: Gtk.Align.CENTER });
     const rgba = new Gdk.RGBA();
-    const parsed = rgba.parse(settings.get_string(key) || defaultVal);
-    if (!parsed)
-        rgba.parse(defaultVal);
-    btn.set_rgba(rgba);
+    // An unset value falls back to a preview colour so the swatch still shows
+    // what the widget will actually use instead of a blank one.
+    const fallback = defaultVal || DEFAULT_FG_COLOR;
+    const refresh = () => {
+        const current = settings.get_string(key) || fallback;
+        // Keep the last good colour if the stored value cannot be parsed.
+        if (rgba.parse(current))
+            btn.set_rgba(rgba);
+    };
+    refresh();
     btn.connect('color-set', () => {
         settings.set_string(key, btn.get_rgba().to_string());
     });
+    // Selecting a different theme rewrites these keys, so the swatch has to
+    // follow it or it keeps showing the previously selected theme's colour.
+    settings.connect(`changed::${key}`, refresh);
     row.add_suffix(btn);
     return row;
 }
@@ -46,8 +55,12 @@ export function buildGlobalAestheticsGroup(settings) {
         description: 'Tweak the default visual style applied to all widgets.',
     });
 
-    group.add(createColorRow('Global Background Color', 'Global default background color.', settings, 'global-background-color', DEFAULT_BG_COLOR));
-    group.add(createColorRow('Global Foreground/Text Color', 'Global default text color.', settings, 'global-foreground-color', DEFAULT_FG_COLOR));
+    const useCustomFontRow = new Adw.SwitchRow({
+        title: 'Use Custom Font',
+        subtitle: 'Enable to use a custom font family instead of the system default.',
+    });
+    settings.bind('global-use-custom-font', useCustomFontRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+    group.add(useCustomFontRow);
 
     const fontRow = new Adw.ActionRow({
         title: 'Global Font Family',
@@ -65,6 +78,21 @@ export function buildGlobalAestheticsGroup(settings) {
     });
     fontRow.add_suffix(fontBtn);
     group.add(fontRow);
+
+    const useCustomFont = settings.get_boolean('global-use-custom-font');
+    fontBtn.set_sensitive(useCustomFont);
+    fontRow.set_subtitle(useCustomFont
+        ? 'Choose the default font used across all widgets.'
+        : 'Enable "Use Custom Font" above to change the font.');
+
+    const customFontChangedId = settings.connect('changed::global-use-custom-font', () => {
+        const active = settings.get_boolean('global-use-custom-font');
+        fontBtn.set_sensitive(active);
+        fontRow.set_subtitle(active
+            ? 'Choose the default font used across all widgets.'
+            : 'Enable "Use Custom Font" above to change the font.');
+    });
+    group.connect('destroy', () => settings.disconnect(customFontChangedId));
 
     return group;
 }

@@ -10,12 +10,27 @@ export function applyTheme(settings, themeId) {
         settings.set_string('global-background-color', theme.bg);
         settings.set_string('global-foreground-color', theme.fg);
     }
+    if (theme.card)
+        settings.set_string('global-card-color', theme.card);
+    if (theme.highlight)
+        settings.set_string('global-highlight-color', theme.highlight);
+
     if (theme.id === 'custom') {
-        settings.set_string('global-background-color', '#222226');
-        settings.set_string('global-foreground-color', '#ffffff');
-        settings.set_string('accent-color-override', '');
-    } else if (theme.accent) {
-        settings.set_string('accent-color-override', theme.accent);
+        const lastTheme = findThemePreset(settings.get_string('last-selected-theme')) || findThemePreset('adwaita');
+        if (lastTheme?.bg && lastTheme?.fg) {
+            settings.set_string('global-background-color', lastTheme.bg);
+            settings.set_string('global-foreground-color', lastTheme.fg);
+        }
+        if (lastTheme?.card)
+            settings.set_string('global-card-color', lastTheme.card);
+        if (lastTheme?.highlight)
+            settings.set_string('global-highlight-color', lastTheme.highlight);
+        if (lastTheme?.accent)
+            settings.set_string('accent-color-override', lastTheme.accent);
+    } else {
+        settings.set_string('last-selected-theme', theme.id);
+        if (theme.accent)
+            settings.set_string('accent-color-override', theme.accent);
     }
     settings.set_string('theme', theme.id);
 }
