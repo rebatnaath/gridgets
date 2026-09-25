@@ -1,4 +1,5 @@
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import { WIDE_MUSIC_LAYOUT_ASPECT_RATIO } from '../../utils/widgetUtils.js';
 import { connectTimerCleanup, createWidgetContainer, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
 import { DBUS_POLL_INTERVAL_MS } from './mpris.js';
@@ -78,8 +79,12 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
         config: config,
         timerId: null,
         artworkRetryWaits: null,
+        artworkCancellable: new Gio.Cancellable(),
         lastArtUrl: null,
         currentPlayer: null,
+        adoptedTrackKey: null,
+        pendingTrackKey: null,
+        pendingTrackSinceMicro: 0,
         currentPositionMicro: 0,
         trackLengthMicro: 0,
         playbackStatus: 'Stopped',
@@ -89,6 +94,7 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
     registerMusicWidgetInstance(state);
     registerWidgetCleanup(playerContainer, () => {
         unregisterMusicWidgetInstance(state);
+        state.artworkCancellable.cancel();
         if (state.artworkRetryWaits) {
             for (const wait of [...state.artworkRetryWaits]) {
                 wait.settle(false);
@@ -121,7 +127,7 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
 
     const updateMusicData = () => {
         if (isActorDestroyed(playerContainer)) return;
-        fetchMusicDataForConfig(config, onMusicData);
+        fetchMusicDataForConfig(config, onMusicData, state.currentPlayer);
     };
 
     updateMusicData();

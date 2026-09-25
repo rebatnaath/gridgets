@@ -25,12 +25,12 @@ const failedArtworkDownloadAttempts = new Map();
 const MUSIC_ART_CACHE_DIR = `${GLib.get_user_cache_dir()}/gridgets/music-art`;
 const FILE_ENUM_BATCH_SIZE = 20;
 
-export async function extractDominantColor(filePath) {
+export async function extractDominantColor(filePath, state) {
     if (dominantColorCache.has(filePath)) return dominantColorCache.get(filePath);
 
     let color = null;
     try {
-        const pixbuf = await loadScaledPixbuf(filePath);
+        const pixbuf = await loadScaledPixbuf(filePath, state.artworkCancellable);
         color = computeDominantColorFromPixbuf(pixbuf);
     } catch (_error) {
         return null;
@@ -45,10 +45,10 @@ export async function extractDominantColor(filePath) {
 }
 
 /** Asynchronously decodes a small thumbnail of the image without blocking the main loop. */
-async function loadScaledPixbuf(filePath) {
+async function loadScaledPixbuf(filePath, cancellable) {
     const file = Gio.File.new_for_path(filePath);
     const stream = await new Promise((resolve, reject) => {
-        file.read_async(GLib.PRIORITY_DEFAULT, null, (_source, result) => {
+        file.read_async(GLib.PRIORITY_DEFAULT, cancellable, (_source, result) => {
             try {
                 resolve(file.read_finish(result));
             } catch (error) {
@@ -62,7 +62,7 @@ async function loadScaledPixbuf(filePath) {
             DOMINANT_COLOR_SAMPLE_SIZE,
             DOMINANT_COLOR_SAMPLE_SIZE,
             true,
-            null,
+            cancellable,
             (_source, result) => {
                 try {
                     resolve(GdkPixbuf.Pixbuf.new_from_stream_finish(result));
@@ -92,16 +92,16 @@ function computeDominantColorFromPixbuf(pixbuf) {
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const offset = y * rowstride + x * nChannels;
-            const r = pixels[offset];
-            const g = pixels[offset + 1];
-            const b = pixels[offset + 2];
+            const red = pixels[offset];
+            const green = pixels[offset + 1];
+            const blue = pixels[offset + 2];
 
-            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
             if (brightness < DOMINANT_COLOR_MIN_BRIGHTNESS) continue;
 
-            const key = `${Math.floor(r / DOMINANT_COLOR_BUCKET_QUANTUM)},`
-                + `${Math.floor(g / DOMINANT_COLOR_BUCKET_QUANTUM)},`
-                + `${Math.floor(b / DOMINANT_COLOR_BUCKET_QUANTUM)}`;
+            const key = `${Math.floor(red / DOMINANT_COLOR_BUCKET_QUANTUM)},`
+                + `${Math.floor(green / DOMINANT_COLOR_BUCKET_QUANTUM)},`
+                + `${Math.floor(blue / DOMINANT_COLOR_BUCKET_QUANTUM)}`;
 
             let bucket = buckets.get(key);
             if (!bucket) {
@@ -109,9 +109,9 @@ function computeDominantColorFromPixbuf(pixbuf) {
                 buckets.set(key, bucket);
             }
             bucket.count++;
-            bucket.rSum += r;
-            bucket.gSum += g;
-            bucket.bSum += b;
+            bucket.rSum += red;
+            bucket.gSum += green;
+            bucket.bSum += blue;
         }
     }
 
@@ -124,6 +124,12 @@ function computeDominantColorFromPixbuf(pixbuf) {
     if (!bestBucket) return null;
     const toHexByte = (sum) => Math.min(255, Math.round(sum / bestBucket.count)).toString(16).padStart(2, '0');
     return `#${toHexByte(bestBucket.rSum)}${toHexByte(bestBucket.gSum)}${toHexByte(bestBucket.bSum)}`;
+}
+
+function rememberArtworkFile(artUrl, filePath) {
+    if (artworkFileCache.size >= ARTWORK_FILE_CACHE_LIMIT && !artworkFileCache.has(artUrl))
+        artworkFileCache.delete(artworkFileCache.keys().next().value);
+    artworkFileCache.set(artUrl, filePath);
 }
 
 function getArtworkCachePath(artUrl) {
@@ -227,6 +233,7 @@ async function ensureDirectoryTree(dir) {
 
 function flushArtworkQueue(artUrl, resolvedPath) {
     const queued = artworkDownloadQueue.get(artUrl);
+    if (!queued) return;
     artworkDownloadQueue.delete(artUrl);
     queued.forEach(entry => {
         if (!entry.state.container || isActorDestroyed(entry.state.container)) return;
@@ -278,10 +285,21 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
         return;
     }
 
+    if (artworkFileCache.has(artUrl)) {
+        const cachedPath = artworkFileCache.get(artUrl);
+        if (await fileExists(Gio.File.new_for_path(cachedPath))) {
+            callback(cachedPath);
+            return;
+        }
+        artworkFileCache.delete(artUrl);
+    }
+
     if (!artUrl.startsWith('http://') && !artUrl.startsWith('https://')) {
         const localFile = artUrl.startsWith('file://') ? Gio.File.new_for_uri(artUrl) : Gio.File.new_for_path(artUrl);
         if (await fileExists(localFile)) {
-            callback(artUrl.startsWith('file://') ? localFile.get_path() : artUrl);
+            const localPath = artUrl.startsWith('file://') ? localFile.get_path() : artUrl;
+            rememberArtworkFile(artUrl, localPath);
+            callback(localPath);
             return;
         }
 
@@ -289,6 +307,7 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
         if (parentDir && await fileExists(parentDir)) {
             const latestPng = await findLatestModifiedPng(parentDir);
             if (latestPng) {
+                rememberArtworkFile(artUrl, latestPng);
                 callback(latestPng);
                 return;
             }
@@ -300,7 +319,9 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
             if (!waitSettled || isActorDestroyed(state.container)) return;
             attempts++;
             if (await fileExists(localFile)) {
-                callback(artUrl.startsWith('file://') ? localFile.get_path() : artUrl);
+                const localPath = artUrl.startsWith('file://') ? localFile.get_path() : artUrl;
+                rememberArtworkFile(artUrl, localPath);
+                callback(localPath);
                 return;
             }
         }
@@ -308,17 +329,10 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
         return;
     }
 
-    if (artworkFileCache.has(artUrl)) {
-        callback(artworkFileCache.get(artUrl));
-        return;
-    }
-
     const filePath = getArtworkCachePath(artUrl);
     const localFile = Gio.File.new_for_path(filePath);
     if (await fileExists(localFile)) {
-        if (artworkFileCache.size >= ARTWORK_FILE_CACHE_LIMIT)
-            artworkFileCache.delete(artworkFileCache.keys().next().value);
-        artworkFileCache.set(artUrl, filePath);
+        rememberArtworkFile(artUrl, filePath);
         callback(filePath);
         return;
     }
@@ -355,9 +369,7 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
             try {
                 source.copy_finish(result);
                 failedArtworkDownloadAttempts.delete(artUrl);
-                if (artworkFileCache.size >= ARTWORK_FILE_CACHE_LIMIT)
-                    artworkFileCache.delete(artworkFileCache.keys().next().value);
-                artworkFileCache.set(artUrl, filePath);
+                rememberArtworkFile(artUrl, filePath);
                 flushArtworkQueue(artUrl, filePath);
             } catch (e) {
                 if (!downloadCancellable.is_cancelled()) {

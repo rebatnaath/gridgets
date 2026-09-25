@@ -3,13 +3,8 @@ import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { extractDominantColor, ensureLocalArtwork } from './artwork.js';
 
 const COVER_TEXT_LUMINANCE_THRESHOLD = 0.55;
-const LIGHT_TEXT_ON_DARK_COVER = 'rgba(255, 255, 255, 0.92)';
+export const LIGHT_TEXT_ON_DARK_COVER = 'rgba(255, 255, 255, 0.92)';
 const DARK_TEXT_ON_LIGHT_COVER = 'rgba(30, 30, 30, 0.92)';
-
-/** Checks whether the dominant cover color is currently tinting the layout, which calls for flat styling. */
-export function isCoverTintActive(state) {
-    return state.config.coverBackground === true && Boolean(state.albumColor);
-}
 
 export function resolveMusicPanelColors(config, state) {
     const baseTextColor = resolveWidgetForegroundColor(config);
@@ -31,12 +26,15 @@ export function setAlbumColor(state, color) {
     if (state.refreshBackground) state.refreshBackground();
 }
 
-// Single source of truth for artwork layer CSS -- all style writes must go through here.
+// Single source of truth for artwork layer CSS.
 export function resolveArtworkLayerStyle(state) {
     const borderRadius = state.config.appliedBorderRadius !== undefined ? `${state.config.appliedBorderRadius}px` : '0px';
+    const radius = state.config.isLargeLayout
+        ? `${borderRadius} 0 0 ${borderRadius}`
+        : borderRadius;
     const backgroundColor = resolveWidgetBackgroundColor(state.config);
     const artworkCss = state.artworkCss || '';
-    return `${artworkCss}background-color: ${backgroundColor}; border-radius: ${borderRadius};`;
+    return `${artworkCss}background-color: ${backgroundColor}; border-radius: ${radius};`;
 }
 
 export function applyArtworkToBackground(backgroundLayer, artUrl, config, state) {
@@ -59,7 +57,7 @@ export function applyArtworkToBackground(backgroundLayer, artUrl, config, state)
         state.artworkCss = `background-image: url("${imageUrl}"); background-size: cover; `;
         backgroundLayer.style = resolveArtworkLayerStyle(state);
 
-        extractDominantColor(localPath).then(color => {
+        extractDominantColor(localPath, state).then(color => {
             if (isActorDestroyed(state.container) || state.lastAppliedArtPath !== localPath) return;
             setAlbumColor(state, color);
         });

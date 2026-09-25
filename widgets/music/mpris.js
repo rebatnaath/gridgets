@@ -5,19 +5,45 @@ export const DBUS_POLL_INTERVAL_MS = 1000;
 
 const BROWSER_MPRIS_PATTERNS = ['chromium', 'firefox', 'chrome', 'brave', 'edge', 'opera', 'vivaldi', 'mozilla'];
 
-// Unwraps a GVariant to a plain JS value. Uses deep_unpack() rather than
-// unpack() because array-typed variants (e.g. xesam:artist as "as") only
-// yield plain strings when fully unwrapped.
+// Properties fetched through GetAll arrive already deep-unpacked into plain
+// JS values, so some call sites hold a GLib.Variant and others hold the plain
+// value directly. Unwrap only when there is actually a variant to unwrap.
 export function unpackVariantValue(value) {
-    return value ? value.deep_unpack() : value;
+    if (value === null || value === undefined) return value;
+    if (typeof value.deep_unpack === 'function') return value.deep_unpack();
+    return value;
 }
 
-export function isBrowserPlayer(playerName) {
+function isBrowserPlayer(playerName) {
     const lower = playerName.toLowerCase();
-    return BROWSER_MPRIS_PATTERNS.some(b => lower.includes(b));
+    return BROWSER_MPRIS_PATTERNS.some(browserPattern => lower.includes(browserPattern));
 }
 
-export async function getActiveMediaPlayer(config = {}) {
+// Browsers append a volatile ".instanceNNN" suffix to their MPRIS bus name and
+// re-acquire a new one whenever the active media session changes, so the suffix
+// cannot be used as a stable application identity.
+function normalizePlayerBusName(busName) {
+    const instanceMarker = '.instance';
+    const markerIndex = busName.indexOf(instanceMarker);
+    return markerIndex === -1 ? busName : busName.slice(0, markerIndex);
+}
+
+// Ranking weights: a playing track always outranks a paused one, and a session
+// without a title is never a useful thing to display.
+const PLAYING_WITH_TITLE_SCORE = 500;
+const PAUSED_WITH_TITLE_SCORE = 100;
+const NO_TITLE_SCORE = 0;
+
+// A player is mid-transition for a moment after a control press, so the target
+// of that press is held for this long regardless of what the state becomes.
+const ACTION_LOCK_DURATION_MS = 3000;
+let lastActionEpochMs = 0;
+
+function isWithinActionLockWindow() {
+    return Date.now() - lastActionEpochMs < ACTION_LOCK_DURATION_MS;
+}
+
+export async function getActiveMediaPlayer(config = {}, preferredPlayer = '') {
     try {
         const response = await Gio.DBus.session.call(
             'org.freedesktop.DBus',
@@ -49,13 +75,57 @@ export async function getActiveMediaPlayer(config = {}) {
         if (mediaPlayers.length === 0) return null;
         if (mediaPlayers.length === 1) return mediaPlayers[0];
 
-        for (const player of mediaPlayers) {
-            const props = await fetchPlayerProperties(player);
-            const status = unpackVariantValue(props?.['PlaybackStatus']);
-            if (status === 'Playing') return player;
+        // Right after a control press the player is mid-transition, so state
+        // changes are unreliable. Honour the last action target unconditionally
+        // for a short window instead of re-deciding where the command should go.
+        if (preferredPlayer && mediaPlayers.includes(preferredPlayer) && isWithinActionLockWindow()) {
+            return preferredPlayer;
         }
 
-        return mediaPlayers[0];
+        // Stays on the player already being followed so a short-lived
+        // "Playing" session elsewhere (e.g. a YouTube hover preview) cannot
+        // take over the track currently playing.
+        if (preferredPlayer && mediaPlayers.includes(preferredPlayer)) {
+            const preferredProperties = await fetchPlayerProperties(preferredPlayer);
+            const preferredStatus = unpackVariantValue(preferredProperties?.['PlaybackStatus']);
+            if (preferredStatus === 'Playing')
+                return preferredPlayer;
+        }
+
+        const candidates = [];
+        for (const player of mediaPlayers) {
+            const properties = await fetchPlayerProperties(player);
+            const status = unpackVariantValue(properties?.['PlaybackStatus']);
+            const metadata = unpackVariantValue(properties?.['Metadata']) || {};
+            const hasTitle = Boolean(unpackVariantValue(metadata['xesam:title']));
+
+            let score = NO_TITLE_SCORE;
+            if (hasTitle && status === 'Playing')
+                score = PLAYING_WITH_TITLE_SCORE;
+            else if (hasTitle && status === 'Paused')
+                score = PAUSED_WITH_TITLE_SCORE;
+
+            candidates.push({ player, score });
+        }
+
+        // A browser can expose several instances of itself at once while it
+        // hands media over between them. They are one logical app, so collapse
+        // them onto the strongest-scoring instance before ranking.
+        const strongestPerApp = new Map();
+        for (const candidate of candidates) {
+            const appKey = normalizePlayerBusName(candidate.player);
+            const incumbent = strongestPerApp.get(appKey);
+            if (!incumbent || candidate.score > incumbent.score)
+                strongestPerApp.set(appKey, candidate);
+        }
+
+        const ranked = [...strongestPerApp.values()].sort((a, b) => b.score - a.score);
+
+        // A session that momentarily reports no title still beats a null
+        // player: null makes the widget call resetWidgetState(), which throws
+        // away the current track position. A title-less session is more useful
+        // than dropping playback state over one blank frame.
+        return ranked[0].player;
     } catch (_error) {
         return null;
     }
@@ -114,25 +184,49 @@ async function callPlayerMethod(playerName, method) {
             Gio.DBusCallFlags.NONE, -1, null
         );
     } catch (error) {
-        console.error(`Error executing ${method} on player ${playerName}:`, error);
+        // A player that does not implement a control (Firefox has no Next)
+        // answers "not available now"; that is a normal reply, not a fault.
+        console.debug(`Gridgets: ${method} unavailable on ${playerName}:`, error.message);
     }
 }
 
-export function togglePlayPause(playerName) {
-    return callPlayerMethod(playerName, 'PlayPause');
+// Chrome releases and re-acquires its MPRIS bus name whenever the active media
+// session changes (for example when a YouTube hover preview starts), so a
+// cached name can stop having an owner. Re-resolve before issuing a command.
+async function resolveLivePlayer(config, state) {
+    const cachedPlayer = state.currentPlayer;
+    if (cachedPlayer && await resolveBusOwner(cachedPlayer))
+        return cachedPlayer;
+
+    const livePlayer = await getActiveMediaPlayer(config, '');
+    if (livePlayer)
+        state.currentPlayer = livePlayer;
+    return livePlayer;
 }
 
-export function skipToNext(playerName) {
-    return callPlayerMethod(playerName, 'Next');
+async function callPlayerControl(config, state, method) {
+    const player = await resolveLivePlayer(config, state);
+    if (!player) return;
+
+    lastActionEpochMs = Date.now();
+    return callPlayerMethod(player, method);
 }
 
-export function skipToPrevious(playerName) {
-    return callPlayerMethod(playerName, 'Previous');
+export function togglePlayPause(config, state) {
+    return callPlayerControl(config, state, 'PlayPause');
+}
+
+export function skipToNext(config, state) {
+    return callPlayerControl(config, state, 'Next');
+}
+
+export function skipToPrevious(config, state) {
+    return callPlayerControl(config, state, 'Previous');
 }
 
 export function extractTrackMetadata(properties) {
     const rawMeta = properties['Metadata'];
-    const metadata = rawMeta ? rawMeta.deep_unpack() : {};
+    const metadata = unpackVariantValue(rawMeta) || {};
 
     const title = unpackVariantValue(metadata['xesam:title']) || 'Unknown Title';
     const rawArtists = unpackVariantValue(metadata['xesam:artist']) || [];

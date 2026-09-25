@@ -16,6 +16,12 @@ const RECENT_SEEK_WINDOW_MICROSECONDS = 1500000;
 const SPURIOUS_ZERO_THRESHOLD_MICROSECONDS = 3000000;
 const POSITION_JUMP_RESYNC_THRESHOLD_MICROSECONDS = 3000000;
 
+// A newly reported track must stay "Playing" for this long before the widget
+// adopts it. YouTube hover previews start a real media session for as long as
+// the pointer rests on a thumbnail, so switching instantly would hijack the
+// widget even when the preview plays muted in the background.
+const TRACK_ADOPT_DELAY_MICROSECONDS = 5000000;
+
 let seekedSignalId = 0;
 const activeMusicWidgetInstances = new Set();
 
@@ -30,7 +36,7 @@ export function clearMusicPlaybackState() {
 
 export const MICROSECONDS_PER_SECOND = 1000000;
 
-export function formatMicroseconds(microseconds) {
+function formatMicroseconds(microseconds) {
     if (!microseconds || microseconds < 0) return '00:00';
     const totalSeconds = Math.floor(microseconds / MICROSECONDS_PER_SECOND);
     const minutes = Math.floor(totalSeconds / 60);
@@ -40,21 +46,20 @@ export function formatMicroseconds(microseconds) {
 
 export function updateTimerLabel(state) {
     if (state.timerLabelLeft && state.timerLabelRight) {
-        const pos = state.currentPositionMicro || 0;
-        const len = state.trackLengthMicro || 0;
-        state.timerLabelLeft.set_text(formatMicroseconds(pos));
-        state.timerLabelRight.set_text(formatMicroseconds(len));
+        const position = state.currentPositionMicro || 0;
+        const length = state.trackLengthMicro || 0;
+        state.timerLabelLeft.set_text(formatMicroseconds(position));
+        state.timerLabelRight.set_text(formatMicroseconds(length));
     }
     if (state.progressFill && state.progressBg) {
-        const pos = state.currentPositionMicro || 0;
-        const len = state.trackLengthMicro || 0;
-        const ratio = len > 0 ? Math.min(1, pos / len) : 0;
+        const position = state.currentPositionMicro || 0;
+        const length = state.trackLengthMicro || 0;
+        const ratio = length > 0 ? Math.min(1, position / length) : 0;
         const bgWidth = state.progressBg.get_width();
         if (bgWidth > 0) state._lastProgressBgWidth = bgWidth;
         const width = state._lastProgressBgWidth || 0;
         const fillWidth = Math.floor(width * ratio);
         state.progressFill.set_width(fillWidth);
-        state._lastFillWidth = fillWidth;
     }
 }
 
@@ -65,6 +70,9 @@ export function resetWidgetState(state) {
     state.currentPositionMicro = 0;
     state.trackLengthMicro = 0;
     state.playbackStatus = 'Stopped';
+    state.adoptedTrackKey = null;
+    state.pendingTrackKey = null;
+    state.pendingTrackSinceMicro = 0;
     updateTimerLabel(state);
     if (state.titleLabel) state.titleLabel.set_text('Not Playing');
     if (state.artistLabel) state.artistLabel.set_text('Unknown Artist');
@@ -83,6 +91,24 @@ export function applyPlayerState(properties, state) {
 
     const track = extractTrackMetadata(properties);
 
+    // Firefox can report the same mpris:trackid for a hover preview and for
+    // the video actually playing, so the visible metadata has to be part of
+    // the key for a change to be detected at all.
+    const trackKey = `${track.trackId}|${track.title}|${track.artist}`;
+    if (state.adoptedTrackKey !== null && trackKey !== state.adoptedTrackKey) {
+        const nowMicro = GLib.get_monotonic_time();
+        if (state.pendingTrackKey !== trackKey) {
+            state.pendingTrackKey = trackKey;
+            state.pendingTrackSinceMicro = nowMicro;
+        }
+        if (nowMicro - state.pendingTrackSinceMicro < TRACK_ADOPT_DELAY_MICROSECONDS)
+            return;
+        state.adoptedTrackKey = trackKey;
+    } else {
+        state.adoptedTrackKey = trackKey;
+    }
+    state.pendingTrackKey = null;
+
     const isNewTrack = state.lastTrackTitle !== track.title;
 
     if (isNewTrack) {
@@ -90,7 +116,6 @@ export function applyPlayerState(properties, state) {
         state.currentPositionMicro = 0;
     }
 
-    state.trackId = track.trackId;
     if (track.lengthMicro > 0) {
         state.trackLengthMicro = track.lengthMicro;
     } else if (isNewTrack) {
@@ -98,6 +123,8 @@ export function applyPlayerState(properties, state) {
     }
     if (track.artUrl) {
         state.lastArtUrl = track.artUrl;
+    } else if (isNewTrack) {
+        state.lastArtUrl = null;
     }
 
     const positionMicro = unpackVariantValue(properties['Position']);
@@ -138,9 +165,9 @@ export function applyPlayerState(properties, state) {
     applyArtworkToBackground(state.backgroundLayer, state.lastArtUrl || track.artUrl, state.config, state);
 }
 
-export function fetchMusicDataForConfig(config, callback) {
+export function fetchMusicDataForConfig(config, callback, preferredPlayer = '') {
     (async () => {
-        const activePlayer = await getActiveMediaPlayer(config);
+        const activePlayer = await getActiveMediaPlayer(config, preferredPlayer);
         if (activePlayer) {
             const properties = await fetchPlayerProperties(activePlayer);
             if (properties) {
@@ -157,14 +184,15 @@ export function fetchMusicDataForConfig(config, callback) {
 }
 
 function isSeekSenderMatch(state, senderUniqueName) {
-    if (!state.container || isActorDestroyed(state.container)) return false;
-    if (!state.currentPlayer) return false;
-    if (state.currentPlayer === senderUniqueName) return true;
-    return resolveBusOwner(state.currentPlayer).then(owner => owner !== null && owner === senderUniqueName);
+    if (!state.container || isActorDestroyed(state.container)) return Promise.resolve(false);
+    if (!state.currentPlayer) return Promise.resolve(false);
+    if (state.currentPlayer === senderUniqueName) return Promise.resolve(true);
+    return resolveBusOwner(state.currentPlayer)
+        .then(owner => owner !== null && owner === senderUniqueName);
 }
 
 // Shared across all instances to avoid duplicate D-Bus subscriptions.
-export function setupDbusSignalListeners() {
+function setupDbusSignalListeners() {
     if (seekedSignalId === 0) {
         seekedSignalId = Gio.DBus.session.signal_subscribe(
             null,
@@ -174,14 +202,17 @@ export function setupDbusSignalListeners() {
             Gio.DBusSignalFlags.NONE,
             (_connection, senderName, _objectPath, _interfaceName, _signalName, parameters) => {
                 const unpacked = parameters.deep_unpack();
-                let rawPos = unpacked[0];
-                if (typeof rawPos === 'number' || typeof rawPos === 'bigint') {
-                    const pos = Number(rawPos);
+                let rawPosition = unpacked[0];
+                if (typeof rawPosition === 'number' || typeof rawPosition === 'bigint') {
+                    const position = Number(rawPosition);
                     const now = GLib.get_monotonic_time();
                     for (const state of activeMusicWidgetInstances) {
                         isSeekSenderMatch(state, senderName).then(isBoundToSender => {
                             if (!isBoundToSender) return;
-                            state.currentPositionMicro = pos;
+                            // isSeekSenderMatch checks before awaiting the D-Bus
+                            // round trip, so re-check before touching actors.
+                            if (isActorDestroyed(state.container)) return;
+                            state.currentPositionMicro = position;
                             state.lastSeekTimestamp = now;
                             updateTimerLabel(state);
                         });

@@ -1,33 +1,39 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveExplicitFontFamily, SECONDARY_OPACITY, cssColorToRgba } from '../../utils/widgetUtils.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetSurfaces } from '../../utils/widgetUtils.js';
 import { attachButtonFeedback } from '../../shell/widgetUIUtils.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { SKIP_BACK_ICON, SKIP_FORWARD_ICON, FALLBACK_ICON } from './icons.js';
 import { skipToNext, skipToPrevious, togglePlayPause } from './mpris.js';
 import { notifyPlayPauseAllInstances } from './playbackState.js';
+import { MIN_FONT_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, scaleFontSize } from '../../utils/typography.js';
 
 const BORDER_RADIUS_PILL = 99;
-const PROGRESS_TRACK_ALPHA = 0.25;
 
 const BASE_SEEK_ICON_SIZE = 18;
 const BASE_PLAY_ICON_SIZE = 24;
 const BASE_BUTTON_MARGIN_LARGE = 16;
 const BASE_BUTTON_MARGIN_SMALL = 4;
-const BASE_TIMER_FONT_SIZE = 14;
 const BASE_PROGRESS_BAR_HEIGHT = 4;
 const BASE_PROGRESS_SPACER_HEIGHT = 8;
 const BASE_TIMER_MARGIN_TOP = 8;
-const BASE_CONTROLS_MARGIN = 12;
 const BASE_CONTROL_CONTAINER_WIDTH = 240;
 const BASE_CONTROL_CONTAINER_HEIGHT = 140;
-const BASE_TIMER_FONT_SIZE_BUILDER = 12;
+const BASE_TIMER_FONT_SIZE = 12;
+
+// Single source of truth for the timer labels, so a resize cannot drop the
+// dimming that the build-time style sets.
+function buildTimerLabelStyle(fontCss, textColor, scale) {
+    const fontSize = scaleFontSize(BASE_TIMER_FONT_SIZE, scale, MIN_FONT_SIZE.metadata);
+    return `${fontCss}color: ${textColor}; font-size: ${fontSize}px; `
+        + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; opacity: ${TEXT_OPACITY.secondary};`;
+}
 
 export function createBackgroundLayer(config) {
     const borderRadius = config.appliedBorderRadius || 0;
-    const backgroundColor = resolveWidgetBackgroundColor(config);
+    const { card } = resolveWidgetSurfaces(config);
     return new St.Widget({
-        style: `background-color: ${backgroundColor}; background-size: cover; border-radius: ${borderRadius}px;`,
+        style: `background-color: ${card}; background-size: cover; border-radius: ${borderRadius}px;`,
         x_expand: true,
         y_expand: true,
         x_align: Clutter.ActorAlign.FILL,
@@ -35,7 +41,7 @@ export function createBackgroundLayer(config) {
     });
 }
 
-export function createIconButton(iconName, iconSize, buttonMargin, textColor) {
+function createIconButton(iconName, iconSize, buttonMargin, textColor) {
     const button = new St.Button({
         reactive: true,
         can_focus: true,
@@ -54,7 +60,7 @@ export function createIconButton(iconName, iconSize, buttonMargin, textColor) {
     return button;
 }
 
-export function resolveControlsAlignment(position, isLargeLayout) {
+function resolveControlsAlignment(position, isLargeLayout) {
     if (isLargeLayout)
         return { xAlign: Clutter.ActorAlign.CENTER, yAlign: Clutter.ActorAlign.CENTER };
 
@@ -69,14 +75,13 @@ export function resolveControlsAlignment(position, isLargeLayout) {
     return { xAlign, yAlign };
 }
 
-export function connectControlButton(button, state, action) {
+function connectControlButton(button, action) {
     button.connect('button-press-event', (_actor, event) => {
         if (event.get_button() !== BUTTON_PRIMARY) return Clutter.EVENT_PROPAGATE;
-        if (!state.container.editMode) {
-            action();
-            return Clutter.EVENT_STOP;
-        }
-        return Clutter.EVENT_PROPAGATE;
+        Promise.resolve(action()).catch(error => {
+            console.debug('Gridgets: control action failed:', error);
+        });
+        return Clutter.EVENT_STOP;
     });
 }
 
@@ -84,18 +89,17 @@ export function connectControlButton(button, state, action) {
  * Applies responsive scaling to music playback control buttons and timer label.
  * Shared between small and large layout scaler callbacks to eliminate duplication.
  */
-export function updateControlButtonScaling(state, scale, fontFamily, textColor) {
+export function updateControlButtonScaling(state, scale, fontFamily, textColor, trackColor) {
     const seekSize = Math.max(1, Math.round(BASE_SEEK_ICON_SIZE * scale));
     const playSize = Math.max(1, Math.round(BASE_PLAY_ICON_SIZE * scale));
-    const baseMargin = (state.config && state.config.isLargeLayout === true)
+    const baseMargin = state.config.isLargeLayout === true
         ? BASE_BUTTON_MARGIN_LARGE
         : BASE_BUTTON_MARGIN_SMALL;
     const buttonMargin = Math.max(1, Math.round(baseMargin * scale));
-    const timerFontSize = Math.max(1, Math.round(BASE_TIMER_FONT_SIZE * scale));
-    const buttonStyle = (margin) => `margin: 0px ${margin}px; border-radius: ${BORDER_RADIUS_PILL}px;`;
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
 
-    const timerStyle = `${fontCss}color: ${textColor}; font-size: ${timerFontSize}px; font-weight: 400;`;
+    const timerStyle = buildTimerLabelStyle(fontCss, textColor, scale);
+    const buttonStyle = (margin) => `margin: 0px ${margin}px; border-radius: ${BORDER_RADIUS_PILL}px;`;
     const iconStyle = `color: ${textColor};`;
     if (state.seekBackBtn) {
         state.seekBackBtn.style = buttonStyle(buttonMargin);
@@ -123,7 +127,7 @@ export function updateControlButtonScaling(state, scale, fontFamily, textColor) 
 
     const barH = Math.max(1, Math.round(BASE_PROGRESS_BAR_HEIGHT * scale));
     if (state.progressBg) {
-        state.progressBg.style = `background-color: ${cssColorToRgba(textColor, PROGRESS_TRACK_ALPHA)}; border-radius: ${Math.floor(barH / 2)}px;`;
+        state.progressBg.style = `background-color: ${trackColor}; border-radius: ${Math.floor(barH / 2)}px;`;
         state.progressBg.set_height(barH);
     }
     if (state.progressFill) {
@@ -145,9 +149,9 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
     const dynScale = Math.min(width / BASE_CONTROL_CONTAINER_WIDTH, height / BASE_CONTROL_CONTAINER_HEIGHT);
     const scale = (config.layoutScale || 1) * dynScale;
     const textColor = resolveWidgetForegroundColor(config);
+    const { highlight } = resolveWidgetSurfaces(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-    const margin = Math.floor(BASE_CONTROLS_MARGIN * scale);
 
     const isLargeLayout = config.isLargeLayout === true;
     const controlsPosition = config.controlsPosition || 'bottom-center';
@@ -157,11 +161,10 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: !isLargeLayout,
-        // small layout must stretch full width or the rows inside collapse
-        // to natural width and cluster in the center
+        // the small layout stretches full width, otherwise the rows inside
+        // collapse to natural width and cluster in the center
         x_align: isLargeLayout ? xAlign : Clutter.ActorAlign.FILL,
         y_align: yAlign,
-        style: `margin: ${margin}px;`,
     });
 
     const buttonRow = new St.BoxLayout({
@@ -210,7 +213,7 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
 
     const progressBarHeight = Math.max(1, Math.round(BASE_PROGRESS_BAR_HEIGHT * scale));
     const progressBg = new St.Widget({
-        style: `background-color: ${cssColorToRgba(textColor, PROGRESS_TRACK_ALPHA)}; border-radius: ${Math.floor(progressBarHeight / 2)}px;`,
+        style: `background-color: ${highlight}; border-radius: ${Math.floor(progressBarHeight / 2)}px;`,
         x_expand: true,
         y_align: Clutter.ActorAlign.CENTER,
         height: progressBarHeight,
@@ -224,8 +227,7 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
     });
     progressBg.add_child(progressFill);
 
-    const timerStyle = `${fontCss}color: ${textColor}; font-size: ${Math.floor(BASE_TIMER_FONT_SIZE_BUILDER * scale)}px; `
-        + `opacity: ${SECONDARY_OPACITY};`;
+    const timerStyle = buildTimerLabelStyle(fontCss, textColor, scale);
     const timerLabelLeft = new St.Label({
         text: '00:00',
         x_align: Clutter.ActorAlign.START,
@@ -275,18 +277,14 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
     state.progressSpacer = progressSpacer;
     state.timerRow = timerRow;
 
-    connectControlButton(seekBackBtn, state, () => {
-        skipToPrevious(state.currentPlayer);
-    });
+    connectControlButton(seekBackBtn, () => skipToPrevious(state.config, state));
 
-    connectControlButton(playPauseBtn, state, () => {
+    connectControlButton(playPauseBtn, () => {
         notifyPlayPauseAllInstances(state.currentPlayer);
-        togglePlayPause(state.currentPlayer);
+        return togglePlayPause(state.config, state);
     });
 
-    connectControlButton(seekForwardBtn, state, () => {
-        skipToNext(state.currentPlayer);
-    });
+    connectControlButton(seekForwardBtn, () => skipToNext(state.config, state));
 
     return controlsColumn;
 }
