@@ -132,9 +132,6 @@ expose their GSettings schemas:
     home.packages = with pkgs; [
         gnome-weather
         gnome-clocks
-    ];
-
-    environment.systemPackages = with pkgs; [
         gnome-calendar
     ];
 
