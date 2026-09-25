@@ -72,10 +72,14 @@ correctly.
 
 ### Option B: Manual Directory Copy (From Source)
 
-1. Remove any previous installation:
+1. Disable the extension and remove any previous installation:
    ```bash
+   gnome-extensions disable gridgets@rebatnaath.github.com
    rm -rf ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    ```
+   Disabling first stops GNOME Shell logging errors while the files are gone.
+   Your settings and widget data are not affected, since they are stored in dconf
+   and under `~/.local/share/gridgets` rather than in the extension directory.
 2. Copy the extension files:
    ```bash
    mkdir -p ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
