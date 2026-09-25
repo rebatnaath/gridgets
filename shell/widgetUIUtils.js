@@ -2,6 +2,7 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
+import Pango from 'gi://Pango';
 import { watchActorLifecycle, isActorDestroyed } from '../utils/actorLifecycle.js';
 
 /** Abbreviated month names shared by calendar and contribution-grid widgets. */
@@ -14,8 +15,16 @@ import {
     parseCssColor,
     CAIRO_OPERATOR_CLEAR,
     CAIRO_OPERATOR_OVER,
-    CAIRO_LINE_CAP_ROUND
+    CAIRO_LINE_CAP_ROUND,
 } from '../utils/widgetUtils.js';
+import {
+    TYPOGRAPHY_SIZE,
+    TYPOGRAPHY_WEIGHT,
+    TEXT_OPACITY,
+    MIN_FONT_SIZE,
+    clampWidgetScale,
+    scaleFontSize,
+} from '../utils/typography.js';
 
 const CAPTION_PADDING_PIXELS = 12;
 const ARC_MARGIN_PIXELS = 4;
@@ -163,26 +172,36 @@ export function createCaptionOverlay(config, caption) {
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(config);
 
-    const contentBox = new St.BoxLayout({
+    const contentBox = watchActorLifecycle(new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
         x_align: Clutter.ActorAlign.FILL,
         y_align: Clutter.ActorAlign.END,
-        style: `padding: ${CAPTION_PADDING_PIXELS}px;`,
-    });
+    }));
 
     const titleLabel = new St.Label({
         text: caption,
-        style: `${fontCss}color: ${textColor}; font-weight: 700; font-size: 14px; text-align: center;`,
         x_align: Clutter.ActorAlign.CENTER,
     });
+    titleLabel.clutter_text.line_wrap = true;
+    titleLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
 
+    const updateScale = scale => {
+        const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.metadata, scale, MIN_FONT_SIZE.metadata);
+        const padding = scaleFontSize(CAPTION_PADDING_PIXELS, scale);
+        contentBox.style = `padding: ${padding}px;`;
+        titleLabel.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`
+            + `font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; text-align: center;`;
+    };
+
+    updateScale(1);
+    contentBox.updateCaptionScale = updateScale;
     contentBox.add_child(titleLabel);
     return contentBox;
 }
 
-export function drawCircularArc(context, width, height, progress, colorHex, lineWidthRatio = DEFAULT_LINE_WIDTH_RATIO, trackColorHex = null) {
+export function drawCircularArc(context, width, height, progress, colorHex, lineWidthRatio = DEFAULT_LINE_WIDTH_RATIO, trackColorHex = null, marginPixels = ARC_MARGIN_PIXELS) {
     context.setOperator(CAIRO_OPERATOR_CLEAR);
     context.paint();
     context.setOperator(CAIRO_OPERATOR_OVER);
@@ -190,11 +209,11 @@ export function drawCircularArc(context, width, height, progress, colorHex, line
     const centerX = width / 2;
     const centerY = height / 2;
     const lineWidth = Math.max(MIN_CIRCULAR_ARC_LINE_WIDTH, Math.min(width, height) * lineWidthRatio);
-    const radius = Math.min(centerX, centerY) - lineWidth - ARC_MARGIN_PIXELS;
+    const radius = Math.min(centerX, centerY) - lineWidth - marginPixels;
     if (radius <= 0)
         return;
 
-    // The track derives from the progress color at low alpha, so it stays
+    // The track uses the card surface color so it stays
     // visible on both light and dark widget backgrounds.
     let trackColor = { r: 1, g: 1, b: 1 };
     if (trackColorHex) {
@@ -202,7 +221,7 @@ export function drawCircularArc(context, width, height, progress, colorHex, line
     } else {
         trackColor = parseCssColor(colorHex) || trackColor;
     }
-    context.setSourceRGBA(trackColor.r, trackColor.g, trackColor.b, 0.18);
+    context.setSourceRGBA(trackColor.r, trackColor.g, trackColor.b, trackColor.a ?? 1.0);
     context.setLineWidth(lineWidth);
     context.arc(centerX, centerY, radius, 0, FULL_CIRCLE_RADIANS);
     context.stroke();
@@ -303,9 +322,21 @@ export function attachButtonFeedback(button) {
 
 export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCallback) {
     const update = () => {
+        // During teardown or before the first allocation Clutter can report a
+        // non-finite size. Feeding that to a layout callback produces NaN
+        // geometry and an INT32_MIN allocation, so bail out instead.
         const currentWidth = widgetNode.width || refWidth;
         const currentHeight = widgetNode.height || refHeight;
-        const scale = Math.min(currentWidth / refWidth, currentHeight / refHeight);
+        if (!Number.isFinite(currentWidth) || !Number.isFinite(currentHeight))
+            return;
+        if (currentWidth <= 0 || currentHeight <= 0)
+            return;
+
+        const rawScale = Math.min(currentWidth / refWidth, currentHeight / refHeight);
+        if (!Number.isFinite(rawScale) || rawScale <= 0)
+            return;
+
+        const scale = clampWidgetScale(rawScale);
         updateCallback(scale, currentWidth, currentHeight);
     };
 
