@@ -16,10 +16,35 @@
       <summary>Global Foreground/Text Color</summary>
       <description>Default foreground/text color for all widgets.</description>
     </key>
+    <key name="global-card-color" type="s">
+      <default>''</default>
+      <summary>Global Card Surface Color</summary>
+      <description>Raised surface color used for headers and secondary controls. Empty derives it from the background color.</description>
+    </key>
+    <key name="global-highlight-color" type="s">
+      <default>''</default>
+      <summary>Global Highlight Surface Color</summary>
+      <description>Stronger surface color used for active states, borders and chart tracks. Empty derives it from the background color.</description>
+    </key>
     <key name="show-grid" type="b">
       <default>false</default>
       <summary>Show Grid</summary>
       <description>Visualize the underlying widget placement grid.</description>
+    </key>
+    <key name="calendar-first-day" type="i">
+      <default>-1</default>
+      <summary>Calendar First Day</summary>
+      <description>Override the first weekday shown in Month Calendar; -1 follows the locale.</description>
+    </key>
+    <key name="calendar-weekend-accent" type="b">
+      <default>true</default>
+      <summary>Calendar Weekend Accent</summary>
+      <description>Use the accent color for selected weekend days.</description>
+    </key>
+    <key name="calendar-weekend-days" type="as">
+      <default>['saturday', 'sunday']</default>
+      <summary>Calendar Weekend Days</summary>
+      <description>Days shown with accent styling in Month Calendar; select at most two.</description>
     </key>
     <key name="global-font-family" type="s">
       <default>''</default>
@@ -45,11 +70,6 @@
       <default>true</default>
       <summary>Animate GIFs</summary>
       <description>If true, animated GIFs will play. If false, only their first frame is rendered.</description>
-    </key>
-    <key name="weather-city" type="s">
-      <default>"London"</default>
-      <summary>Global Weather City</summary>
-      <description>The configured default city for weather widgets.</description>
     </key>
     <key name="weather-use-fahrenheit" type="b">
       <default>false</default>
@@ -85,6 +105,11 @@
       <default>'adwaita'</default>
       <summary>Active Theme</summary>
       <description>The currently selected theme preset ID.</description>
+    </key>
+    <key name="last-selected-theme" type="s">
+      <default>'adwaita'</default>
+      <summary>Last Selected Theme</summary>
+      <description>The last predefined theme used as the starting point for Custom mode.</description>
     </key>
     <key name="accent-color-override" type="s">
       <default>''</default>
