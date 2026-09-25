@@ -28,16 +28,21 @@ class PollingEngine {
 
         if (this.subscribers.length === 1) {
             const runFetch = () => {
+                if (this.cancellable)
+                    this.cancellable.cancel();
+                this.cancellable = new Gio.Cancellable();
+                const fetchCancellable = this.cancellable;
                 this.fetchFn((data) => {
+                    if (fetchCancellable.is_cancelled()) return;
                     this.lastData = data;
-                    for (const cb of [...this.subscribers]) {
+                    for (const callback of [...this.subscribers]) {
                         try {
-                            cb(data);
-                        } catch (e) {
-                            console.error('Subscriber callback error:', e);
+                            callback(data);
+                        } catch (error) {
+                            console.error('Subscriber callback error:', error);
                         }
                     }
-                });
+                }, fetchCancellable);
             };
 
             runFetch();
@@ -56,6 +61,10 @@ class PollingEngine {
             GLib.Source.remove(this.timerId);
             this.timerId = null;
             this.lastData = null;
+            if (this.cancellable) {
+                this.cancellable.cancel();
+                this.cancellable = null;
+            }
             if (this.resetFn) {
                 this.resetFn();
             }
@@ -69,9 +78,9 @@ const PROC_STAT_IDLE_INDEX = 3;
 const PROC_STAT_IOWAIT_INDEX = 4;
 
 // Reads a /proc pseudo-filesystem file as UTF-8 text.
-function readKernelFileText(filePath) {
+function readKernelFileText(filePath, cancellable) {
     return new Promise((resolve, reject) => {
-        Gio.File.new_for_path(filePath).load_contents_async(null, (fileObj, res) => {
+        Gio.File.new_for_path(filePath).load_contents_async(cancellable, (fileObj, res) => {
             try {
                 const [success, contents] = fileObj.load_contents_finish(res);
                 resolve(success ? decoder.decode(contents) : '');
@@ -98,9 +107,9 @@ const procStatFailure = { reported: false };
 const procMeminfoFailure = { reported: false };
 const procNetDevFailure = { reported: false };
 
-async function sampleCpuRamUsage() {
+async function sampleCpuRamUsage(cancellable) {
     try {
-        const statText = await readKernelFileText('/proc/stat');
+        const statText = await readKernelFileText('/proc/stat', cancellable);
         procStatFailure.reported = false;
         const cpuLineMatch = statText.match(/^cpu\s+(.+)$/m);
         if (cpuLineMatch) {
@@ -123,7 +132,7 @@ async function sampleCpuRamUsage() {
     }
 
     try {
-        const memText = await readKernelFileText('/proc/meminfo');
+        const memText = await readKernelFileText('/proc/meminfo', cancellable);
         procMeminfoFailure.reported = false;
         const totalMatch = memText.match(/MemTotal:\s+(\d+)/);
         const availableMatch = memText.match(/MemAvailable:\s+(\d+)/);
@@ -142,8 +151,11 @@ async function sampleCpuRamUsage() {
     return { cpuProgress: lastCpuProgress, ramProgress: lastRamProgress };
 }
 
-function fetchCpuRamData(callback) {
-    sampleCpuRamUsage().then(callback);
+function fetchCpuRamData(callback, cancellable) {
+    sampleCpuRamUsage(cancellable).then(data => {
+        if (!cancellable.is_cancelled())
+            callback(data);
+    });
 }
 
 function resetCpuRamState() {
@@ -161,9 +173,9 @@ let prevTimeMs = 0;
 let lastDownloadSpeed = 0;
 let lastUploadSpeed = 0;
 
-function fetchNetworkData(callback) {
+function fetchNetworkData(callback, cancellable) {
     const netFile = Gio.File.new_for_path('/proc/net/dev');
-    netFile.load_contents_async(null, (fileObj, res) => {
+    netFile.load_contents_async(cancellable, (fileObj, res) => {
         try {
             const [success, contents] = fileObj.load_contents_finish(res);
             procNetDevFailure.reported = false;
@@ -204,7 +216,8 @@ function fetchNetworkData(callback) {
         } catch (e) {
             logReadFailureOnce(procNetDevFailure, '/proc/net/dev', e);
         }
-        callback({ downloadSpeed: lastDownloadSpeed, uploadSpeed: lastUploadSpeed });
+        if (!cancellable.is_cancelled())
+            callback({ downloadSpeed: lastDownloadSpeed, uploadSpeed: lastUploadSpeed });
     });
 }
 
