@@ -174,6 +174,10 @@ Open the **Extensions** app (or Extension Manager) and click the gear icon next 
 
 Supported GNOME Shell versions: `45`, `46`, `47`, `48`, `49`, `50`.
 
+## Changelog
+
+See the [Changelog](CHANGELOG.md) for what changed in each release.
+
 ## Contributing
 
 Contributions are welcome. Please read the [Contributing Guide](CONTRIBUTING.md) before opening an issue or pull request.
