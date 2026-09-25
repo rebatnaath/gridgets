@@ -1,8 +1,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import { getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile, saveJsonToFileSync } from './widgetUtils.js';
+import { getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile, todayDateString, toDateString } from './widgetUtils.js';
 
-import { todayDateString, toDateString } from './widgetUtils.js';
 export { todayDateString, toDateString };
 
 // Monthly-partitioned mood history: ~/.local/share/gridgets/mood/<year>/<month>.json
@@ -47,7 +46,7 @@ function requestMonthLoad(monthKey, dateString, onLoaded) {
 }
 
 /**
- * Ensures every month touched by dateKeys is cached, then invokes callback once.
+ * Makes sure every month in dateKeys is cached, then calls callback once.
  */
 export function loadDatesAsync(dateKeys, callback) {
     const monthKeys = [...new Set(dateKeys.map(monthKeyOf))].filter(key => !monthCache.has(key));
@@ -122,90 +121,6 @@ export function clearMoodStoreCache() {
     monthLoadGeneration++;
     monthCache.clear();
     pendingMonthLoads.clear();
-}
-
-const MOOD_SEED_DAYS = 30;
-
-export function generateFakeMoodData() {
-    const today = GLib.DateTime.new_now_local();
-    const todayStr = toDateString(today);
-    const months = {};
-
-    // Load existing month files from disk to find the latest date
-    const moodDir = getGridgetsDataDir('mood');
-    let latestExistingDate = null;
-
-    // Scan year directories
-    const dirFile = Gio.File.new_for_path(moodDir);
-    try {
-        const enumerator = dirFile.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
-        let yearInfo;
-        while ((yearInfo = enumerator.next_file(null)) !== null) {
-            const yearName = yearInfo.get_name();
-            if (yearInfo.get_file_type() !== Gio.FileType.DIRECTORY) continue;
-            const yearDir = Gio.File.new_for_path(GLib.build_filenamev([moodDir, yearName]));
-            try {
-                const monthEnum = yearDir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
-                let monthInfo;
-                while ((monthInfo = monthEnum.next_file(null)) !== null) {
-                    const monthName = monthInfo.get_name();
-                    if (!monthName.endsWith('.json')) continue;
-                    const monthKey = monthName.replace('.json', '');
-                    const filePath = GLib.build_filenamev([moodDir, yearName, monthName]);
-                    const file = Gio.File.new_for_path(filePath);
-                    try {
-                        const [ok, bytes] = file.load_contents(null);
-                        if (!ok) continue;
-                        const contents = JSON.parse(new TextDecoder('utf-8').decode(bytes));
-                        if (typeof contents === 'object' && contents !== null) {
-                            // Update cache
-                            const fullMonthKey = `${yearName}-${monthKey}`;
-                            monthCache.set(fullMonthKey, contents);
-                            for (const dateKey of Object.keys(contents)) {
-                                if (contents[dateKey] > 0 && (!latestExistingDate || dateKey > latestExistingDate)) {
-                                    latestExistingDate = dateKey;
-                                }
-                            }
-                        }
-                    } catch (_e) { /* skip unreadable files */ }
-                }
-            } catch (_e) { /* skip unreadable directories */ }
-        }
-    } catch (_e) { /* skip if mood dir doesn't exist */ }
-
-    // Generate from (latestExistingDate + 1) through today, or MOOD_SEED_DAYS backwards if no data
-    let startDate;
-    if (latestExistingDate && latestExistingDate < todayStr) {
-        const [y, m, d] = latestExistingDate.split('-').map(Number);
-        const lastDate = GLib.DateTime.new_local(y, m, d, 0, 0, 0);
-        startDate = lastDate.add_days(1);
-    } else {
-        startDate = today.add_days(-(MOOD_SEED_DAYS - 1));
-    }
-
-    // Generate from startDate to today
-    let day = startDate;
-    while (day.compare(today) <= 0) {
-        const dateString = toDateString(day);
-        const monthKey = monthKeyOf(dateString);
-        const existing = monthCache.has(monthKey) ? monthCache.get(monthKey) : null;
-        if (existing && existing[dateString] !== undefined) {
-            day = day.add_days(1);
-            continue;
-        }
-        if (!months[monthKey]) {
-            months[monthKey] = existing ? { ...existing } : {};
-        }
-        months[monthKey][dateString] = Math.floor(Math.random() * 5) + 1;
-        day = day.add_days(1);
-    }
-
-    for (const [monthKey, data] of Object.entries(months)) {
-        monthCache.set(monthKey, data);
-        const [year, month] = monthKey.split('-');
-        const filePath = GLib.build_filenamev([getGridgetsDataDir('mood'), year, `${month}.json`]);
-        saveJsonToFileSync(filePath, data);
-    }
 }
 
 export function listMoodDates(callback) {
