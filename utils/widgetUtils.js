@@ -9,6 +9,10 @@ export const DEFAULT_FONT_FAMILY = '';
 export const DEFAULT_BG_COLOR = '#222226';
 export const DEFAULT_FG_COLOR = '#ffffff';
 export const MAX_APP_LAUNCHER_ITEMS = 8;
+export const DESKTOP_APP_KEY = 'desktop';
+export const CALENDAR_WEEKDAY_NAMES = Object.freeze([
+    'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+]);
 
 const TEMPERATURE_FAHRENHEIT_MULTIPLIER = 9 / 5;
 const TEMPERATURE_FAHRENHEIT_OFFSET = 32;
@@ -18,8 +22,7 @@ export const CAIRO_OPERATOR_CLEAR = 0;
 export const CAIRO_OPERATOR_OVER = 2;
 export const CAIRO_LINE_CAP_ROUND = 1;
 
-export const COLUMNS_COUNT = 50;
-export const ROWS_COUNT = 16;
+export const COLUMNS_COUNT = 60;
 export const GRID_GAP_PX = 15;
 export const GRID_MARGIN_PX = 4;
 
@@ -41,6 +44,12 @@ export const MIN_WIDGET_SIZES = Object.freeze({
     'screen-time': { minCols: 6, minRows: 3 },
     'calendar-grid': { minCols: 4, minRows: 4 },
     'mood': { minCols: 4, minRows: 2 },
+    'system-dashboard': { minCols: 4, minRows: 4 },
+    'pomodoro-focus': { minCols: 8, minRows: 4 },
+    'todo': { minCols: 6, minRows: 4 },
+    'github': { minCols: 8, minRows: 4 },
+    'rss-headlines': { minCols: 4, minRows: 4 },
+    'sun-schedule': { minCols: 7, minRows: 5 },
 });
 
 /**
@@ -90,6 +99,8 @@ export function resolveWidgetOverrides(widgetData, globalSettings) {
     const {
         globalBgColor,
         globalFgColor,
+        globalCardColor,
+        globalHighlightColor,
         globalFontFamily,
     } = globalSettings;
 
@@ -97,6 +108,8 @@ export function resolveWidgetOverrides(widgetData, globalSettings) {
         appliedBorderRadius: DEFAULT_CORNER_RADIUS_PX,
         globalBackgroundColor: globalBgColor,
         globalForegroundColor: globalFgColor,
+        globalCardColor: globalCardColor,
+        globalHighlightColor: globalHighlightColor,
         globalFontFamily: globalFontFamily,
     });
 }
@@ -153,9 +166,24 @@ export function readGlobalSettings(settings, interfaceSettings = null) {
         ? systemAccentColor
         : (themePreset?.accent || accentOverride || systemAccentColor);
 
+    // Card/highlight belong to whichever theme is active. The stored value is
+    // the Custom theme's alone; letting a preset or the system theme read it
+    // would keep painting the old custom surfaces after a switch. Presets
+    // without a value derive instead.
+    const cardSetting = settings.get_string('global-card-color');
+    const highlightSetting = settings.get_string('global-highlight-color');
+    const globalCardColor = currentTheme === 'custom'
+        ? cardSetting
+        : (themePreset?.card || '');
+    const globalHighlightColor = currentTheme === 'custom'
+        ? highlightSetting
+        : (themePreset?.highlight || '');
+
     return {
         globalBgColor,
         globalFgColor,
+        globalCardColor,
+        globalHighlightColor,
         globalAccentColor,
         globalFontFamily: settings.get_string('global-font-family'),
         globalUseCustomFont: settings.get_boolean('global-use-custom-font'),
@@ -165,7 +193,6 @@ export function readGlobalSettings(settings, interfaceSettings = null) {
         globalUseFahrenheit: settings.get_boolean('weather-use-fahrenheit'),
         globalWeatherDynamicColor: settings.get_boolean('weather-dynamic-color'),
         globalWeatherDynamicImage: settings.get_boolean('weather-dynamic-image'),
-        globalWeatherCity: settings.get_string('weather-city'),
         globalUse24h: settings.get_boolean('time-format-24h'),
     };
 }
@@ -226,16 +253,31 @@ export function resolveSurfaceShades(baseColor) {
     };
 }
 
-/** Card and highlight surfaces for a widget config's resolved base color. */
+/**
+ * Card and highlight surfaces for a widget config. Themes may supply these
+ * explicitly; when they do not (Adwaita System, or an unset custom value) they
+ * are derived from the background so nothing ends up undefined.
+ */
 export function resolveWidgetSurfaces(config) {
-    return resolveSurfaceShades(resolveWidgetBackgroundColor(config));
+    const background = resolveWidgetBackgroundColor(config);
+    const derived = resolveSurfaceShades(background);
+
+    if (!config)
+        return derived;
+
+    const card = resolveWidgetConfigValue(config, 'globalCardColor', 'overrideCardColor', ['cardColor'], '');
+    const highlight = resolveWidgetConfigValue(config, 'globalHighlightColor', 'overrideHighlightColor', ['highlightColor'], '');
+
+    return {
+        card: card || derived.card,
+        highlight: highlight || derived.highlight,
+    };
 }
 
 export function resolveWidgetColors(config) {
-    const background = resolveWidgetBackgroundColor(config);
-    const { card, highlight } = resolveSurfaceShades(background);
+    const { card, highlight } = resolveWidgetSurfaces(config);
     return {
-        background,
+        background: resolveWidgetBackgroundColor(config),
         subtleBackground: card,
         highlightBackground: highlight,
         contentColor: resolveWidgetForegroundColor(config),
@@ -247,9 +289,6 @@ export function resolveAccentColor(config) {
     return config.globalAccentColor || DEFAULT_ACCENT_COLOR;
 }
 
-/** GitHub contribution-graph intensity ramp; fixed brand data, not themeable. */
-export const CONTRIBUTION_LEVEL_COLORS = ['#39d353', '#26a641', '#006d32', '#0e4429'];
-
 /** Mood ramp shared by the mood widget and the preferences insights charts. */
 export const MOOD_LEVELS = Object.freeze([
     { level: 1, label: 'Sad', icon: 'face-sad-symbolic', color: '#F43F5E' },
@@ -258,28 +297,6 @@ export const MOOD_LEVELS = Object.freeze([
     { level: 4, label: 'Happy', icon: 'face-smile-symbolic', color: '#22C55E' },
     { level: 5, label: 'Ecstatic', icon: 'face-laugh-symbolic', color: '#3B82F6' },
 ]);
-
-/** Legibility scrim over album artwork; the fade itself requires alpha over arbitrary art. */
-export const ARTWORK_SCRIM_STYLE = 'background-gradient-direction: vertical; background-gradient-start: rgba(0,0,0,0); background-gradient-end: rgba(0,0,0,0.75);';
-
-export const TEXT_COLOR_ON_LIGHT_BG = '#000000';
-export const TEXT_COLOR_ON_DARK_BG = '#ffffff';
-
-/** Per-condition sky gradients for dynamic weather backgrounds, as [start, end]. */
-export const WEATHER_SKY_GRADIENTS = Object.freeze({
-    clear: { day: ['#2b84d4', '#1a5a9e'], night: ['#121e33', '#0a1221'] },
-    partlyCloudy: { day: ['#5b8cbd', '#3d6a94'], night: ['#25354a', '#152335'] },
-    cloudy: { day: ['#121D2B', '#1a2a3d'], night: ['#14181a', '#0c0f12'] },
-    overcast: { day: ['#0e1520', '#162030'], night: ['#0c0f12', '#0a0d10'] },
-    fog: { day: ['#a1aba3', '#7a8480'], night: ['#3c403e', '#252825'] },
-    dust: { day: ['#c2a884', '#a08460'], night: ['#4a3d2c', '#302618'] },
-    sleet: { day: ['#5a8f9c', '#3d6e78'], night: ['#1d343b', '#112126'] },
-    hail: { day: ['#7b8c9c', '#5a6b7a'], night: ['#212a33', '#131a22'] },
-    rain: { day: ['#121D2B', '#1a2a3d'], night: ['#14181a', '#0c0f12'] },
-    thunderstorms: { day: ['#232533', '#151622'], night: ['#232533', '#151622'] },
-    snowBlizzard: { day: ['#b8d6eb', '#8bb5d0'], night: ['#465661', '#2e3b44'] },
-    snow: { day: ['#8dafc4', '#6d92a8'], night: ['#243a4a', '#162633'] },
-});
 
 /** Checks if a filename has an extension that supports animation (.gif, .webp). */
 export function isAnimatedImageFile(filename) {
@@ -356,12 +373,10 @@ export function parseCssColor(colorString) {
     return { r: 0, g: 0, b: 0 };
 }
 
-export const SECONDARY_OPACITY = 0.55;
-
-/** Builds a CSS rgba() string from any CSS color string at the given alpha. */
+/** Builds a CSS rgba() string from any CSS colour string at the given alpha. */
 export function cssColorToRgba(colorString, alpha = 1) {
     const { r, g, b } = parseCssColor(colorString);
-    return `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},${alpha})`;
+    return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`;
 }
 
 const LUMINANCE_RED_WEIGHT = 0.299;
@@ -369,7 +384,7 @@ const LUMINANCE_GREEN_WEIGHT = 0.587;
 const LUMINANCE_BLUE_WEIGHT = 0.114;
 const LUMINANCE_LIGHT_THRESHOLD = 0.55;
 export const LIGHT_TEXT_ON_ACCENT = '#ffffff';
-export const DARK_TEXT_ON_ACCENT = '#1e1e1e';;
+export const DARK_TEXT_ON_ACCENT = '#1e1e1e';
 
 /** Returns a readable text color for content drawn on top of the accent color. */
 export function resolveTextOnAccentColor(accentHex) {
@@ -416,10 +431,10 @@ export function getGridgetsDataDir(subFolder = '') {
 }
 
 /**
- * Reads a JSON file asynchronously and invokes callback(parsed, parseError).
- * A missing/empty file yields callback(null) — the normal first-run case.
- * A file that exists but fails to parse yields callback(null, error) so
- * callers can avoid overwriting corrupt user data with fresh defaults.
+ * Reads a JSON file asynchronously and calls callback(parsed, parseError).
+ * A missing or empty file calls back with null, which is the normal first run.
+ * A file that exists but fails to parse calls back with the error, so callers
+ * can avoid overwriting broken user data with the defaults.
  */
 export function loadJsonFromFileAsync(filePath, callback) {
     const file = Gio.File.new_for_path(filePath);
@@ -564,7 +579,7 @@ const SIZE_PRESETS = {
     'weatherStandard': [[4, 4], [5, 5], [6, 6]],
     'weatherSimple': [[4, 4], [5, 5], [6, 5]],
     'weatherForecast': [[6, 4], [8, 5], [10, 6]],
-    'sun-schedule': [[4, 4], [5, 5], [6, 6]],
+    'sun-schedule': [[7, 5], [7, 6], [8, 7]],
     'musicSmall': [[4, 4], [5, 5], [6, 6]],
     'musicWide': [[8, 4], [10, 5], [12, 6]],
     'calendar': [[4, 4], [5, 5], [5, 6]],
@@ -643,7 +658,7 @@ export function isWideMusicLayout(widget) {
 }
 
 /** Validates and constrains a widget's proposed new position and size during resize operations. */
-export function calculateResizedDimensions(widgetData, newCols, newRows, newGridX, widgets = null, maxCols = COLUMNS_COUNT, maxRows = ROWS_COUNT) {
+export function calculateResizedDimensions(widgetData, newCols, newRows, newGridX, widgets = null, maxCols = COLUMNS_COUNT, maxRows = Number.POSITIVE_INFINITY) {
     const minLimits = MIN_WIDGET_SIZES[widgetData.type] || { minCols: 2, minRows: 2 };
     let validX = Math.max(0, Math.min(newGridX, maxCols - minLimits.minCols));
     let validCols = Math.max(minLimits.minCols, Math.min(newCols, maxCols - validX));
@@ -766,10 +781,11 @@ export function nextWidgetId(settings, prefix) {
 /** Finds an empty grid spot, assigns position/size, and persists the widget. */
 export function addWidget(settings, widgetData, defaultWidth, defaultHeight) {
     const widgets = getWidgets(settings);
-    // preset widgets spawn at Medium so every type enters the grid at a
-    // footprint that matches its S/M/L table; free-flow media keeps its own
+    // Preset widgets spawn at Large so every type enters the grid at a
+    // footprint that matches its S/M/L table; free-flow media (image,
+    // slideshow) keeps the caller-supplied size instead.
     const defaultPreset = supportsSizePresets(widgetData)
-        ? resolveWidgetSizePreset(widgetData, 0)
+        ? resolveWidgetSizePreset(widgetData, 2)
         : null;
     const spawnWidth = defaultPreset ? defaultPreset.width : defaultWidth;
     const spawnHeight = defaultPreset ? defaultPreset.height : defaultHeight;
