@@ -5,31 +5,31 @@ import Clutter from 'gi://Clutter';
 import Cogl from 'gi://Cogl';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import Soup from 'gi://Soup?version=3.0';
-import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, SECONDARY_OPACITY, cssColorToRgba, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor, saveJsonToFile } from '../../utils/widgetUtils.js';
+import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, DEFAULT_CHILD_CORNER_RADIUS_PX, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveChildCornerRadius, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, cssColorToRgba, saveJsonToFile, resolveAccentColor } from '../../utils/widgetUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../shell/widgetUIUtils.js';
 import { applyCornerMask, setImageContentBytes } from '../media/mediaCommon.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const REF_WIDTH_PX = 420;
 const REF_HEIGHT_PX = 200;
-const CONTAINER_PADDING_V_PX = 14;
-const CONTAINER_PADDING_H_PX = 18;
-const AVATAR_SIZE_PX = 28;
-const USERNAME_FONT_SIZE_PX = 13;
-const BADGE_FONT_SIZE_PX = 11;
-const LABEL_FONT_SIZE_PX = 9;
-const FOOTER_FONT_SIZE_PX = 11;
-const CELL_SIZE_PX = 11;
+const CONTAINER_PADDING_V_PX = 16;
+const CONTAINER_PADDING_H_PX = 20;
+const AVATAR_SIZE_PX = 34;
+const USERNAME_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
+const BADGE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
+const LABEL_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
+const FOOTER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
+const CELL_SIZE_PX = 12;
 const CELL_GAP_RATIO = 0.27;
-const MATRIX_PADDING_PX = 8;
 const DAY_LABELS_WIDTH_PX = 24;
 const DAY_LABEL_ROWS = { 1: 'Mon', 3: 'Wed', 5: 'Fri' };
+const MAIN_BOX_SPACING_PX = 10;
+const CONTRIBUTION_LEVEL_ALPHAS = [0, 0.28, 0.48, 0.72, 1];
+const LEGEND_BOX_SPACING_PX = 3;
 const MIN_CONTRIBUTION_WEEKS = 8;
 const MAX_CONTRIBUTION_WEEKS = 30;
 const AVATAR_REQUEST_SIZE_PX = 64;
-
-const LEVEL_COLORS = ['#39d353', '#26a641', '#006d32', '#0e4429'];
-const BORDER_ALPHA = 0.14;
 const REFRESH_INTERVAL_SECONDS = 600;
 const HTTP_STATUS_OK = 200;
 const decoder = new TextDecoder();
@@ -46,10 +46,11 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(config);
+    const accentColor = resolveAccentColor(config);
+    const { card } = resolveWidgetSurfaces(config);
+    const contributionColors = CONTRIBUTION_LEVEL_ALPHAS.map(alpha => cssColorToRgba(accentColor, alpha));
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
-    const textRgba = (alpha) => cssColorToRgba(textColor, alpha);
-    const emptyCellColor = textRgba(0.15);
-    container.style += ` border: 1px solid ${textRgba(BORDER_ALPHA)};`;
+    const emptyCellColor = card;
 
     let username = typeof config.username === 'string' ? config.username : '';
     let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
@@ -69,7 +70,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
-        style: `spacing: 10px;`,
+        style: `spacing: ${MAIN_BOX_SPACING_PX}px;`,
     });
     container.add_child(mainBox);
 
@@ -79,7 +80,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     });
 
     const avatarWidget = new St.Widget({
-        style: `background-color: ${textRgba(0.15)}; border-radius: 999px;`,
+        style: `background-color: ${card}; border-radius: 999px;`,
         y_align: Clutter.ActorAlign.CENTER,
     });
     const initialsLabel = new St.Label({
@@ -92,14 +93,16 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     const usernameLabel = new St.Label({
         text: '',
         y_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}font-weight: 700; color: ${textColor};`,
+        style: `${fontCss}font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`,
     });
 
     const badgeLabel = new St.Label({
         text: '',
         y_align: Clutter.ActorAlign.CENTER,
         style: `${fontCss}font-size: ${BADGE_FONT_SIZE_PX}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`,
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`
+            + `background-color: ${card}; border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
+            + `border-radius: 12px; padding: 3px 8px;`,
     });
 
     const usernameEntry = new St.Entry({
@@ -130,6 +133,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     const matrixBody = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         y_expand: true,
+        style: `padding: ${px(3)}px 0;`,
     });
     matrixBox.add_child(matrixBody);
 
@@ -148,26 +152,26 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     });
 
     const statusLabel = new St.Label({
-        text: username ? 'Fetching…' : 'Click to set username',
+        text: username ? 'Syncing…' : 'Click the username to configure',
         y_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}font-size: ${FOOTER_FONT_SIZE_PX}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`,
+        style: `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            + `color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`,
     });
 
     const legendBox = new St.BoxLayout({
         y_align: Clutter.ActorAlign.CENTER,
         x_align: Clutter.ActorAlign.END,
         x_expand: true,
-        style: 'spacing: 3px;',
+        style: `spacing: ${LEGEND_BOX_SPACING_PX}px;`,
     });
     const lessLabel = new St.Label({
         text: 'Less',
         y_align: Clutter.ActorAlign.CENTER,
         style: `${fontCss}font-size: ${FOOTER_FONT_SIZE_PX - 1}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY}; margin-right: 3px;`,
+            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; margin-right: 3px;`,
     });
     legendBox.add_child(lessLabel);
-    const legendSquares = [emptyCellColor, ...LEVEL_COLORS.slice().reverse()].map(color => {
+    const legendSquares = [emptyCellColor, ...contributionColors.slice(1).reverse()].map(color => {
         const square = new St.Widget({ y_align: Clutter.ActorAlign.CENTER });
         square.legendColor = color;
         legendBox.add_child(square);
@@ -177,28 +181,29 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         text: 'More',
         y_align: Clutter.ActorAlign.CENTER,
         style: `${fontCss}font-size: ${FOOTER_FONT_SIZE_PX - 1}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY}; margin-left: 3px;`,
+            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; margin-left: 3px;`,
     });
     legendBox.add_child(moreLabel);
 
     footerBox.add_child(statusLabel);
     footerBox.add_child(legendBox);
-    mainBox.add_child(footerBox);
 
     const persistUsername = () => saveJsonToFile(dataFilePath, { username });
 
     function applyLayout() {
-        mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(10)}px;`;
-        avatarWidget.style = `background-color: ${textRgba(0.15)}; border-radius: 999px;`
+        mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
+        avatarWidget.style = `background-color: ${card}; border-radius: 999px;`
             + `width: ${px(AVATAR_SIZE_PX)}px; height: ${px(AVATAR_SIZE_PX)}px;`;
-        initialsLabel.style = `${fontCss}font-size: ${px(11)}px;`
-            + `font-weight: 400; color: ${textColor};`;
-        usernameLabel.style = `${fontCss}font-size: ${px(USERNAME_FONT_SIZE_PX)}px;`
-            + `font-weight: 700; color: ${textColor}; margin-left: ${px(8)}px;`;
-        usernameEntry.style = `${fontCss}font-size: ${px(USERNAME_FONT_SIZE_PX)}px;`
+        initialsLabel.style = `${fontCss}font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.metadata, scale, MIN_FONT_SIZE.metadata)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; color: ${textColor};`;
+        usernameLabel.style = `${fontCss}font-size: ${scaleFontSize(USERNAME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-left: ${px(8)}px;`;
+        usernameEntry.style = `${fontCss}font-size: ${scaleFontSize(USERNAME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
             + `color: ${textColor}; width: ${px(150)}px;`;
-        badgeLabel.style = `${fontCss}font-size: ${px(BADGE_FONT_SIZE_PX)}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
+        badgeLabel.style = `${fontCss}font-size: ${scaleFontSize(BADGE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`
+            + `background-color: ${card}; border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
+            + `border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px; padding: ${px(3)}px ${px(8)}px;`;
 
         legendSquares.forEach(square => {
             square.style = `background-color: ${square.legendColor};`
@@ -211,7 +216,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     function updateHeader() {
         const name = username || 'not configured';
-        usernameLabel.text = name;
+        usernameLabel.text = name === 'not configured' ? name : `@${name}`;
         initialsLabel.text = username ? username.slice(0, 2) : '?';
         loadAvatar();
     }
@@ -221,13 +226,19 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         // labels track the matrix through any resize.
         const columnPitch = cellSize() + cellGap();
         monthLabelsRow.destroy_all_children();
-        monthLabelsRow.style = `margin-left: ${px(DAY_LABELS_WIDTH_PX)}px; height: ${px(12)}px;`;
+        monthLabelsRow.style = `margin-left: ${px(DAY_LABELS_WIDTH_PX + 4)}px; margin-top: ${px(4)}px;`
+            + `margin-bottom: ${px(3)}px; height: ${px(12)}px;`;
 
         let currentMonth = -1;
+        let lastLabelEnd = -Infinity;
         for (let week = 0; week < weeks; week++) {
             const weekDate = GLib.DateTime.new_from_unix_local(startUnixSeconds + week * 7 * 86400);
             const month = weekDate.get_month() - 1;
             if (month === currentMonth)
+                continue;
+            const labelX = week * columnPitch;
+            const estimatedLabelWidth = Math.max(px(18), MONTH_NAMES[month].length * px(6));
+            if (labelX < lastLabelEnd + px(6))
                 continue;
             currentMonth = month;
 
@@ -237,24 +248,26 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
                 text: MONTH_NAMES[month],
                 x_align: Clutter.ActorAlign.START,
                 y_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}font-size: ${px(LABEL_FONT_SIZE_PX)}px;`
-                    + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`,
+                style: `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+                    + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`,
             });
-            label.translation_x = week * columnPitch;
+            label.translation_x = labelX;
+            lastLabelEnd = labelX + estimatedLabelWidth;
             monthLabelsRow.add_child(label);
         }
     }
 
     function renderDayLabels() {
         dayLabelsColumn.destroy_all_children();
-        dayLabelsColumn.style = `width: ${px(DAY_LABELS_WIDTH_PX)}px; spacing: ${cellGap()}px;`;
+        dayLabelsColumn.style = `width: ${px(DAY_LABELS_WIDTH_PX)}px; spacing: ${cellGap()}px;`
+            + `padding-right: ${px(4)}px;`;
 
         for (let row = 0; row < 7; row++) {
             const label = new St.Label({
                 text: DAY_LABEL_ROWS[row] || '',
                 y_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}font-size: ${px(LABEL_FONT_SIZE_PX)}px;`
-                    + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`,
+                style: `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+                    + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`,
             });
             const slot = new St.Widget({
                 layout_manager: new Clutter.BinLayout(),
@@ -274,7 +287,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         return Math.max(1, Math.round(cellSize() * CELL_GAP_RATIO));
     }
 
-    const matrixGeometry = { size: 0, gap: 0, weeks: 0, dataKey: '', cells: [] };
+    const matrixGeometry = { size: 0, dataKey: '', cells: [] };
 
     function traceRoundedRect(ctx, x, y, w, h, radius) {
         ctx.newSubPath();
@@ -286,7 +299,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     }
 
     function drawMatrixCanvas(canvas) {
-        const { size, gap, cells } = matrixGeometry;
+        const { size, cells } = matrixGeometry;
         if (size <= 0) return;
         const ctx = canvas.get_context();
         const [canvasWidth, canvasHeight] = canvas.get_surface_size();
@@ -307,7 +320,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     }
 
     function cellColorFor(level) {
-        return level === 0 ? emptyCellColor : LEVEL_COLORS[4 - level];
+        return level === 0 ? emptyCellColor : contributionColors[level];
     }
 
     function renderMatrix(contributionsByDate) {
@@ -318,7 +331,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         // matrixBody spans the label column + canvas; only the remainder
         // after the labels can hold week columns, or the tail gets clipped
         const bodyWidth = matrixBody.width || (width - px(CONTAINER_PADDING_H_PX) * 2);
-        const availableWidth = bodyWidth - px(DAY_LABELS_WIDTH_PX);
+        const availableWidth = bodyWidth - px(DAY_LABELS_WIDTH_PX + 4);
         const weeks = Math.max(MIN_CONTRIBUTION_WEEKS, Math.min(MAX_CONTRIBUTION_WEEKS, Math.floor((availableWidth + gap) / (size + gap))));
 
         // Rebuilding the matrix is only needed when geometry or data changed;
@@ -356,8 +369,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         }
 
         matrixGeometry.size = size;
-        matrixGeometry.gap = gap;
-        matrixGeometry.weeks = weeks;
         matrixGeometry.dataKey = dataKey;
         matrixGeometry.cells = cells;
 
@@ -430,7 +441,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     function fetchContributions() {
         if (!username) return;
-        updateStatus('Fetching…');
+        updateStatus('Syncing…');
         fetchJson(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(username)}`, (err, data) => {
             if (isActorDestroyed(container)) return;
             if (err || !data || !Array.isArray(data.contributions)) {

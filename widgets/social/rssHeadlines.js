@@ -2,7 +2,8 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
-import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { cssColorToRgba, resolveExplicitFontFamily, resolveWidgetColors } from '../../utils/widgetUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { subscribeToFeed } from '../../utils/rssEngine.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
@@ -16,18 +17,14 @@ const FOOTER_PADDING_V_PX = 8;
 const ARTICLE_TITLE_MAX_CHARS = 110;
 const SNIPPET_MAX_CHARS = 160;
 const SOURCE_NAME_MAX_CHARS = 22;
-const BORDER_ALPHA = 0.14;
 
-const SOURCE_FONT_SIZE_PX = 11;
-const TITLE_FONT_SIZE_PX = 12;
-const SNIPPET_FONT_SIZE_PX = 10;
-const FOOTER_FONT_SIZE_PX = 9;
-const TITLE_DISPLAY_FONT_SIZE_PX = TITLE_FONT_SIZE_PX + 4;
-const SNIPPET_DISPLAY_FONT_SIZE_PX = SNIPPET_FONT_SIZE_PX + 2;
+const SOURCE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
+const TITLE_DISPLAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
+const SNIPPET_DISPLAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
+const FOOTER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
 
 const ROTATE_INTERVAL_SECONDS = 5;
 const FADE_DURATION_MS = 150;
-const MAX_VISIBLE_DOTS = 5;
 const MIN_REFRESH_MINUTES = 5;
 const DEFAULT_REFRESH_MINUTES = 15;
 
@@ -57,14 +54,14 @@ function relativeTimeFromIso(dateIso) {
 }
 
 export function createRssHeadlinesNode(config, width, height, xPosition, yPosition) {
-    const bgColor = resolveWidgetBackgroundColor(config);
-    const textColor = resolveWidgetForegroundColor(config);
+    const {
+        subtleBackground,
+        highlightBackground,
+        contentColor: textColor,
+    } = resolveWidgetColors(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const borderRadius = config.appliedBorderRadius || 0;
-    const accentHex = config.globalAccentColor || '#3584e4';
-    const accentRgba = (alpha) => cssColorToRgba(accentHex, alpha);
-    const textRgba = (alpha) => cssColorToRgba(textColor, alpha);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
     const hasFeed = typeof config.feedUrl === 'string' && config.feedUrl.startsWith('http');
@@ -73,7 +70,6 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     const state = { timerId: null, releaseFeed: null };
     let articles = [];
     let currentIndex = 0;
-    let dotWidgets = [];
     let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
 
     const mainBox = new St.BoxLayout({
@@ -112,69 +108,49 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
         x_align: Clutter.ActorAlign.FILL,
     });
     const timeLabel = new St.Label({ text: '', y_align: Clutter.ActorAlign.CENTER });
-    const dotsRow = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
+    const articlePositionLabel = new St.Label({
+        text: '',
         x_expand: true,
         x_align: Clutter.ActorAlign.END,
-        style: 'spacing: 4px;',
+        y_align: Clutter.ActorAlign.CENTER,
     });
     footerBar.add_child(timeLabel);
-    footerBar.add_child(dotsRow);
+    footerBar.add_child(articlePositionLabel);
     mainBox.add_child(footerBar);
 
-    function renderDots() {
-        dotsRow.destroy_all_children();
-        dotWidgets = [];
-        const visibleCount = Math.min(articles.length, MAX_VISIBLE_DOTS);
-        for (let index = 0; index < visibleCount; index++) {
-            const dot = new St.Widget({
-                y_align: Clutter.ActorAlign.CENTER,
-            });
-            dotsRow.add_child(dot);
-            dotWidgets.push(dot);
+    function updateArticlePosition() {
+        if (articles.length === 0) {
+            articlePositionLabel.text = '';
+            return;
         }
-        updateActiveDot();
-    }
-
-    // Restyles the existing dots for the current position.
-    function updateActiveDot() {
-        if (!dotWidgets.length) return;
-        const activeIndex = currentIndex % MAX_VISIBLE_DOTS;
-        dotWidgets.forEach((dot, index) => {
-            if (isActorDestroyed(container)) return;
-            const isActive = index === activeIndex;
-            dot.style = `width: ${isActive ? Math.round(10 * scale) : Math.round(4 * scale)}px;`
-                + `height: ${Math.round(4 * scale)}px; border-radius: ${Math.round(scale)}px;`
-                + `background-color: ${textColor};`
-                + `opacity: ${isActive ? 1 : 0.27};`;
-        });
+        articlePositionLabel.text = `${currentIndex + 1} / ${articles.length}`;
     }
 
     function applyArticle() {
         if (!hasFeed) {
             sourceLabel.text = 'RSS Headlines';
             articleTitle.text = 'No feed configured';
+            articleTitle.visible = true;
             articleSnippet.text = 'Add a feed URL through the widget settings.';
             timeLabel.text = '';
-            renderDots();
+            updateArticlePosition();
             return;
         }
         if (articles.length === 0) {
             articleTitle.text = 'Waiting for updates…';
+            articleTitle.visible = true;
             articleSnippet.text = '';
             timeLabel.text = '';
-            renderDots();
+            updateArticlePosition();
             return;
         }
         const article = articles[currentIndex % articles.length];
-        articleTitle.text = clampText(article.title, ARTICLE_TITLE_MAX_CHARS);
+        const articleTitleText = clampText(article.title, ARTICLE_TITLE_MAX_CHARS);
+        articleTitle.text = articleTitleText;
+        articleTitle.visible = articleTitleText.length > 0;
         articleSnippet.text = clampText(article.summary, SNIPPET_MAX_CHARS);
         timeLabel.text = relativeTimeFromIso(article.dateIso);
-        const visibleCount = Math.min(articles.length, MAX_VISIBLE_DOTS);
-        if (visibleCount !== dotWidgets.length)
-            renderDots();
-        else
-            updateActiveDot();
+        updateArticlePosition();
     }
 
     function rotateArticle(step) {
@@ -194,7 +170,7 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     const SCROLL_STEP_COOLDOWN_MS = 250;
     let lastScrollAdvanceMs = 0;
     let smoothScrollAccumulator = 0;
-    container.connect('scroll-event', (_actor, event) => {
+    const scrollSignalId = container.connect('scroll-event', (_actor, event) => {
         if (articles.length === 0 || isActorDestroyed(container)) return Clutter.EVENT_PROPAGATE;
         const direction = event.get_scroll_direction();
 
@@ -222,12 +198,13 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
 
     connectTimerCleanup(container, state);
     registerWidgetCleanup(container, () => {
+        container.disconnect(scrollSignalId);
         if (state.releaseFeed)
             state.releaseFeed();
         state.releaseFeed = null;
     });
 
-    if (hasFeed && !state.releaseFeed) {
+    if (hasFeed) {
         sourceLabel.text = sourceNameFromUrl(config.feedUrl);
         state.releaseFeed = subscribeToFeed(config.feedUrl, refreshIntervalSeconds, (items) => {
             if (isActorDestroyed(container)) return;
@@ -247,26 +224,25 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
         scale = Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX);
         const px = (v) => Math.max(1, Math.round(v * scale));
 
-        container.style = `${fontCss}background-color: ${bgColor}; border-radius: ${borderRadius}px;`
-            + `border: 1px solid ${textRgba(BORDER_ALPHA)};`;
-
         titleBar.style = `padding: ${px(TITLEBAR_PADDING_V_PX)}px ${px(TITLEBAR_PADDING_H_PX)}px;`
-            + `background-color: ${textRgba(0.04)};`
-            + `border-bottom: 1px solid ${textRgba(0.1)};`;
-        sourceLabel.style = `${fontCss}font-size: ${px(SOURCE_FONT_SIZE_PX)}px; color: ${textColor};`;
+            + `background-color: ${subtleBackground};`
+            + `border-radius: ${borderRadius}px ${borderRadius}px 0 0;`
+            + `border-bottom: 1px solid ${highlightBackground};`;
+        sourceLabel.style = `${fontCss}font-size: ${scaleFontSize(SOURCE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
         sourceLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
 
         contentArea.style = `padding: ${px(CONTENT_PADDING_PX)}px;`;
-        articleTitle.style = `${fontCss}font-size: ${px(TITLE_DISPLAY_FONT_SIZE_PX)}px; font-weight: 700; color: ${textColor};`;
-        articleSnippet.style = `${fontCss}font-size: ${px(SNIPPET_DISPLAY_FONT_SIZE_PX)}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
+        articleTitle.style = `${fontCss}font-size: ${scaleFontSize(TITLE_DISPLAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
+        articleSnippet.style = `${fontCss}font-size: ${scaleFontSize(SNIPPET_DISPLAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`
+            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
         articleSnippet.clutter_text.line_wrap = true;
         articleSnippet.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
 
         footerBar.style = `padding: ${px(FOOTER_PADDING_V_PX)}px ${px(TITLEBAR_PADDING_H_PX)}px;`
-            + `border-top: 1px solid ${textRgba(0.1)};`;
-        timeLabel.style = `${fontCss}font-size: ${px(FOOTER_FONT_SIZE_PX)}px; color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
-        dotsRow.style = `spacing: ${px(4)}px;`;
+            + `border-top: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.divider)};`;
+        timeLabel.style = `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`;
+        articlePositionLabel.style = `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`;
 
         applyArticle();
     }

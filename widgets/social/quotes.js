@@ -4,19 +4,19 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import Soup from 'gi://Soup?version=3.0';
-import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const QUOTE_ROTATE_INTERVAL_SEC = 30;
-const BORDER_ALPHA = 0.14;
 const QUOTES_URL = 'https://raw.githubusercontent.com/rebatnaath/gridgets/main/github/quotesData.json';
 
 export function createQuotesNode(config, width, height, xPosition, yPosition) {
-    const container = createWidgetContainer(config, width, height, xPosition, yPosition);
     const textColor = resolveWidgetForegroundColor(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
+    const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
     const REF_WIDTH = 220;
     const REF_HEIGHT = 220;
@@ -28,7 +28,6 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
         y_expand: true,
         style: `padding: ${Math.max(1, Math.round(14 * scale))}px;`,
     });
-    container.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
     container.add_child(outerBox);
 
     const quoteLabel = new St.Label({
@@ -36,7 +35,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.START,
         x_expand: true,
-        style: `${fontCss}color: ${textColor}; font-size: ${Math.max(1, Math.round(17 * scale))}px; padding: 0 4px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.subtitle, scale, MIN_FONT_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; padding: 0 4px;`,
     });
     quoteLabel.clutter_text.line_wrap = true;
     quoteLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
@@ -48,14 +47,21 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
         y_align: Clutter.ActorAlign.END,
         x_expand: true,
         y_expand: true,
-        style: `${fontCss}color: ${textColor}; font-size: ${Math.max(1, Math.round(13 * scale))}px; `
-            + `opacity: ${SECONDARY_OPACITY}; padding-right: ${Math.max(1, Math.round(4 * scale))}px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label)}px; `
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; opacity: ${TEXT_OPACITY.secondary}; padding-right: ${Math.max(1, Math.round(4 * scale))}px;`,
     });
     outerBox.add_child(authorLabel);
 
     const session = new Soup.Session();
     const state = { timerId: null, refreshTimerId: null, cancellable: new Gio.Cancellable() };
     let quotes = [];
+    let lastErrorMessage = '';
+
+    function reportFetchError(message) {
+        if (message === lastErrorMessage) return;
+        lastErrorMessage = message;
+        console.error(message);
+    }
 
     function showQuote(quote) {
         quoteLabel.set_text(quote.text);
@@ -68,22 +74,23 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
             if (isActorDestroyed(container)) return;
             try {
                 if (message.get_status() !== 200) {
-                    console.error(`Quotes fetch returned status ${message.get_status()}`);
+                    reportFetchError(`Quotes fetch returned status ${message.get_status()}`);
                     return;
                 }
                 const bytes = sourceObject.send_and_read_finish(result);
                 if (!bytes || bytes.get_size() === 0) {
-                    console.error('Quotes fetch returned empty response');
+                    reportFetchError('Quotes fetch returned empty response');
                     return;
                 }
                 const raw = new TextDecoder().decode(bytes.get_data());
                 quotes = JSON.parse(raw);
+                lastErrorMessage = '';
                 if (quotes.length > 0) {
                     const quote = quotes[Math.floor(Math.random() * quotes.length)];
                     showQuote(quote);
                 }
             } catch (err) {
-                console.error('Failed to fetch quotes:', err);
+                reportFetchError(`Failed to fetch quotes: ${err.message}`);
             }
         });
     }
@@ -93,13 +100,13 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
     function applyScale(newScale) {
         scale = newScale;
         outerBox.style = `padding: ${Math.max(1, Math.round(14 * scale))}px;`;
-        quoteLabel.style = `${fontCss}color: ${textColor}; font-size: ${Math.max(1, Math.round(17 * scale))}px; padding: 0 4px;`;
-        authorLabel.style = `${fontCss}color: ${textColor}; font-size: ${Math.max(1, Math.round(13 * scale))}px; `
-            + `opacity: ${SECONDARY_OPACITY}; padding-right: ${Math.max(1, Math.round(4 * scale))}px;`;
+        quoteLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.subtitle, scale, MIN_FONT_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; padding: 0 4px;`;
+        authorLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label)}px; `
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; opacity: ${TEXT_OPACITY.secondary}; padding-right: ${Math.max(1, Math.round(4 * scale))}px;`;
     }
 
-    attachResponsiveScaler(container, REF_WIDTH, REF_HEIGHT, (_ratio, w, h) => {
-        applyScale(Math.min(w / REF_WIDTH, h / REF_HEIGHT));
+    attachResponsiveScaler(container, REF_WIDTH, REF_HEIGHT, (scale) => {
+        applyScale(scale);
     });
 
     state.refreshTimerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, QUOTE_ROTATE_INTERVAL_SEC, () => {
@@ -115,6 +122,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
         if (state.cancellable) {
             state.cancellable.cancel();
         }
+        session.abort();
     });
 
     return container;
