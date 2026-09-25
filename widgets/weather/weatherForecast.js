@@ -1,38 +1,48 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
-import { FALLBACK_LOCATION, HOURLY_FORECAST_COUNT, createFallbackIcon, configureWrappingLabel, buildFontCss } from './weatherCommon.js';
-import { SECONDARY_OPACITY } from '../../utils/widgetUtils.js';
+import {
+    HOURLY_FORECAST_COUNT,
+    createFallbackIcon,
+    buildFontCss,
+    LOCATION_UNAVAILABLE_TEXT,
+    HIGH_LOW_LOADING_TEXT,
+    WEATHER_LOADING_TEXT,
+    scaleWeatherValue,
+    buildWeatherTextStyle,
+    WEATHER_METADATA_OPACITY,
+} from './weatherCommon.js';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, GRAPHICS_OPACITY } from '../../utils/typography.js';
 
 const BASE_LAYOUT_WIDTH = 360;
 const BASE_LAYOUT_HEIGHT = 180;
 
-const BASE_CITY_FONT_SIZE = 20;
-const BASE_TEMP_FONT_SIZE = 48;
+const BASE_CITY_FONT_SIZE = TYPOGRAPHY_SIZE.title;
+const BASE_TEMP_FONT_SIZE = TYPOGRAPHY_SIZE.displayXL;
 const BASE_ICON_SIZE = 40;
-const BASE_CONDITION_FONT_SIZE = 16;
-const BASE_HIGHLOW_FONT_SIZE = 12;
-const BASE_HOURLY_TEXT_SIZE = 12;
-const BASE_HOURLY_ICON_SIZE = 24;
+const BASE_CONDITION_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
+const BASE_HIGHLOW_FONT_SIZE = TYPOGRAPHY_SIZE.compact;
+const BASE_HOURLY_TEXT_SIZE = TYPOGRAPHY_SIZE.compact;
+const BASE_HOURLY_ICON_SIZE = TYPOGRAPHY_SIZE.iconLg;
 
 const CITY_MARGIN_BOTTOM_PX = 4;
 const DIVIDER_MARGIN_VERTICAL_PX = 8;
 const HOURLY_ITEM_MARGIN_BOTTOM_PX = 3;
 
-export function buildForecastLayout(layout, widgetData, extensionPath) {
+export function buildForecastLayout(layout, widgetData) {
     const uiElements = { hourlyActors: [] };
     const fontCss = buildFontCss(widgetData);
 
     const topLayout = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, x_expand: true, y_expand: true });
     const leftLayout = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL, x_expand: true });
     uiElements.cityLabel = new St.Label({
-        text: widgetData.location || FALLBACK_LOCATION,
-        style: `${fontCss}font-weight: 400; font-size: ${BASE_CITY_FONT_SIZE}px; margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px;`
+        text: widgetData.location || LOCATION_UNAVAILABLE_TEXT,
+        style: `${fontCss}font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; font-size: ${BASE_CITY_FONT_SIZE}px; margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px;`
     });
     uiElements.tempLabel = new St.Label({
         text: '--°',
-        style: `${fontCss}font-size: ${BASE_TEMP_FONT_SIZE}px; font-weight: 300;`
+        style: `${fontCss}font-size: ${BASE_TEMP_FONT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.extrabold};`
     });
     leftLayout.add_child(uiElements.cityLabel);
     leftLayout.add_child(uiElements.tempLabel);
@@ -41,20 +51,19 @@ export function buildForecastLayout(layout, widgetData, extensionPath) {
     const rightLayout = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL, x_align: Clutter.ActorAlign.END });
     const iconWrapper = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, x_align: Clutter.ActorAlign.END, x_expand: true });
     uiElements.conditionIcon = new St.Icon({
-        gicon: createFallbackIcon(extensionPath),
+        icon_name: createFallbackIcon(),
         icon_size: BASE_ICON_SIZE,
         style: `margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px;`
     });
     iconWrapper.add_child(uiElements.conditionIcon);
 
     uiElements.conditionLabel = new St.Label({
-        text: 'Loading...',
-        style: `${fontCss}font-size: ${BASE_CONDITION_FONT_SIZE}px; font-weight: 400; text-align: right;`
+        text: WEATHER_LOADING_TEXT,
+        style: `${fontCss}font-size: ${BASE_CONDITION_FONT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium}; text-align: right;`
     });
-    configureWrappingLabel(uiElements.conditionLabel, Pango.Alignment.RIGHT);
     uiElements.highLowLabel = new St.Label({
-        text: 'H:--° L:--°',
-        style: `${fontCss}font-size: ${BASE_HIGHLOW_FONT_SIZE}px; opacity: ${SECONDARY_OPACITY}; text-align: right;`,
+        text: HIGH_LOW_LOADING_TEXT,
+        style: `${fontCss}font-size: ${BASE_HIGHLOW_FONT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; opacity: ${WEATHER_METADATA_OPACITY}; text-align: right;`,
         x_align: Clutter.ActorAlign.END
     });
     uiElements.highLowLabel.clutter_text.set_line_alignment(Pango.Alignment.RIGHT);
@@ -65,22 +74,22 @@ export function buildForecastLayout(layout, widgetData, extensionPath) {
     topLayout.add_child(rightLayout);
 
     layout.add_child(topLayout);
-    const divider = new St.Widget({
-        style: `background-color: currentColor; opacity: 0.2; height: 1px; margin-top: ${DIVIDER_MARGIN_VERTICAL_PX}px; margin-bottom: ${DIVIDER_MARGIN_VERTICAL_PX}px;`
+    uiElements.divider = new St.Widget({
+        style: `background-color: currentColor; opacity: ${GRAPHICS_OPACITY.divider}; height: 1px; margin-top: ${DIVIDER_MARGIN_VERTICAL_PX}px; margin-bottom: ${DIVIDER_MARGIN_VERTICAL_PX}px;`
     });
-    layout.add_child(divider);
+    layout.add_child(uiElements.divider);
 
     const hourlyContainer = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, x_expand: true });
     for (let i = 0; i < HOURLY_FORECAST_COUNT; i++) {
         const hourBox = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL, x_expand: true, x_align: Clutter.ActorAlign.CENTER });
         const timeLbl = new St.Label({
             text: '--',
-            style: `${fontCss}font-size: ${BASE_HOURLY_TEXT_SIZE}px; font-weight: 400; margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px; text-align: center;`
+            style: `${fontCss}font-size: ${BASE_HOURLY_TEXT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px; text-align: center;`
         });
         timeLbl.clutter_text.set_line_alignment(Pango.Alignment.CENTER);
 
         const icon = new St.Icon({
-            gicon: createFallbackIcon(extensionPath),
+            icon_name: createFallbackIcon(),
             icon_size: BASE_HOURLY_ICON_SIZE,
             style: `margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px;`
         });
@@ -89,7 +98,7 @@ export function buildForecastLayout(layout, widgetData, extensionPath) {
 
         const tempLbl = new St.Label({
             text: '--°',
-            style: `${fontCss}font-size: ${BASE_HOURLY_TEXT_SIZE}px; font-weight: 400; text-align: center;`
+            style: `${fontCss}font-size: ${BASE_HOURLY_TEXT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium}; text-align: center;`
         });
         tempLbl.clutter_text.set_line_alignment(Pango.Alignment.CENTER);
 
@@ -109,31 +118,55 @@ export function attachForecastScaler(widgetNode, uiElements, widgetData) {
     return attachResponsiveScaler(widgetNode, BASE_LAYOUT_WIDTH, BASE_LAYOUT_HEIGHT, (scale) => {
         if (!uiElements || !uiElements.cityLabel) return;
 
-        const citySize = Math.max(1, Math.round(BASE_CITY_FONT_SIZE * scale));
-        const tempSize = Math.max(1, Math.round(BASE_TEMP_FONT_SIZE * scale));
-        const iconSize = Math.max(1, Math.round(BASE_ICON_SIZE * scale));
-        const condSize = Math.max(1, Math.round(BASE_CONDITION_FONT_SIZE * scale));
-        const highLowSize = Math.max(1, Math.round(BASE_HIGHLOW_FONT_SIZE * scale));
+        const citySize = scaleWeatherValue(BASE_CITY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle);
+        const tempSize = scaleWeatherValue(BASE_TEMP_FONT_SIZE, scale, MIN_FONT_SIZE.primary);
+        const iconSize = scaleWeatherValue(BASE_ICON_SIZE, scale);
+        const conditionSize = scaleWeatherValue(BASE_CONDITION_FONT_SIZE, scale, MIN_FONT_SIZE.body);
+        const highLowSize = scaleWeatherValue(BASE_HIGHLOW_FONT_SIZE, scale, MIN_FONT_SIZE.metadata);
+        const hourlyTextSize = scaleWeatherValue(BASE_HOURLY_TEXT_SIZE, scale, MIN_FONT_SIZE.metadata);
+        const hourlyIconSize = scaleWeatherValue(BASE_HOURLY_ICON_SIZE, scale);
+        const cityMargin = scaleWeatherValue(CITY_MARGIN_BOTTOM_PX, scale);
+        const dividerMargin = scaleWeatherValue(DIVIDER_MARGIN_VERTICAL_PX, scale);
+        const hourlyMargin = scaleWeatherValue(HOURLY_ITEM_MARGIN_BOTTOM_PX, scale);
 
-        const hourlyTextSize = Math.max(1, Math.round(BASE_HOURLY_TEXT_SIZE * scale));
-        const hourlyIconSize = Math.max(1, Math.round(BASE_HOURLY_ICON_SIZE * scale));
-
-        uiElements.cityLabel.style = `${fontCss}font-weight: 400; font-size: ${citySize}px; margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px; color: inherit;`;
-        uiElements.tempLabel.style = `${fontCss}font-size: ${tempSize}px; font-weight: 300; color: inherit;`;
+        uiElements.cityLabel.style = buildWeatherTextStyle(fontCss, {
+            fontSize: citySize,
+            fontWeight: TYPOGRAPHY_WEIGHT.semibold,
+            margin: `margin-bottom: ${cityMargin}px;`,
+        });
+        uiElements.tempLabel.style = buildWeatherTextStyle(fontCss, {
+            fontSize: tempSize,
+            fontWeight: TYPOGRAPHY_WEIGHT.extrabold,
+        });
         uiElements.conditionIcon.icon_size = iconSize;
-        uiElements.conditionIcon.style = `margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px;`;
-        uiElements.conditionLabel.style = `${fontCss}font-size: ${condSize}px; font-weight: 400; text-align: right; color: inherit;`;
-        uiElements.highLowLabel.style = `${fontCss}font-size: ${highLowSize}px; opacity: ${SECONDARY_OPACITY}; text-align: right; color: inherit;`;
+        uiElements.conditionIcon.style = `margin-bottom: ${cityMargin}px;`;
+        uiElements.conditionLabel.style = buildWeatherTextStyle(fontCss, {
+            fontSize: conditionSize,
+            fontWeight: TYPOGRAPHY_WEIGHT.medium,
+            textAlign: 'right',
+        });
+        uiElements.highLowLabel.style = buildWeatherTextStyle(fontCss, {
+            fontSize: highLowSize,
+            fontWeight: TYPOGRAPHY_WEIGHT.regular,
+            opacity: WEATHER_METADATA_OPACITY,
+            textAlign: 'right',
+        });
+        uiElements.divider.style = `background-color: currentColor; opacity: ${GRAPHICS_OPACITY.divider}; height: 1px; margin-top: ${dividerMargin}px; margin-bottom: ${dividerMargin}px;`;
 
-        if (uiElements.hourlyActors) {
-            uiElements.hourlyActors.forEach(actor => {
-                if (actor.timeLbl) actor.timeLbl.style = `${fontCss}font-size: ${hourlyTextSize}px; font-weight: 400; margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px; text-align: center; color: inherit;`;
-                if (actor.icon) {
-                    actor.icon.icon_size = hourlyIconSize;
-                    actor.icon.style = `margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px;`;
-                }
-                if (actor.tempLbl) actor.tempLbl.style = `${fontCss}font-size: ${hourlyTextSize}px; font-weight: 400; text-align: center; color: inherit;`;
+        uiElements.hourlyActors.forEach(actor => {
+            actor.timeLbl.style = buildWeatherTextStyle(fontCss, {
+                fontSize: hourlyTextSize,
+                fontWeight: TYPOGRAPHY_WEIGHT.regular,
+                margin: `margin-bottom: ${hourlyMargin}px;`,
+                textAlign: 'center',
             });
-        }
+            actor.icon.icon_size = hourlyIconSize;
+            actor.icon.style = `margin-bottom: ${hourlyMargin}px;`;
+            actor.tempLbl.style = buildWeatherTextStyle(fontCss, {
+                fontSize: hourlyTextSize,
+                fontWeight: TYPOGRAPHY_WEIGHT.medium,
+                textAlign: 'center',
+            });
+        });
     });
 }

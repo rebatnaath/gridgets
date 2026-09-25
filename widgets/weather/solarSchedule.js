@@ -4,28 +4,40 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Cairo from 'gi://cairo';
 import Soup from 'gi://Soup?version=3.0';
-import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, SECONDARY_OPACITY, cssColorToRgba, parseCssColor, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import {
+    CAIRO_OPERATOR_CLEAR,
+    CAIRO_OPERATOR_OVER,
+    parseCssColor,
+    resolveExplicitFontFamily,
+    resolveWidgetForegroundColor,
+    resolveAccentColor } from '../../utils/widgetUtils.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, startPollingTimer, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
+import { WEATHER_METADATA_OPACITY, WEATHER_SUBTLE_OPACITY } from './weatherCommon.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, ICON_OPACITY_SECONDARY, GRAPHICS_OPACITY, scaleFontSize } from '../../utils/typography.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const REF_WIDTH_PX = 240;
 const REF_HEIGHT_PX = 240;
 const CONTAINER_PADDING_V_PX = 18;
 const CONTAINER_PADDING_H_PX = 20;
-const HEADER_FONT_SIZE_PX = 14;
-const TIME_FONT_SIZE_PX = 15;
-const STATUS_FONT_SIZE_PX = 11;
-const METRIC_ICON_SIZE_PX = 18;
+const MAIN_BOX_SPACING_PX = 6;
+const HEADER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.title;
+const HEADER_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.bold;
+const TIME_FONT_SIZE_PX = TYPOGRAPHY_SIZE.displayMD;
+const TIME_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.bold;
+const STATUS_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
+const STATUS_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.medium;
+const METRIC_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconMd;
 const ARC_MARGIN_X_RATIO = 0.1;
 const ARC_BASE_PADDING_RATIO = 0.18;
 const ARC_SEGMENT_COUNT = 64;
 const ORB_RADIUS_PX = 5;
+const METRIC_ITEM_SPACING_PX = 8;
+const METRIC_TEXT_SPACING_PX = 1;
 const REFERENCE_DAY_MINUTES = 720;
 const MIN_ARCH_HEIGHT_FACTOR = 0.3;
 const GAUSS_EDGE_FALLOFF = 0.07;
 const ARCH_SIGMA_SPAN_FRACTION = 0.5 / Math.sqrt(2 * Math.log(1 / GAUSS_EDGE_FALLOFF));
-const ARC_TRACK_ALPHA = 0.15;
-const BORDER_ALPHA = 0.14;
 
 const SUNRISE_ICON_NAME = 'daytime-sunrise-symbolic';
 const SUNSET_ICON_NAME = 'daytime-sunset-symbolic';
@@ -98,15 +110,12 @@ function systemUtcOffsetSeconds() {
 }
 
 export function createSunScheduleNode(config, width, height, xPosition, yPosition) {
-    const bgColor = resolveWidgetBackgroundColor(config);
     const textColor = resolveWidgetForegroundColor(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-    const borderRadius = config.appliedBorderRadius || 0;
-    const accentHex = config.globalAccentColor || '#3584e4';
+    const accentHex = resolveAccentColor(config);
     const accent = parseCssColor(accentHex);
     const textRgb = parseCssColor(textColor);
-    const textRgba = (alpha) => cssColorToRgba(textColor, alpha);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
     let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
@@ -138,9 +147,6 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
     arcCanvas.connect('repaint', drawArcCanvas);
     mainBox.add_child(arcCanvas);
 
-    const separator = new St.Widget({ x_expand: true, style: 'height: 1px;' });
-    mainBox.add_child(separator);
-
     const footerBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         x_align: Clutter.ActorAlign.FILL,
@@ -149,7 +155,7 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
     const buildMetricItem = (iconName) => {
         const itemBox = new St.BoxLayout({
             orientation: Clutter.Orientation.HORIZONTAL,
-            style: 'spacing: 8px;',
+            style: `spacing: ${METRIC_ITEM_SPACING_PX}px;`,
         });
         const icon = new St.Icon({
             icon_name: iconName,
@@ -158,7 +164,7 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
         });
         const infoBox = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
-            style: 'spacing: 1px;',
+            style: `spacing: ${METRIC_TEXT_SPACING_PX}px;`,
         });
         const timeLabel = new St.Label({ text: '--:--' });
         const statusLabel = new St.Label({ text: '' });
@@ -215,36 +221,29 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
      * baseline, shorter days render lower, longer days cap at full height.
      */
     function archHeightFactor() {
-        const { dayLength } = daylightWindow();
+        const dayLength = daylightMinutes();
         return Math.max(MIN_ARCH_HEIGHT_FACTOR, Math.min(1, dayLength / REFERENCE_DAY_MINUTES));
     }
 
     function traceArch(ctx, leftX, spanX, baseY, radiusY, startT, endT) {
         ctx.newSubPath();
         for (let i = 0; i <= ARC_SEGMENT_COUNT; i++) {
-            const t = startT + ((endT - startT) * i) / ARC_SEGMENT_COUNT;
-            const x = leftX + t * spanX;
-            const y = baseY - radiusY * Math.exp(-((t - 0.5) ** 2) / (2 * ARCH_SIGMA_SPAN_FRACTION * ARCH_SIGMA_SPAN_FRACTION));
+            const archProgress = startT + ((endT - startT) * i) / ARC_SEGMENT_COUNT;
+            const pointX = leftX + archProgress * spanX;
+            const pointY = baseY - radiusY * Math.exp(-((archProgress - 0.5) ** 2) / (2 * ARCH_SIGMA_SPAN_FRACTION * ARCH_SIGMA_SPAN_FRACTION));
             if (i === 0)
-                ctx.moveTo(x, y);
+                ctx.moveTo(pointX, pointY);
             else
-                ctx.lineTo(x, y);
+                ctx.lineTo(pointX, pointY);
         }
         ctx.stroke();
     }
 
-    function daylightWindow() {
+    function daylightMinutes() {
         if (arcSunriseMinutes !== null && arcSunsetMinutes !== null && arcSunsetMinutes > arcSunriseMinutes)
-            return { dayLength: arcSunsetMinutes - arcSunriseMinutes };
+            return arcSunsetMinutes - arcSunriseMinutes;
         // placeholder full-height arch until a real schedule arrives
-        return { dayLength: REFERENCE_DAY_MINUTES };
-    }
-
-    function isNight() {
-        if (arcSunriseMinutes === null || arcSunsetMinutes === null)
-            return false;
-        const now = nowInLocationMinutes(offsetShiftMinutes);
-        return now < arcSunriseMinutes || now > arcSunsetMinutes;
+        return REFERENCE_DAY_MINUTES;
     }
 
     function drawArcCanvas(canvas) {
@@ -266,12 +265,10 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
         const radiusY = Math.max(1, availableHeight * archHeightFactor());
         const baseY = canvasHeight - basePadding;
 
-        // after sundown the arch switches from muted text to the accent color
-        const bellColor = isNight() ? accent : textRgb;
 
         ctx.setLineCap(Cairo.LineCap.ROUND);
 
-        ctx.setSourceRGBA(bellColor.r, bellColor.g, bellColor.b, ARC_TRACK_ALPHA);
+        ctx.setSourceRGBA(textRgb.r, textRgb.g, textRgb.b, GRAPHICS_OPACITY.arcTrack);
         ctx.setLineWidth(trackWidth);
         traceArch(ctx, leftX, spanX, baseY, radiusY, 0, 1);
 
@@ -327,55 +324,31 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
                 const now = nowInLocationMinutes(offsetShiftMinutes);
                 const todayStr = todayLocationDateStr(offsetShiftMinutes);
 
-                // Find most recent passed sunrise
-                let lastSunrise = null;
-                for (let i = daily.sunrise ? daily.sunrise.length - 1 : -1; i >= 0; i--) {
-                    const riseMin = isoToMinutes(daily.sunrise[i]);
-                    const riseDate = isoToDateString(daily.sunrise[i]);
-                    if (riseMin === null || riseDate === null) continue;
-                    if (riseDate < todayStr || (riseDate === todayStr && riseMin <= now)) {
-                        lastSunrise = {dateStr: riseDate, minutes: riseMin};
-                        break;
+                // One search for all four events: past events scan backwards for
+                // the latest already-occurred entry, upcoming events scan forwards
+                // for the earliest still-to-come one.
+                const findEvent = (series, isPast) => {
+                    if (!Array.isArray(series)) return null;
+                    const indices = isPast
+                        ? Array.from({ length: series.length }, (_unused, index) => series.length - 1 - index)
+                        : series.keys();
+                    for (const i of indices) {
+                        const minutes = isoToMinutes(series[i]);
+                        const dateStr = isoToDateString(series[i]);
+                        if (minutes === null || dateStr === null) continue;
+                        const isPastEntry = dateStr < todayStr
+                            || (dateStr === todayStr && minutes <= now);
+                        if (isPastEntry === isPast)
+                            return { dateStr, minutes };
                     }
-                }
+                    return null;
+                };
 
-                // Find next future sunset
-                let nextSunset = null;
-                for (let i = 0; i < (daily.sunset ? daily.sunset.length : 0); i++) {
-                    const setMin = isoToMinutes(daily.sunset[i]);
-                    const setDate = isoToDateString(daily.sunset[i]);
-                    if (setMin === null || setDate === null) continue;
-                    if (setDate > todayStr || (setDate === todayStr && setMin > now)) {
-                        nextSunset = {dateStr: setDate, minutes: setMin};
-                        break;
-                    }
-                }
+                const lastSunrise = findEvent(daily.sunrise, true);
+                const nextSunset = findEvent(daily.sunset, false);
+                const nextSunrise = findEvent(daily.sunrise, false);
+                const lastSunset = findEvent(daily.sunset, true);
 
-                // Find next future sunrise
-                let nextSunrise = null;
-                for (let i = 0; i < (daily.sunrise ? daily.sunrise.length : 0); i++) {
-                    const riseMin = isoToMinutes(daily.sunrise[i]);
-                    const riseDate = isoToDateString(daily.sunrise[i]);
-                    if (riseMin === null || riseDate === null) continue;
-                    if (riseDate > todayStr || (riseDate === todayStr && riseMin > now)) {
-                        nextSunrise = {dateStr: riseDate, minutes: riseMin};
-                        break;
-                    }
-                }
-
-                // Find most recent passed sunset
-                let lastSunset = null;
-                for (let i = daily.sunset ? daily.sunset.length - 1 : -1; i >= 0; i--) {
-                    const setMin = isoToMinutes(daily.sunset[i]);
-                    const setDate = isoToDateString(daily.sunset[i]);
-                    if (setMin === null || setDate === null) continue;
-                    if (setDate < todayStr || (setDate === todayStr && setMin <= now)) {
-                        lastSunset = {dateStr: setDate, minutes: setMin};
-                        break;
-                    }
-                }
-
-                // Daylight = now falls between a past sunrise and a future sunset.
                 const isDaylight = lastSunrise !== null && nextSunset !== null
                     && now >= lastSunrise.minutes && now < nextSunset.minutes;
 
@@ -426,37 +399,35 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
         state.cancellable.cancel();
     });
 
-    function applyLayout(currentWidth, currentHeight) {
-        if (!currentWidth || !currentHeight) return;
-        scale = Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX);
-        const px = (v) => Math.max(1, Math.round(v * scale));
+    function applyLayout(nextScale) {
+        scale = nextScale;
+        const px = value => scaleFontSize(value, scale);
 
-        container.style = `${fontCss}background-color: ${bgColor}; border-radius: ${borderRadius}px;`
-            + `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px;`
-            + `border: 1px solid ${textRgba(BORDER_ALPHA)};`;
-
-        cityLabel.style = `${fontCss}font-size: ${px(HEADER_FONT_SIZE_PX)}px;`
-            + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
-        separator.style = `height: 1px; background-color: ${textRgba(0.12)}; margin: ${px(6)}px 0;`;
+        cityLabel.style = `${fontCss}font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px;`
+            + `font-weight: ${HEADER_FONT_WEIGHT}; color: ${textColor}; opacity: ${WEATHER_SUBTLE_OPACITY};`;
 
         for (const item of [sunriseItem, sunsetItem]) {
-            item.icon.style = `color: ${textColor}; opacity: 0.7;`;
+            item.icon.style = `color: ${textColor}; opacity: ${ICON_OPACITY_SECONDARY};`;
             item.icon.set_icon_size(px(METRIC_ICON_SIZE_PX));
-            item.timeLabel.style = `${fontCss}font-size: ${px(TIME_FONT_SIZE_PX)}px;`
-                + `color: ${textColor};`;
-            item.statusLabel.style = `${fontCss}font-size: ${px(STATUS_FONT_SIZE_PX)}px;`
-                + `color: ${textColor}; opacity: ${SECONDARY_OPACITY};`;
+            item.timeLabel.style = `${fontCss}font-size: ${scaleFontSize(TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px;`
+                + `font-weight: ${TIME_FONT_WEIGHT}; color: ${textColor};`;
+            item.statusLabel.style = `${fontCss}font-size: ${scaleFontSize(STATUS_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+                + `font-weight: ${STATUS_FONT_WEIGHT}; color: ${textColor}; opacity: ${WEATHER_METADATA_OPACITY};`;
         }
 
-        mainBox.style = `spacing: ${px(6)}px;`;
+        // Padding goes on the content box, not the container: assigning
+        // container.style would replace the themed background, corner radius and
+        // foreground colour that createWidgetContainer already applied.
+        mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px;`
+            + `spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
 
         renderDynamic();
     }
 
-    applyLayout(width, height);
-    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (_ratio, w, h) => {
+    applyLayout(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
+    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (scale) => {
         if (isActorDestroyed(container)) return;
-        applyLayout(w, h);
+        applyLayout(scale);
     });
 
     startPollingTimer(renderDynamic, UI_TICK_INTERVAL_MS, state);
