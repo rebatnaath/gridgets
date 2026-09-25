@@ -14,11 +14,14 @@ export function watchActorLifecycle(actor) {
     return actor;
 }
 
-/** Returns true when the actor is gone (or already flagged destroyed). */
+/**
+ * Returns true when the actor is gone. Only meaningful for actors registered
+ * with watchActorLifecycle(); GNOME Shell 45-50 exposes no destruction flag on
+ * Clutter.Actor, so an unwatched actor cannot be detected.
+ */
 export function isActorDestroyed(actor) {
-    if (!actor || DESTROYED_ACTORS.has(actor))
+    if (!actor)
         return true;
 
-    const flag = actor.is_destroyed;
-    return typeof flag === 'function' ? !!flag.call(actor) : Boolean(flag);
+    return DESTROYED_ACTORS.has(actor);
 }
