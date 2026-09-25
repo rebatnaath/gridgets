@@ -1,18 +1,20 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { SECONDARY_OPACITY, cssColorToRgba, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
+import { resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveChildCornerRadius, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { createWidgetContainer, connectTimerCleanup, startPollingTimer, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 
 const DATE_POLL_INTERVAL_MS = 60_000;
-const BORDER_ALPHA = 0.14;
 const BASE_SCALE_SIZE = 200;
 const TOP_BAR_RADIUS_PX = 12;
-const DAY_FONT_SIZE_PX = 13;
-const DATE_FONT_SIZE_PX = 48;
-const MONTH_FONT_SIZE_PX = 15;
+const DAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.title;
+const DATE_FONT_SIZE_PX = 70;
+const MONTH_FONT_SIZE_PX = TYPOGRAPHY_SIZE.title;
+const SECONDARY_TEXT_OPACITY = TEXT_OPACITY.subtle;
+const SECONDARY_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.semibold;
 const MONTH_MARGIN_BOTTOM_PX = 8;
-const CONTENT_BG_ALPHA = 0.06;
 
 function getToday() {
     const now = GLib.DateTime.new_now_local();
@@ -27,11 +29,13 @@ const MONTH_NAMES = [
 
 export function createCalendarNode(config, width, height, xPosition, yPosition) {
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
-    const bgColor = resolveWidgetBackgroundColor(config);
+    connectShortClick(container, () => launchApplication('gnome-calendar'));
     const textColor = resolveWidgetForegroundColor(config);
+    const { card } = resolveWidgetSurfaces(config);
+    const backgroundColor = resolveWidgetBackgroundColor(config);
+    const borderRadius = resolveWidgetCornerRadius(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-    container.style += ` border: 1px solid ${cssColorToRgba(textColor, BORDER_ALPHA)};`;
 
     let scale = Math.min(width / BASE_SCALE_SIZE, height / BASE_SCALE_SIZE);
 
@@ -45,7 +49,7 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const topBar = new St.Widget({
         x_expand: true,
         y_expand: true,
-        style: `background-color: ${bgColor}; border-radius: ${TOP_BAR_RADIUS_PX}px ${TOP_BAR_RADIUS_PX}px 0 0;`,
+        style: `border-radius: ${borderRadius}px ${borderRadius}px 0 0;`,
         layout_manager: new Clutter.BinLayout(),
     });
 
@@ -53,7 +57,7 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; font-size: ${Math.round(DAY_FONT_SIZE_PX * scale)}px; opacity: ${SECONDARY_OPACITY};`,
+        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT}; opacity: ${SECONDARY_TEXT_OPACITY};`,
     });
     topBar.add_child(dayLabel);
     outerBox.add_child(topBar);
@@ -61,7 +65,7 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const contentPanel = new St.Widget({
         x_expand: true,
         y_expand: true,
-        style: `background-color: ${cssColorToRgba(textColor, CONTENT_BG_ALPHA)}; border-radius: 0 0 ${TOP_BAR_RADIUS_PX}px ${TOP_BAR_RADIUS_PX}px;`,
+        style: `background-color: ${card}; border-radius: 0 0 ${resolveChildCornerRadius(TOP_BAR_RADIUS_PX, scale)}px ${resolveChildCornerRadius(TOP_BAR_RADIUS_PX, scale)}px;`,
         layout_manager: new Clutter.BinLayout(),
     });
 
@@ -76,15 +80,15 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const dateNumber = new St.Label({
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; font-size: ${Math.round(DATE_FONT_SIZE_PX * scale)}px; font-weight: 300;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DATE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; font-weight: ${TYPOGRAPHY_WEIGHT.black};`,
     });
     contentBox.add_child(dateNumber);
 
     const monthLabel = new St.Label({
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; font-size: ${Math.round(MONTH_FONT_SIZE_PX * scale)}px; `
-            + `opacity: ${SECONDARY_OPACITY}; margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(MONTH_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT}; `
+            + `opacity: ${SECONDARY_TEXT_OPACITY}; margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`,
     });
     contentBox.add_child(monthLabel);
 
@@ -93,10 +97,10 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
 
     function applyScale(newScale) {
         scale = newScale;
-        dayLabel.style = `${fontCss}color: ${textColor}; font-size: ${Math.round(DAY_FONT_SIZE_PX * scale)}px; opacity: ${SECONDARY_OPACITY};`;
-        dateNumber.style = `${fontCss}color: ${textColor}; font-size: ${Math.round(DATE_FONT_SIZE_PX * scale)}px; font-weight: 300;`;
-        monthLabel.style = `${fontCss}color: ${textColor}; font-size: ${Math.round(MONTH_FONT_SIZE_PX * scale)}px; `
-            + `opacity: ${SECONDARY_OPACITY}; margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`;
+        dayLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+        dateNumber.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DATE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; font-weight: ${TYPOGRAPHY_WEIGHT.black};`;
+        monthLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(MONTH_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT}; `
+            + `opacity: ${SECONDARY_TEXT_OPACITY}; margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`;
     }
 
     function render() {
@@ -115,8 +119,8 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     startPollingTimer(render, DATE_POLL_INTERVAL_MS, state);
     connectTimerCleanup(container, state);
 
-    attachResponsiveScaler(container, BASE_SCALE_SIZE, BASE_SCALE_SIZE, (_ratio, w, h) => {
-        applyScale(Math.min(w / BASE_SCALE_SIZE, h / BASE_SCALE_SIZE));
+    attachResponsiveScaler(container, BASE_SCALE_SIZE, BASE_SCALE_SIZE, (scale) => {
+        applyScale(scale);
     });
 
     return container;
