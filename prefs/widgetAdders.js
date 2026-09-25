@@ -15,8 +15,20 @@ export function addTimeWidget(settings, width = 3, height = 2, layout = 'digital
     addWidget(settings, config, width, height);
 }
 
-export function addWeatherWidget(settings, city = 'London', width = 3, height = 3, layout = 'standard') {
-    addWidget(settings, { id: nextWidgetId(settings, 'weather'), type: 'weather', location: city, layout }, width, height);
+export function addWeatherWidget(settings, location, width = 3, height = 3, layout = 'standard') {
+    if (!location?.name || location.latitude === undefined || location.longitude === undefined)
+        return;
+
+    addWidget(settings, {
+        id: nextWidgetId(settings, 'weather'),
+        type: 'weather',
+        location: location.name,
+        lat: location.latitude,
+        lon: location.longitude,
+        layout,
+        weatherDynamicColorFollowGlobal: true,
+        weatherDynamicImageFollowGlobal: true,
+    }, width, height);
 }
 
 export function addMusicWidget(settings, width = 4, height = 4) {
@@ -128,6 +140,7 @@ export function addSlideshowWidget(settings, folderPath, intervalSeconds = 10, w
         intervalSeconds,
         caption: finalCaption,
         showCaption: showCaption !== false,
+        captionFollowGlobal: showCaption !== false,
     };
 
     addWidget(settings, widgetConfig, width, height);
@@ -141,6 +154,7 @@ export function addImageWidget(settings, imagePath, caption = 'My Image', showCa
         imagePath,
         caption: finalCaption,
         showCaption: showCaption !== false,
+        captionFollowGlobal: showCaption !== false,
     };
 
     addWidget(settings, widgetConfig, width, height);
