@@ -1,10 +1,8 @@
 import Gtk from 'gi://Gtk';
-import Pango from 'gi://Pango';
 import Adw from 'gi://Adw';
 
 import {
     addTimeWidget,
-    addWeatherWidget,
     addMusicWidget,
     addPomodoroWidget,
     addPomodoroFocusWidget,
@@ -26,234 +24,204 @@ import {
     openAddImageDialog,
     openAddSlideshowDialog,
     openAddWorldClockDialog,
+    openAddWeatherDialog,
     openAddGithubDialog,
     openAddRssHeadlinesDialog,
     openAddSunScheduleDialog,
 } from './widgetAddDialogs.js';
 
-import { STORE_CATEGORIES, STORE_WIDGETS } from './widgetCatalog.js';
+import { STORE_WIDGETS } from './widgetCatalog.js';
+import { isGnomeWeatherAvailable } from './appAvailability.js';
 
-const DESKTOP_PREVIEW_SIZE_PX = 120;
-const DESKTOP_CARD_HEIGHT_PX = 240;
-const CARDS_PER_ROW = 3;
-const CLAMP_MAXIMUM_SIZE = 1400;
-const CLAMP_TIGHTENING_THRESHOLD = 480;
+const PREVIEW_SIZE_PX = 104;
+const CARD_WIDTH_PX = 204;
+const CARD_HEIGHT_PX = 244;
+const MAX_CARDS_PER_ROW = 3;
 
-function escapeMarkup(text) {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function buildPreviewArea(extensionPath, thumbnail, previewSize, fallbackIconName = null) {
-    const previewArea = new Gtk.Box({
+function buildPreview(extensionPath, thumbnail, fallbackIconName) {
+    const preview = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
         halign: Gtk.Align.CENTER,
         valign: Gtk.Align.CENTER,
         hexpand: true,
         vexpand: true,
     });
-    previewArea.set_size_request(previewSize, previewSize);
+    preview.set_size_request(-1, PREVIEW_SIZE_PX);
+    preview.set_margin_top(10);
+    preview.set_margin_bottom(6);
+    preview.set_margin_start(10);
+    preview.set_margin_end(10);
 
     if (thumbnail) {
         const picture = Gtk.Picture.new_for_filename(`${extensionPath}/assets/thumbnails/${thumbnail}`);
         picture.set_content_fit(Gtk.ContentFit.CONTAIN);
         picture.set_can_shrink(true);
-        picture.set_halign(Gtk.Align.FILL);
-        picture.set_valign(Gtk.Align.FILL);
-        picture.set_hexpand(true);
-        picture.set_vexpand(true);
-        picture.set_margin_top(2);
-        picture.set_margin_bottom(2);
-        previewArea.append(picture);
+        picture.set_halign(Gtk.Align.CENTER);
+        picture.set_valign(Gtk.Align.CENTER);
+        preview.append(picture);
     } else if (fallbackIconName) {
-        const icon = new Gtk.Image({
+        preview.append(new Gtk.Image({
             icon_name: fallbackIconName,
-            pixel_size: 72,
+            pixel_size: 64,
             halign: Gtk.Align.CENTER,
             valign: Gtk.Align.CENTER,
-        });
-        previewArea.append(icon);
+        }));
     }
 
-    return previewArea;
+    return preview;
 }
 
-function buildTextLabels(title, description) {
-    const safeTitle = escapeMarkup(title);
-    const safeDesc = escapeMarkup(description);
-
-    const titleLabel = new Gtk.Label({ xalign: 0, hexpand: true });
-    titleLabel.set_markup(`<b>${safeTitle}</b>`);
-
-    const descLabel = new Gtk.Label({
-        xalign: 0, hexpand: true, wrap: true,
-        wrap_mode: Pango.WrapMode.WORD,
-        max_width_chars: 24,
-    });
-    descLabel.set_markup(`<span size='small' alpha='65%'>${safeDesc}</span>`);
-
-    return { titleLabel, descLabel };
-}
-
-function createDesktopWidgetCard(extensionPath, widgetEntry, onAddClick) {
-    const { title, description, gridSize, thumbnail } = widgetEntry;
-
+function buildStoreCard(extensionPath, widgetEntry, onAdd, buttonState = {}) {
+    const { title, description, gridSize, thumbnail, fallbackIconName } = widgetEntry;
     const card = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
-        spacing: 4,
+        spacing: 0,
+        width_request: CARD_WIDTH_PX,
+        height_request: CARD_HEIGHT_PX,
+        margin_start: 4,
+        margin_end: 4,
+        margin_top: 4,
+        margin_bottom: 4,
         css_classes: ['card'],
+    });
+
+    card.append(buildPreview(extensionPath, thumbnail, fallbackIconName));
+
+    const row = new Adw.ActionRow({
+        title,
+        subtitle: `${description}  ·  ${gridSize}`,
+        use_markup: false,
+        hexpand: true,
+        margin_start: 10,
+        margin_end: 10,
         margin_top: 6,
         margin_bottom: 6,
-        margin_start: 6,
-        margin_end: 6,
     });
-    card.set_size_request(-1, DESKTOP_CARD_HEIGHT_PX);
+    card.append(row);
 
-    // Preview area
-    card.append(buildPreviewArea(extensionPath, thumbnail, DESKTOP_PREVIEW_SIZE_PX));
-
-    // Text block
-    const textBox = new Gtk.Box({
-        orientation: Gtk.Orientation.VERTICAL,
-        spacing: 1,
-        margin_start: 12,
-        margin_end: 12,
-        margin_top: 2,
-    });
-
-    const { titleLabel, descLabel } = buildTextLabels(title, description);
-    textBox.append(titleLabel);
-    textBox.append(descLabel);
-
-    // Grid size badge
-    const sizeLabel = new Gtk.Label({ xalign: 0, hexpand: true });
-    sizeLabel.set_markup(`<span size='x-small' alpha='40%'>${gridSize}</span>`);
-    textBox.append(sizeLabel);
-
-    card.append(textBox);
-
-    // Add button
     const addButton = new Gtk.Button({
         label: 'Add',
-        css_classes: ['suggested-action', 'pill'],
-        margin_start: 12,
-        margin_end: 12,
-        margin_bottom: 10,
-        valign: Gtk.Align.END,
-        vexpand: true,
+        hexpand: true,
+        margin_start: 10,
+        margin_end: 10,
+        margin_top: 2,
+        margin_bottom: 8,
+        tooltip_text: `Add ${title}`,
     });
-    addButton.connect('clicked', onAddClick);
+    addButton.set_sensitive(buttonState.sensitive ?? true);
+    if (buttonState.tooltipText)
+        addButton.set_tooltip_text(buttonState.tooltipText);
+    addButton.connect('clicked', onAdd);
     card.append(addButton);
 
     return card;
 }
 
-
-function createCategoryGroup(title, cards) {
-    const safeTitle = escapeMarkup(title);
-    const group = new Adw.PreferencesGroup({ title: safeTitle });
-
-    const flowBox = new Gtk.FlowBox({
+function buildCategoryGroup(title, cards) {
+    const group = new Adw.PreferencesGroup({
+        title,
+    });
+    const grid = new Gtk.Grid({
+        column_homogeneous: true,
+        row_homogeneous: true,
         column_spacing: 10,
         row_spacing: 10,
-        homogeneous: true,
-        selection_mode: Gtk.SelectionMode.NONE,
-        activate_on_single_click: false,
-        max_children_per_line: CARDS_PER_ROW,
-        min_children_per_line: CARDS_PER_ROW,
-        halign: Gtk.Align.FILL,
-        valign: Gtk.Align.START,
-        margin_top: 4,
-        margin_bottom: 4,
-        margin_start: 4,
-        margin_end: 4,
+        margin_top: 12,
+        margin_bottom: 16,
+        margin_start: 8,
+        margin_end: 8,
+        hexpand: true,
     });
-
-    cards.forEach(card => flowBox.append(card));
-
-    const clamp = new Adw.Clamp({
-        maximum_size: CLAMP_MAXIMUM_SIZE,
-        tightening_threshold: CLAMP_TIGHTENING_THRESHOLD,
-        child: flowBox,
+    cards.forEach((card, index) => {
+        grid.attach(
+            card,
+            index % MAX_CARDS_PER_ROW,
+            Math.floor(index / MAX_CARDS_PER_ROW),
+            1,
+            1
+        );
     });
-
-    group.add(clamp);
+    group.add(grid);
     return group;
+}
+
+function addStoreCategory(page, title, cards) {
+    if (cards.length > 0)
+        page.add(buildCategoryGroup(title, cards));
 }
 
 export function buildStorePage(window, settings, extensionPath) {
     const page = new Adw.PreferencesPage({
-        title: 'Gridgets Store',
-        icon_name: 'software-update-available-symbolic',
+        title: 'Widget Store',
+        icon_name: 'system-software-install-symbolic',
     });
 
-    const addWeather = (width, height, layout) => {
-        addWeatherWidget(settings, settings.get_string('weather-city'), width, height, layout);
-    };
+    const weatherAvailable = isGnomeWeatherAvailable();
 
-    // ── Weather ──────────────────────────────────────────────
-    page.add(createCategoryGroup('Weather', [
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.weather[0]], () => addWeather(3, 3, 'standard')),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.weather[1]], () => addWeather(3, 3, 'simple')),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.weather[2]], () => addWeather(6, 4, 'forecast')),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.sunScheduleWidget, () => openAddSunScheduleDialog(window, settings)),
-    ]));
+    const buildUnavailableState = (isAvailable, appName, action) => ({
+        sensitive: isAvailable,
+        tooltipText: isAvailable ? action : `${appName} is required. Install ${appName} first.`,
+    });
 
-    // ── Media ────────────────────────────────────────────────
-    page.add(createCategoryGroup('Media', [
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.music[0]], () => addMusicWidget(settings, 4, 4)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.music[1]], () => addMusicWidget(settings, 8, 4)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.media[0]], () => openAddImageDialog(window, settings)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.media[1]], () => openAddSlideshowDialog(window, settings)),
-    ]));
+    const weatherState = buildUnavailableState(weatherAvailable, 'GNOME Weather', 'Add a weather widget');
 
-    // ── System Monitor ───────────────────────────────────────
-    page.add(createCategoryGroup('System Monitor', [
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.systemDashboard, () => addSystemDashboardWidget(settings, 4, 4)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.systemMonitor, () => addCpuRamWidget(settings, 4, 2)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.networkSpeed, () => addNetworkSpeedWidget(settings, 3, 2)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.screenTimeWidget, () => addScreenTimeWidget(settings)),
-    ]));
-
-    // ── Focus & Productivity ─────────────────────────────────
-    page.add(createCategoryGroup('Focus & Productivity', [
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.pomodoroTimer, () => addPomodoroWidget(settings, 4, 4)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.pomodoroFocus, () => addPomodoroFocusWidget(settings, 4, 2)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.todoWidget, () => addTodoWidget(settings)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.quickNotes, () => addNotesWidget(settings, 4, 4)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.clipboardHistory, () => addClipboardWidget(settings, 4, 4)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.appLauncher, () => openAddAppLauncherDialog(window, settings)),
-    ]));
-
-    // ── Time & Calendar ──────────────────────────────────────
-    page.add(createCategoryGroup('Time & Calendar', [
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.time[0]], () => addTimeWidget(settings, 3, 2, 'digital')),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.time[1]], () => openAddWorldClockDialog(window, settings)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.time[2]], () => addCalendarWidget(settings)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS[STORE_CATEGORIES.time[3]], () => addCalendarGridWidget(settings)),
-    ]));
-
-    // ── Personal ─────────────────────────────────────────────
-    page.add(createCategoryGroup('Personal', [
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.githubWidget, () => openAddGithubDialog(window, settings)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.rssHeadlinesWidget, () => openAddRssHeadlinesDialog(window, settings)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.quotesWidget, () => addQuotesWidget(settings)),
-        createDesktopWidgetCard(extensionPath, STORE_WIDGETS.moodWidget, () => addMoodWidget(settings)),
-    ]));
-
-    // Raise PreferencesPage's internal ~600px clamp so the grid grows with the window.
-    const stack = [page];
-    while (stack.length > 0) {
-        const widget = stack.pop();
-        if (widget instanceof Adw.Clamp) {
-            widget.maximum_size = CLAMP_MAXIMUM_SIZE;
-            widget.tightening_threshold = 900;
-            continue;
-        }
-        let child = widget.get_first_child();
-        while (child) {
-            stack.push(child);
-            child = child.get_next_sibling();
-        }
+    if (!weatherAvailable) {
+        const unavailableGroup = new Adw.PreferencesGroup();
+        const unavailableRow = new Adw.ActionRow({
+            title: 'GNOME Weather is not available',
+            subtitle: 'Install GNOME Weather to enable weather widgets.',
+        });
+        unavailableRow.add_prefix(new Gtk.Image({
+            icon_name: 'weather-clear-symbolic',
+            pixel_size: 28,
+        }));
+        unavailableGroup.add(unavailableRow);
+        page.add(unavailableGroup);
     }
+
+    addStoreCategory(page, 'Weather', [
+        buildStoreCard(extensionPath, STORE_WIDGETS.weatherStandard, () => openAddWeatherDialog(window, settings, 3, 3, 'standard'), weatherState),
+        buildStoreCard(extensionPath, STORE_WIDGETS.weatherMinimal, () => openAddWeatherDialog(window, settings, 3, 3, 'simple'), weatherState),
+        buildStoreCard(extensionPath, STORE_WIDGETS.weatherForecast, () => openAddWeatherDialog(window, settings, 6, 4, 'forecast'), weatherState),
+        buildStoreCard(extensionPath, STORE_WIDGETS.sunScheduleWidget, () => openAddSunScheduleDialog(window, settings), weatherState),
+    ]);
+
+    addStoreCategory(page, 'Media', [
+        buildStoreCard(extensionPath, STORE_WIDGETS.musicPlayer, () => addMusicWidget(settings, 4, 4)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.musicPlayerWide, () => addMusicWidget(settings, 8, 4)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.imageGif, () => openAddImageDialog(window, settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.imageSlideshow, () => openAddSlideshowDialog(window, settings)),
+    ]);
+
+    addStoreCategory(page, 'System', [
+        buildStoreCard(extensionPath, STORE_WIDGETS.systemDashboard, () => addSystemDashboardWidget(settings, 4, 4)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.systemMonitor, () => addCpuRamWidget(settings, 4, 2)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.networkSpeed, () => addNetworkSpeedWidget(settings, 3, 2)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.screenTimeWidget, () => addScreenTimeWidget(settings)),
+    ]);
+
+    addStoreCategory(page, 'Focus and Productivity', [
+        buildStoreCard(extensionPath, STORE_WIDGETS.pomodoroTimer, () => addPomodoroWidget(settings, 4, 4)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.pomodoroFocus, () => addPomodoroFocusWidget(settings, 4, 2)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.todoWidget, () => addTodoWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.quickNotes, () => addNotesWidget(settings, 4, 4)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.clipboardHistory, () => addClipboardWidget(settings, 4, 4)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.appLauncher, () => openAddAppLauncherDialog(window, settings)),
+    ]);
+
+    addStoreCategory(page, 'Time and Calendar', [
+        buildStoreCard(extensionPath, STORE_WIDGETS.timeAndDate, () => addTimeWidget(settings, 3, 2, 'digital')),
+        buildStoreCard(extensionPath, STORE_WIDGETS.worldClock, () => openAddWorldClockDialog(window, settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.calendarWidget, () => addCalendarWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.calendarGrid, () => addCalendarGridWidget(settings)),
+    ]);
+
+    addStoreCategory(page, 'Personal', [
+        buildStoreCard(extensionPath, STORE_WIDGETS.githubWidget, () => openAddGithubDialog(window, settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.rssHeadlinesWidget, () => openAddRssHeadlinesDialog(window, settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.quotesWidget, () => addQuotesWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.moodWidget, () => addMoodWidget(settings)),
+    ]);
 
     return page;
 }

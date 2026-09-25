@@ -185,29 +185,6 @@ export const STORE_WIDGETS = Object.freeze({
     },
 });
 
-export const STORE_CATEGORIES = Object.freeze({
-    weather: ['weatherStandard', 'weatherMinimal', 'weatherForecast', 'sunScheduleWidget'],
-    music: ['musicPlayer', 'musicPlayerWide'],
-    time: ['timeAndDate', 'worldClock', 'calendarWidget', 'calendarGrid'],
-    media: ['imageGif', 'imageSlideshow'],
-    utilities: [
-        'systemDashboard',
-        'pomodoroTimer',
-        'pomodoroFocus',
-        'systemMonitor',
-        'networkSpeed',
-        'quickNotes',
-        'clipboardHistory',
-        'appLauncher',
-        'quotesWidget',
-        'screenTimeWidget',
-        'githubWidget',
-        'todoWidget',
-        'rssHeadlinesWidget',
-        'moodWidget',
-    ],
-});
-
 function getWeatherEntryKey(widget) {
     const layout = widget.layout || (widget.width >= 6 ? 'forecast' : (widget.width === 4 ? 'simple' : 'standard'));
     if (layout === 'forecast') {
@@ -267,7 +244,6 @@ function getStoreWidgetKey(widget) {
         case 'github':
             return 'githubWidget';
         case 'rss-headlines':
-        case 'rss-feed':
             return 'rssHeadlinesWidget';
         case 'mood':
             return 'moodWidget';
@@ -306,7 +282,6 @@ export function getWidgetDetailText(widget) {
         case 'image':
             return `File: ${getPathBaseName(widget.imagePath, 'Unknown')}`;
         case 'rss-headlines':
-        case 'rss-feed':
             return `Feed: ${widget.feedUrl || 'Not configured'}`;
         case 'pomodoro-focus':
             return `Focus: ${widget.workMinutes || 25} min sessions`;
