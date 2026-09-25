@@ -1,11 +1,12 @@
 import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
-import { isWideMusicLayout, DEFAULT_FONT_FAMILY, DEFAULT_BG_COLOR, DEFAULT_FG_COLOR } from '../utils/widgetUtils.js';
+import { isWideMusicLayout, DEFAULT_BG_COLOR, DEFAULT_FG_COLOR } from '../utils/widgetUtils.js';
 import { openImageFileDialog } from './fileDialogs.js';
 import { createNormalizedFontDescription } from './aestheticControls.js';
 import { DEFAULT_RSS_REFRESH_MINUTES } from './widgetAdders.js';
-import { createLiveCitySearchRow, buildOpenMeteoCitySearchRow } from './citySearch.js';
+import { createGnomeWeatherLocationPicker } from './gnomeWeatherLocations.js';
+import { createGnomeClocksLocationPicker } from './gnomeClocksLocations.js';
 import { createAppSelectionControls } from './appSelection.js';
 import { buildCaptionControls } from './captionControls.js';
 import { getConnectedMonitorsCount, buildMonitorEntries } from './displayUtils.js';
@@ -169,11 +170,17 @@ export function buildSunScheduleSettings(grid, rowIdx, widget, saveHandlers) {
         currentLocation.latitude = widget.latitude;
         currentLocation.longitude = widget.longitude;
     }
-    const locationPicker = buildOpenMeteoCitySearchRow(grid, 'City Location:', currentLocation, rowIdx++);
+    const locationPicker = createGnomeWeatherLocationPicker(currentLocation);
+    const locationLabel = new Gtk.Label({ label: 'City Location:', xalign: 0 });
+    grid.attach(locationLabel, 0, rowIdx, 1, 1);
+    grid.attach(locationPicker.locationWidget, 1, rowIdx, 1, 1);
+    rowIdx++;
+    grid.attach(locationPicker.supportingWidget, 0, rowIdx, 2, 1);
+    rowIdx++;
 
     saveHandlers.push((target) => {
         const selectedLocation = locationPicker.getSelectedLocation();
-        if (selectedLocation && selectedLocation.name && selectedLocation.latitude !== undefined && selectedLocation.longitude !== undefined) {
+        if (selectedLocation) {
             target.city = selectedLocation.name;
             target.latitude = selectedLocation.latitude;
             target.longitude = selectedLocation.longitude;
@@ -184,29 +191,57 @@ export function buildSunScheduleSettings(grid, rowIdx, widget, saveHandlers) {
 }
 
 export function buildWeatherSettings(grid, rowIdx, widget, settings, saveHandlers) {
-    const currentLocation = { name: widget.location || 'London' };
+    const currentLocation = { name: widget.location || '' };
     if (widget.lat !== undefined && widget.lon !== undefined) {
         currentLocation.latitude = widget.lat;
         currentLocation.longitude = widget.lon;
     }
-    const cityPicker = buildOpenMeteoCitySearchRow(grid, 'City Location:', currentLocation, rowIdx++);
+    const cityPicker = createGnomeWeatherLocationPicker(currentLocation);
+    const cityLabel = new Gtk.Label({ label: 'City Location:', xalign: 0 });
+    grid.attach(cityLabel, 0, rowIdx, 1, 1);
+    grid.attach(cityPicker.locationWidget, 1, rowIdx, 1, 1);
+    rowIdx++;
+    grid.attach(cityPicker.supportingWidget, 0, rowIdx, 2, 1);
+    rowIdx++;
+
+    const colorFollowGlobal = widget.weatherDynamicColorFollowGlobal !== undefined
+        ? widget.weatherDynamicColorFollowGlobal
+        : widget.dynamicColor === undefined;
+    const colorFollowLabel = new Gtk.Label({ label: 'Use Global Dynamic Color:', xalign: 0, hexpand: true });
+    const colorFollowSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END, active: colorFollowGlobal });
+    grid.attach(colorFollowLabel, 0, rowIdx, 1, 1);
+    grid.attach(colorFollowSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
 
     const dynamicColorLabel = new Gtk.Label({ label: 'Dynamic Weather Color:', xalign: 0, hexpand: true });
     const dynamicColorSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
-    const isDynamicColorActive = widget.dynamicColor !== undefined
-        ? widget.dynamicColor
-        : settings.get_boolean('weather-dynamic-color');
+    const isDynamicColorActive = colorFollowGlobal
+        ? settings.get_boolean('weather-dynamic-color')
+        : (widget.dynamicColor !== undefined ? widget.dynamicColor : settings.get_boolean('weather-dynamic-color'));
     dynamicColorSwitch.set_active(isDynamicColorActive);
+    dynamicColorSwitch.set_sensitive(!colorFollowGlobal);
+    colorFollowSwitch.connect('notify::active', () => dynamicColorSwitch.set_sensitive(!colorFollowSwitch.get_active()));
     grid.attach(dynamicColorLabel, 0, rowIdx, 1, 1);
     grid.attach(dynamicColorSwitch, 1, rowIdx, 1, 1);
     rowIdx++;
 
+    const imageFollowGlobal = widget.weatherDynamicImageFollowGlobal !== undefined
+        ? widget.weatherDynamicImageFollowGlobal
+        : widget.dynamicImage === undefined;
+    const imageFollowLabel = new Gtk.Label({ label: 'Use Global Dynamic Overlay:', xalign: 0, hexpand: true });
+    const imageFollowSwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END, active: imageFollowGlobal });
+    grid.attach(imageFollowLabel, 0, rowIdx, 1, 1);
+    grid.attach(imageFollowSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
+
     const dynamicOverlayLabel = new Gtk.Label({ label: 'Dynamic Weather Overlay:', xalign: 0, hexpand: true });
     const dynamicOverlaySwitch = new Gtk.Switch({ valign: Gtk.Align.CENTER, halign: Gtk.Align.END });
-    const isDynamicOverlayActive = widget.dynamicImage !== undefined
-        ? widget.dynamicImage
-        : settings.get_boolean('weather-dynamic-image');
+    const isDynamicOverlayActive = imageFollowGlobal
+        ? settings.get_boolean('weather-dynamic-image')
+        : (widget.dynamicImage !== undefined ? widget.dynamicImage : settings.get_boolean('weather-dynamic-image'));
     dynamicOverlaySwitch.set_active(isDynamicOverlayActive);
+    dynamicOverlaySwitch.set_sensitive(!imageFollowGlobal);
+    imageFollowSwitch.connect('notify::active', () => dynamicOverlaySwitch.set_sensitive(!imageFollowSwitch.get_active()));
     grid.attach(dynamicOverlayLabel, 0, rowIdx, 1, 1);
     grid.attach(dynamicOverlaySwitch, 1, rowIdx, 1, 1);
     rowIdx++;
@@ -218,9 +253,6 @@ export function buildWeatherSettings(grid, rowIdx, widget, settings, saveHandler
     grid.attach(fahrenheitSwitch, 1, rowIdx, 1, 1);
     rowIdx++;
 
-    const globalDynamicColorDefault = settings.get_boolean('weather-dynamic-color');
-    const globalDynamicImageDefault = settings.get_boolean('weather-dynamic-image');
-
     saveHandlers.push((target) => {
         const selectedCity = cityPicker.getSelectedLocation();
         if (selectedCity && selectedCity.name) {
@@ -230,17 +262,17 @@ export function buildWeatherSettings(grid, rowIdx, widget, settings, saveHandler
                 target.lon = selectedCity.longitude;
             }
         }
-        const userColor = dynamicColorSwitch.get_active();
-        if (userColor !== globalDynamicColorDefault) {
-            target.dynamicColor = userColor;
-        } else {
+        target.weatherDynamicColorFollowGlobal = colorFollowSwitch.get_active();
+        if (colorFollowSwitch.get_active()) {
             delete target.dynamicColor;
-        }
-        const userImage = dynamicOverlaySwitch.get_active();
-        if (userImage !== globalDynamicImageDefault) {
-            target.dynamicImage = userImage;
         } else {
+            target.dynamicColor = dynamicColorSwitch.get_active();
+        }
+        target.weatherDynamicImageFollowGlobal = imageFollowSwitch.get_active();
+        if (imageFollowSwitch.get_active()) {
             delete target.dynamicImage;
+        } else {
+            target.dynamicImage = dynamicOverlaySwitch.get_active();
         }
         target.useFahrenheit = fahrenheitSwitch.get_active();
     });
@@ -260,19 +292,43 @@ export function buildTimeSettings(grid, rowIdx, widget, settings, saveHandlers) 
     let primaryPicker, sec1Picker, sec2Picker;
     if (widget.layout === 'world' || widget.cities) {
         const defaultCities = widget.cities || [...DEFAULT_WORLD_CLOCK_CITIES];
-        primaryPicker = createLiveCitySearchRow(grid, 'Primary City (Top):', defaultCities[0] ?? DEFAULT_WORLD_CLOCK_CITIES[0], rowIdx++);
-        sec1Picker = createLiveCitySearchRow(grid, 'Secondary City (Bottom Left):', defaultCities[1] ?? DEFAULT_WORLD_CLOCK_CITIES[1], rowIdx++);
-        sec2Picker = createLiveCitySearchRow(grid, 'Secondary City (Bottom Right):', defaultCities[2] ?? DEFAULT_WORLD_CLOCK_CITIES[2], rowIdx++);
+        const createPicker = (label, row, initialIndex) => {
+            const picker = createGnomeClocksLocationPicker(defaultCities[initialIndex], initialIndex);
+            const pickerBox = new Gtk.Box({
+                orientation: Gtk.Orientation.VERTICAL,
+                spacing: 4,
+                hexpand: true,
+            });
+            const pickerRow = new Gtk.Box({
+                orientation: Gtk.Orientation.HORIZONTAL,
+                spacing: 12,
+                hexpand: true,
+            });
+            const labelWidget = new Gtk.Label({ label, xalign: 0, valign: Gtk.Align.CENTER });
+            pickerRow.append(labelWidget);
+            pickerRow.append(picker.locationWidget);
+            pickerBox.append(pickerRow);
+            pickerBox.append(picker.supportingWidget);
+            grid.attach(pickerBox, 0, row, 2, 1);
+            return picker;
+        };
+
+        primaryPicker = createPicker('Primary City (Top):', rowIdx, 0);
+        sec1Picker = createPicker('Secondary City (Bottom Left):', rowIdx + 2, 1);
+        sec2Picker = createPicker('Secondary City (Bottom Right):', rowIdx + 4, 2);
+        grid.attach(primaryPicker.actionWidget, 0, rowIdx + 6, 2, 1);
+        rowIdx += 7;
     }
 
     saveHandlers.push((target) => {
         target.use24h = formatSwitch.get_active();
         if (primaryPicker && sec1Picker && sec2Picker) {
-            target.cities = [
-                primaryPicker.getSelectedCity(),
-                sec1Picker.getSelectedCity(),
-                sec2Picker.getSelectedCity()
+            const cities = [
+                primaryPicker.getSelectedLocation(),
+                sec1Picker.getSelectedLocation(),
+                sec2Picker.getSelectedLocation()
             ];
+            if (cities.every(Boolean)) target.cities = cities;
         }
     });
 
@@ -403,12 +459,13 @@ export function buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandl
 
     const captionControls = buildCaptionControls(grid, rowIdx, widget, settings, 'My Slideshow');
     rowIdx = captionControls.rowIdx;
-    const { captionEntry, showCaptionSwitch, fgColorBtn } = captionControls;
+    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn } = captionControls;
 
     saveHandlers.push((target) => {
         target.intervalSeconds = Math.round(intervalSpin.get_value());
         target.caption = captionEntry.get_text().trim() || 'My Slideshow';
         target.showCaption = showCaptionSwitch.get_active();
+        target.captionFollowGlobal = followGlobalSwitch.get_active();
         target.fgColor = fgColorBtn.get_rgba().to_string();
     });
 
@@ -453,12 +510,13 @@ export function buildImageSettings(grid, rowIdx, widget, settings, saveHandlers,
 
     const captionControls = buildCaptionControls(grid, rowIdx, widget, settings, 'My Image');
     rowIdx = captionControls.rowIdx;
-    const { captionEntry, showCaptionSwitch, fgColorBtn } = captionControls;
+    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn } = captionControls;
 
     saveHandlers.push((target) => {
         target.imagePath = imagePathEntry.get_text().trim();
         target.caption = captionEntry.get_text().trim() || 'My Image';
         target.showCaption = showCaptionSwitch.get_active();
+        target.captionFollowGlobal = followGlobalSwitch.get_active();
         target.fgColor = fgColorBtn.get_rgba().to_string();
     });
 

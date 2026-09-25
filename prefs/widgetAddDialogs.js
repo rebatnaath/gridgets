@@ -1,18 +1,19 @@
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
-import GLib from 'gi://GLib';
 import { openImageFileDialog, openFolderFileDialog } from './fileDialogs.js';
 import {
     addImageWidget,
     addSlideshowWidget,
     addTimeWidget,
+    addWeatherWidget,
     addGithubWidget,
     addRssHeadlinesWidget,
     addSunScheduleWidget,
     addAppLauncherWidget,
 } from './widgetAdders.js';
 import { createAppSelectionControls } from './appSelection.js';
-import { createLiveCitySearchRow, buildOpenMeteoCitySearchRow } from './citySearch.js';
+import { createGnomeClocksLocationPicker } from './gnomeClocksLocations.js';
+import { createGnomeWeatherLocationPicker } from './gnomeWeatherLocations.js';
 import { buildCaptionRows } from './captionControls.js';
 import { DEFAULT_WORLD_CLOCK_CITIES, MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
 
@@ -151,17 +152,40 @@ export function openAddSlideshowDialog(parentWindow, settings) {
 export function openAddWorldClockDialog(parentWindow, settings) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure World Clock Widget');
 
-    const [primaryDefault, sec1Default, sec2Default] = DEFAULT_WORLD_CLOCK_CITIES;
-    const primaryPicker = createLiveCitySearchRow(grid, 'Primary City (Top):', primaryDefault, 0);
-    const sec1Picker = createLiveCitySearchRow(grid, 'Secondary City (Bottom Left):', sec1Default, 1);
-    const sec2Picker = createLiveCitySearchRow(grid, 'Secondary City (Bottom Right):', sec2Default, 2);
+    const createPicker = (label, row, initialIndex) => {
+        const picker = createGnomeClocksLocationPicker(null, initialIndex);
+        const pickerBox = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 4,
+            hexpand: true,
+        });
+        const pickerRow = new Gtk.Box({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            spacing: 12,
+            hexpand: true,
+        });
+        const labelWidget = new Gtk.Label({ label, xalign: 0, valign: Gtk.Align.CENTER });
+        pickerRow.append(labelWidget);
+        pickerRow.append(picker.locationWidget);
+        pickerBox.append(pickerRow);
+        pickerBox.append(picker.supportingWidget);
+        grid.attach(pickerBox, 0, row, 2, 1);
+        return picker;
+    };
+
+    const primaryPicker = createPicker('Primary City (Top):', 0, 0);
+    const sec1Picker = createPicker('Secondary City (Bottom Left):', 2, 1);
+    const sec2Picker = createPicker('Secondary City (Bottom Right):', 4, 2);
+    grid.attach(primaryPicker.actionWidget, 0, 6, 2, 1);
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
-            const primaryCity = primaryPicker.getSelectedCity();
-            const sec1City = sec1Picker.getSelectedCity();
-            const sec2City = sec2Picker.getSelectedCity();
-            addTimeWidget(settings, 4, 4, 'world', [primaryCity, sec1City, sec2City]);
+            const primaryCity = primaryPicker.getSelectedLocation();
+            const sec1City = sec1Picker.getSelectedLocation();
+            const sec2City = sec2Picker.getSelectedLocation();
+            if (primaryCity && sec1City && sec2City) {
+                addTimeWidget(settings, 4, 4, 'world', [primaryCity, sec1City, sec2City]);
+            }
         }
         dialogWindow.destroy();
     });
@@ -233,17 +257,49 @@ export function openAddRssHeadlinesDialog(parentWindow, settings) {
     );
 }
 
-export function openAddSunScheduleDialog(parentWindow, settings) {
-    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Solar Schedule Widget');
+export function openAddWeatherDialog(parentWindow, settings, width, height, layout) {
+    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Weather Widget');
+    let addButton = null;
+    const locationPicker = createGnomeWeatherLocationPicker(null, (hasLocations) => {
+        if (addButton) addButton.set_sensitive(hasLocations);
+    });
+    const locationLabel = new Gtk.Label({ label: 'City Location:', xalign: 0 });
+    grid.attach(locationLabel, 0, 0, 1, 1);
+    grid.attach(locationPicker.locationWidget, 1, 0, 1, 1);
+    grid.attach(locationPicker.supportingWidget, 0, 1, 2, 1);
 
-    const locationPicker = buildOpenMeteoCitySearchRow(grid, 'City Location:', null, 0);
+    addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
+    addButton.set_sensitive(locationPicker.hasLocations);
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
             const location = locationPicker.getSelectedLocation();
-            if (location && location.name && location.latitude !== undefined && location.longitude !== undefined) {
-                addSunScheduleWidget(settings, location.name, location.latitude, location.longitude);
-            }
+            if (location) addWeatherWidget(settings, location, width, height, layout);
+        }
+        dialogWindow.destroy();
+    });
+
+    dialog.present();
+}
+
+export function openAddSunScheduleDialog(parentWindow, settings) {
+    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Solar Schedule Widget');
+    let addButton = null;
+    const locationPicker = createGnomeWeatherLocationPicker(null, (hasLocations) => {
+        if (addButton) addButton.set_sensitive(hasLocations);
+    });
+    const locationLabel = new Gtk.Label({ label: 'City Location:', xalign: 0 });
+    grid.attach(locationLabel, 0, 0, 1, 1);
+    grid.attach(locationPicker.locationWidget, 1, 0, 1, 1);
+    grid.attach(locationPicker.supportingWidget, 0, 1, 2, 1);
+
+    addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
+    addButton.set_sensitive(locationPicker.hasLocations);
+
+    dialog.connect('response', (dialogWindow, responseId) => {
+        if (responseId === Gtk.ResponseType.OK) {
+            const location = locationPicker.getSelectedLocation();
+            if (location) addSunScheduleWidget(settings, location.name, location.latitude, location.longitude);
         }
         dialogWindow.destroy();
     });
