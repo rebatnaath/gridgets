@@ -8,6 +8,7 @@ import {
 } from '../utils/widgetUtils.js';
 import { BUTTON_PRIMARY } from './constants.js';
 import { isActorDestroyed } from '../utils/actorLifecycle.js';
+import { registerWidgetCleanup } from '../shell/widgetUIUtils.js';
 
 const OVERLAY_SIZE_PX = 28;
 const OVERLAY_RADIUS_PX = 6;
@@ -27,8 +28,8 @@ export function toggleWidgetResizeHandle(
     maxRows = Number.POSITIVE_INFINITY
 ) {
     if (widgetNode.actionOverlay) {
+        // Destroying the handle runs its teardown, which clears actionOverlay.
         widgetNode.actionOverlay.destroy();
-        widgetNode.actionOverlay = null;
         return;
     }
 
@@ -66,24 +67,15 @@ export function toggleWidgetResizeHandle(
 
     let sizeNotifyId = 0;
     let positionNotifyId = 0;
-    let widgetDestroyId = 0;
 
     const detachPlacementListeners = () => {
         if (isActorDestroyed(widgetNode)) return;
         if (sizeNotifyId) { widgetNode.disconnect(sizeNotifyId); sizeNotifyId = 0; }
         if (positionNotifyId) { widgetNode.disconnect(positionNotifyId); positionNotifyId = 0; }
-        if (widgetDestroyId) { widgetNode.disconnect(widgetDestroyId); widgetDestroyId = 0; }
     };
 
     sizeNotifyId = widgetNode.connect('notify::size', updateHandlePlacement);
     positionNotifyId = widgetNode.connect('notify::position', updateHandlePlacement);
-    // If the widget is destroyed while its handle is visible, take the handle with it.
-    widgetDestroyId = widgetNode.connect('destroy', () => {
-        sizeNotifyId = 0;
-        positionNotifyId = 0;
-        widgetDestroyId = 0;
-        overlay.destroy();
-    });
 
     let isResizing = false;
     let resizeStartWidth = 0;
@@ -97,6 +89,28 @@ export function toggleWidgetResizeHandle(
         if (resizeMotionId) { global.stage.disconnect(resizeMotionId); resizeMotionId = 0; }
         if (resizeReleaseId) { global.stage.disconnect(resizeReleaseId); resizeReleaseId = 0; }
     };
+
+    // The handle lives on the grid, so a grid rebuild can destroy it at any moment,
+    // including mid-resize. Everything the handle started has to be undone here or
+    // the grid overlay stays painted on every monitor and the context menu keeps
+    // offering to hide a handle that no longer exists. Safe to run more than once.
+    const teardownResizeHandle = () => {
+        if (widgetNode.actionOverlay === overlay)
+            widgetNode.actionOverlay = null;
+        if (isResizing) {
+            isResizing = false;
+            if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(false);
+        }
+        cleanupResizeHandlers();
+        detachPlacementListeners();
+    };
+
+    registerWidgetCleanup(widgetNode, () => {
+        teardownResizeHandle();
+        overlay.destroy();
+    });
+
+    overlay.connect('destroy', teardownResizeHandle);
 
     const minWidth = cellTotalWidth;
     const minHeight = cellTotalHeight;
@@ -120,7 +134,6 @@ export function toggleWidgetResizeHandle(
 
         onResizeEnd(validCols, validRows, validX);
 
-        widgetNode.actionOverlay = null;
         overlay.destroy();
     };
 
@@ -176,11 +189,6 @@ export function toggleWidgetResizeHandle(
             });
         }
         return Clutter.EVENT_STOP;
-    });
-
-    overlay.connect('destroy', () => {
-        cleanupResizeHandlers();
-        detachPlacementListeners();
     });
 
     widgetNode.actionOverlay = overlay;

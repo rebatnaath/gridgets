@@ -331,6 +331,23 @@ export const DesktopGrid = GObject.registerClass(
             return { widgets, activeWidgets };
         }
 
+        /**
+         * Collision set for a widget: everything sharing a monitor with it, minus
+         * itself. Drop, resize and preset validation all route through here so
+         * they cannot disagree with the layout pass about which widgets a monitor
+         * owns. Pass effectiveMonitorIndex to validate against another monitor
+         * during a cross-monitor drop.
+         */
+        getOtherWidgets(widgets, widgetId, effectiveMonitorIndex = null) {
+            const monitorMode = this.settings.get_string('global-monitor') || 'primary';
+            const isEachMode = (monitorMode === 'each');
+            const monitorIndex = effectiveMonitorIndex !== null
+                ? effectiveMonitorIndex
+                : getEffectiveMonitorIndex(this.targetMonitorIndex, this.settings);
+            return getWidgetsForMonitor(widgets, monitorIndex, isEachMode)
+                .filter(widget => widget.id !== widgetId);
+        }
+
         /** Stores layout metrics on the grid and refreshes the persistent overlay. */
         _applyGridLayout(layout) {
             this.cellTotalWidth = layout.cellTotalWidth;
@@ -349,7 +366,7 @@ export const DesktopGrid = GObject.registerClass(
          * then destroys and recreates the node so fonts/layout recompute.
          */
         applySizePreset(widgetId, sizeIndex) {
-            const { widgets, activeWidgets } = this._resolveActiveWidgets();
+            const { widgets } = this._resolveActiveWidgets();
             const target = widgets.find(widget => widget.id === widgetId);
             if (!target)
                 return;
@@ -358,7 +375,7 @@ export const DesktopGrid = GObject.registerClass(
             if (!size)
                 return;
 
-            const others = activeWidgets.filter(widget => widget.id !== widgetId);
+            const others = this.getOtherWidgets(widgets, widgetId);
             // Pin weather variant before resize so it doesn't silently flip.
             if (target.type === 'weather')
                 target.layout = resolveWeatherLayoutVariant(target);

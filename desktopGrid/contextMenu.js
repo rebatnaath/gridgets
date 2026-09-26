@@ -55,8 +55,9 @@ export function removeContextMenu(grid) {
         menu.destroy();
     }
     if (grid._contextMenuDummyActor) {
-        const parent = grid._contextMenuDummyActor.get_parent();
-        if (parent) parent.remove_child(grid._contextMenuDummyActor);
+        // destroy(), not remove_child(): a menu anchor that is only detached stays
+        // allocated and is rebuilt on every single menu close.
+        grid._contextMenuDummyActor.destroy();
         grid._contextMenuDummyActor = null;
     }
 }

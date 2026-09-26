@@ -10,6 +10,7 @@ import {
     saveWidgets,
     deleteCacheFile
 } from '../utils/widgetUtils.js';
+import { getWidgetCacheFolder } from '../utils/widgetRegistry.js';
 import { getWidgetsForMonitor, getPanelHeight, getEffectiveMonitorIndex } from './helpers.js';
 import { registerWidgetCleanup } from '../shell/widgetUIUtils.js';
 import { openWidgetContextMenu } from './contextMenu.js';
@@ -37,22 +38,29 @@ function endDrag(state, grid, node, widgetData) {
             const widgetCenterX = widgetStageX + (node.width / 2);
             const widgetCenterY = widgetStageY + (node.height / 2);
 
-            let targetMonitorIndex = null;
-            let targetMonitor = null;
-
+            let dropMonitorIndex = null;
             if (monitorSetting === 'each' && monitors.length > 1) {
                 for (let i = 0; i < monitors.length; i++) {
                     const mon = monitors[i];
                     if (widgetCenterX >= mon.x && widgetCenterX < mon.x + mon.width &&
                         widgetCenterY >= mon.y && widgetCenterY < mon.y + mon.height) {
-                        targetMonitorIndex = i;
-                        targetMonitor = mon;
+                        dropMonitorIndex = i;
                         break;
                     }
                 }
             }
 
-            if (targetMonitorIndex !== null && targetMonitor) {
+            // The monitor under the pointer is also the grid's own monitor for an
+            // ordinary drag, so comparing the two is what separates a real
+            // cross-monitor move from a reposition. Without it every in-monitor
+            // drag took the cross-monitor path and destroyed the node, restarting
+            // each widget's async fetches.
+            const ownMonitorIndex = getEffectiveMonitorIndex(grid.targetMonitorIndex, grid.settings);
+            const isCrossMonitorDrop = dropMonitorIndex !== null && dropMonitorIndex !== ownMonitorIndex;
+
+            if (isCrossMonitorDrop) {
+                const targetMonitorIndex = dropMonitorIndex;
+                const targetMonitor = monitors[targetMonitorIndex];
                 const primaryMon = Main.layoutManager.primaryMonitor;
                 const isPrimary = primaryMon ? (targetMonitor === primaryMon) : (targetMonitorIndex === 0);
                 const topOffset = isPrimary ? getPanelHeight() : 0;
@@ -60,8 +68,7 @@ function endDrag(state, grid, node, widgetData) {
                 const localX = widgetStageX - targetMonitor.x;
                 const localY = widgetStageY - (targetMonitor.y + topOffset);
 
-                const targetMonWidgets = getWidgetsForMonitor(widgets, targetMonitorIndex, true);
-                const otherWidgetsOnTargetMon = targetMonWidgets.filter(widget => widget.id !== widgetData.id);
+                const otherWidgetsOnTargetMon = grid.getOtherWidgets(widgets, widgetData.id, targetMonitorIndex);
 
                 const gridCols = COLUMNS_COUNT;
 
@@ -87,10 +94,9 @@ function endDrag(state, grid, node, widgetData) {
                     grid._repositionNode(targetWidget.id, targetWidget.width, targetWidget.height, state.origGridX, state.origGridY);
                 }
             } else {
-                const activeWidgets = getWidgetsForMonitor(widgets, grid.targetMonitorIndex, true);
-                const gridCols = grid.gridCols || COLUMNS_COUNT;
+                const otherWidgets = grid.getOtherWidgets(widgets, widgetData.id);
+                const gridCols = grid.gridCols;
                 const gridRows = grid.gridRows;
-                const otherWidgets = activeWidgets.filter(widget => widget.id !== widgetData.id);
 
                 const targetCol = Math.max(0, Math.min(gridCols - targetWidget.width, Math.round((node.x - GRID_MARGIN_PX) / grid.cellTotalWidth)));
                 const targetRow = Math.max(0, Math.min(gridRows - targetWidget.height, Math.round((node.y - GRID_MARGIN_PX) / grid.cellTotalHeight)));
@@ -128,6 +134,16 @@ function cancelInterruptedDrag(grid) {
 }
 
 export function attachDragHandlers(grid, node, widgetData) {
+    // The stage handlers installed below are released only through the node's
+    // cleanup registry. A creator that returns a plain actor instead of a
+    // WidgetActor would leave them connected to a destroyed object, so refuse to
+    // wire them rather than leak, and say why instead of failing silently inside
+    // the grid's node-creation catch.
+    if (typeof node.registerCleanup !== 'function') {
+        console.error(`Widget ${widgetData.id} (${widgetData.type}) does not support cleanup registration; dragging is disabled for it.`);
+        return;
+    }
+
     let pressX = 0;
     let pressY = 0;
     const state = { isDragging: false, dragMotionId: 0, dragReleaseId: 0, startX: 0, startY: 0, origGridX: 0, origGridY: 0 };
@@ -210,8 +226,8 @@ export function onWidgetResized(grid, widgetId, newCols, newRows, newX) {
     const widget = activeWidgets.find(activeWidget => activeWidget.id === widgetId);
     if (!widget) return;
 
-    const otherWidgets = activeWidgets.filter(activeWidget => activeWidget.id !== widgetId);
-    const gridCols = grid.gridCols || COLUMNS_COUNT;
+    const otherWidgets = grid.getOtherWidgets(allWidgets, widgetId);
+    const gridCols = grid.gridCols;
     const gridRows = grid.gridRows;
     const { validCols, validRows, validX } = calculateResizedDimensions(widget, newCols, newRows, newX, otherWidgets, gridCols, gridRows);
 
@@ -231,15 +247,9 @@ export function onWidgetDeleted(grid, widgetId) {
     const widgets = getWidgets(grid.settings);
     const targetWidget = widgets.find(widget => widget.id === widgetId);
     if (targetWidget) {
-        if (targetWidget.type === 'notes') {
-            deleteCacheFile('notes', widgetId);
-        } else if (targetWidget.type === 'clipboard') {
-            deleteCacheFile('clipboard', widgetId);
-        } else if (targetWidget.type === 'todo') {
-            deleteCacheFile('todos', widgetId);
-        } else if (targetWidget.type === 'github') {
-            deleteCacheFile('github', widgetId);
-        }
+        const cacheFolder = getWidgetCacheFolder(targetWidget.type);
+        if (cacheFolder)
+            deleteCacheFile(cacheFolder, widgetId);
     }
     const remainingWidgets = widgets.filter(widget => widget.id !== widgetId);
     saveWidgets(grid.settings, remainingWidgets);

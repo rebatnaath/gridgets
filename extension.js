@@ -9,6 +9,7 @@ import { clearMoodStoreCache } from './utils/moodStore.js';
 import { clearGeocodeCache } from './widgets/weather/weatherCommon.js';
 import { clearArtworkCaches } from './widgets/music/artwork.js';
 import { clearRssEngines } from './utils/rssEngine.js';
+import { resetSystemMonitorEngines } from './utils/systemMonitorEngine.js';
 import { clearEnsuredDirectories } from './utils/widgetUtils.js';
 import { findThemePreset } from './utils/themePresets.js';
 import { clearMusicPlaybackState } from './widgets/music/playbackState.js';
@@ -85,6 +86,7 @@ export default class GridgetsExtension extends Extension {
         clearGeocodeCache();
         clearArtworkCaches();
         clearRssEngines();
+        resetSystemMonitorEngines();
         clearMusicPlaybackState();
         clearMusicPolls();
         clearEnsuredDirectories();
