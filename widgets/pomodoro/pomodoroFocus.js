@@ -1,7 +1,7 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetColors, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, resolveAccentColor } from '../../utils/widgetUtils.js';
-import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { drawCircularArc, createWidgetContainer, connectTimerCleanup, registerWidgetCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
@@ -49,6 +49,8 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         refreshControlStyles();
     });
     const state = timer.state;
+
+    registerWidgetCleanup(container, () => timer.stopTimer());
 
     const mainBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,

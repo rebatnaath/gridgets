@@ -10,7 +10,7 @@ import { createGnomeClocksLocationPicker } from './gnomeClocksLocations.js';
 import { createAppSelectionControls } from './appSelection.js';
 import { buildCaptionControls } from './captionControls.js';
 import { getConnectedMonitorsCount, buildMonitorEntries } from './displayUtils.js';
-import { DEFAULT_WORLD_CLOCK_CITIES, MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
+import { MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
 
 const MIN_POMODORO_MINUTES = 1;
 const MAX_POMODORO_MINUTES = 120;
@@ -291,9 +291,10 @@ export function buildTimeSettings(grid, rowIdx, widget, settings, saveHandlers) 
 
     let primaryPicker, sec1Picker, sec2Picker;
     if (widget.layout === 'world' || widget.cities) {
-        const defaultCities = widget.cities || [...DEFAULT_WORLD_CLOCK_CITIES];
         const createPicker = (label, row, initialIndex) => {
-            const picker = createGnomeClocksLocationPicker(defaultCities[initialIndex], initialIndex);
+            // A widget saved before the GNOME Clocks integration has no cities,
+            // so the picker starts unset and asks the user to pick one.
+            const picker = createGnomeClocksLocationPicker(widget.cities?.[initialIndex] ?? null, initialIndex);
             const pickerBox = new Gtk.Box({
                 orientation: Gtk.Orientation.VERTICAL,
                 spacing: 4,

@@ -1,7 +1,7 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveWidgetColors, resolveAccentColor } from '../../utils/widgetUtils.js';
-import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { drawCircularArc, createWidgetContainer, connectTimerCleanup, registerWidgetCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, ICON_OPACITY_SECONDARY, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import {
@@ -50,6 +50,8 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         syncPlayPauseIcon();
     });
     const { state } = timer;
+
+    registerWidgetCleanup(container, () => timer.stopTimer());
 
     const canvasActor = new St.DrawingArea({
         width: arcSize,
