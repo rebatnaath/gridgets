@@ -161,7 +161,6 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
             : `border-radius: ${PILL_RADIUS_PX}px;`;
     }
 
-    // Single place that reflects the active mood on the face picker buttons.
     function applyMoodSelection(activeLevel) {
         for (const button of state.moodButtons)
             applyButtonStyle(button, button.mood.level === activeLevel);
@@ -202,7 +201,6 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
         });
     }
 
-    // Re-renders dynamic parts when the day or hour rolls over.
     function refreshClockDependents() {
         const now = GLib.DateTime.new_now_local();
         greetingLabel.text = greetingForHour(now.get_hour());

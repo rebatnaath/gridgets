@@ -58,7 +58,15 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     let lastSyncTime = null;
     let latestByDate = new Map();
 
-    const state = { timerId: null, editing: false, cancellable: new Gio.Cancellable() };
+    // Contributions and the avatar are fetched on independent cadences, so each gets
+    // its own cancellable: a new request aborts the one it supersedes.
+    const state = {
+        timerId: null,
+        editing: false,
+        cancellable: new Gio.Cancellable(),
+        contributionsCancellable: new Gio.Cancellable(),
+        avatarCancellable: new Gio.Cancellable(),
+    };
     const session = new Soup.Session();
 
     const dataFilePath = GLib.build_filenamev([
@@ -381,9 +389,10 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         statusLabel.text = text;
     }
 
-    function fetchJson(url, callback) {
+    function fetchJson(url, callback, cancellable) {
         const message = Soup.Message.new('GET', url);
-        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (s, res) => {
+        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, cancellable, (s, res) => {
+            if (cancellable.is_cancelled()) return;
             try {
                 const bytes = s.send_and_read_finish(res);
                 if (message.get_status() !== HTTP_STATUS_OK)
@@ -398,16 +407,22 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     function loadAvatar() {
         if (!username) return;
-        const url = `https://github.com/${encodeURIComponent(username)}.png?size=${AVATAR_REQUEST_SIZE_PX}`;
+        const requestedUsername = username;
+        state.avatarCancellable.cancel();
+        state.avatarCancellable = new Gio.Cancellable();
+        const avatarCancellable = state.avatarCancellable;
+
+        const url = `https://github.com/${encodeURIComponent(requestedUsername)}.png?size=${AVATAR_REQUEST_SIZE_PX}`;
         const message = Soup.Message.new('GET', url);
-        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (s, res) => {
-            if (isActorDestroyed(container)) return;
+        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, avatarCancellable, (s, res) => {
+            if (avatarCancellable.is_cancelled() || isActorDestroyed(container)) return;
             try {
                 const bytes = s.send_and_read_finish(res);
                 if (!bytes || bytes.get_size() === 0 || message.get_status() !== HTTP_STATUS_OK) return;
 
                 const stream = Gio.MemoryInputStream.new_from_bytes(bytes);
-                GdkPixbuf.Pixbuf.new_from_stream_async(stream, state.cancellable, (_source, result) => {
+                GdkPixbuf.Pixbuf.new_from_stream_async(stream, avatarCancellable, (_source, result) => {
+                    if (avatarCancellable.is_cancelled() || username !== requestedUsername) return;
                     if (isActorDestroyed(container)) return;
                     try {
                         let pixbuf = GdkPixbuf.Pixbuf.new_from_stream_finish(result);
@@ -429,41 +444,48 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
                             pixbuf.get_width(), pixbuf.get_height(), pixbuf.get_rowstride());
                         avatarWidget.set_content(imageContent);
                         initialsLabel.hide();
-                    } catch (_err) {
-                        /* keep initials fallback */
+                    } catch (error) {
+                        console.debug('Gridgets: could not decode avatar:', error.message);
                     }
                 });
-            } catch (_err) {
-                /* keep initials fallback */
+            } catch (error) {
+                console.debug('Gridgets: could not download avatar:', error.message);
             }
         });
     }
 
     function fetchContributions() {
         if (!username) return;
+        const requestedUsername = username;
+        state.contributionsCancellable.cancel();
+        state.contributionsCancellable = new Gio.Cancellable();
+        const contributionsCancellable = state.contributionsCancellable;
+
         updateStatus('Syncing…');
-        fetchJson(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(username)}`, (err, data) => {
-            if (isActorDestroyed(container)) return;
-            if (err || !data || !Array.isArray(data.contributions)) {
-                updateStatus('Error loading');
-                return;
-            }
+        fetchJson(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(requestedUsername)}`,
+            (err, data) => {
+                if (contributionsCancellable.is_cancelled() || username !== requestedUsername) return;
+                if (isActorDestroyed(container)) return;
+                if (err || !data || !Array.isArray(data.contributions)) {
+                    updateStatus('Error loading');
+                    return;
+                }
 
-            const byDate = new Map();
-            let latestYear = null;
-            const yearKeys = Object.keys(data.total || {});
-            if (yearKeys.length > 0)
-                latestYear = yearKeys[yearKeys.length - 1];
+                const byDate = new Map();
+                let latestYear = null;
+                const yearKeys = Object.keys(data.total || {});
+                if (yearKeys.length > 0)
+                    latestYear = yearKeys[yearKeys.length - 1];
 
-            data.contributions.forEach(day => byDate.set(day.date, day.count || 0));
+                data.contributions.forEach(day => byDate.set(day.date, day.count || 0));
 
-            badgeLabel.text = `${(latestYear ? data.total[latestYear] : 0).toLocaleString()} contributions`;
-            lastSyncTime = GLib.DateTime.new_now_local();
-            updateStatus(`Synced ${lastSyncTime.format('%H:%M')}`);
+                badgeLabel.text = `${(latestYear ? data.total[latestYear] : 0).toLocaleString()} contributions`;
+                lastSyncTime = GLib.DateTime.new_now_local();
+                updateStatus(`Synced ${lastSyncTime.format('%H:%M')}`);
 
-            latestByDate = byDate;
-            renderMatrix(byDate);
-        });
+                latestByDate = byDate;
+                renderMatrix(byDate);
+            }, contributionsCancellable);
     }
 
     const startEdit = () => {
@@ -531,6 +553,8 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     registerWidgetCleanup(container, () => {
         state.cancellable.cancel();
+        state.contributionsCancellable.cancel();
+        state.avatarCancellable.cancel();
         if (state.timerId) {
             GLib.Source.remove(state.timerId);
             state.timerId = null;

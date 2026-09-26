@@ -32,10 +32,6 @@ export function clearMusicPolls() {
     activeMusicPolls.clear();
 }
 
-/**
- * Registers a per-second D-Bus fetch tick for a widget; widgets with identical
- * player filters share one poller. Returns the release function.
- */
 function beginMusicPolling(config, onPollTick) {
     const pollKey = `${config.ignoreBrowsers !== false}|${(config.playerFilter || '').trim()}`;
     let poll = activeMusicPolls.get(pollKey);
@@ -80,6 +76,8 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
         timerId: null,
         artworkRetryWaits: null,
         artworkCancellable: new Gio.Cancellable(),
+        fetchCancellable: new Gio.Cancellable(),
+        fetchGeneration: 0,
         lastArtUrl: null,
         currentPlayer: null,
         adoptedTrackKey: null,
@@ -94,6 +92,7 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
     registerMusicWidgetInstance(state);
     registerWidgetCleanup(playerContainer, () => {
         unregisterMusicWidgetInstance(state);
+        state.fetchCancellable.cancel();
         state.artworkCancellable.cancel();
         if (state.artworkRetryWaits) {
             for (const wait of [...state.artworkRetryWaits]) {
@@ -125,9 +124,18 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
         }
     };
 
+    // Keeps at most one poll in flight: the previous fetch is cancelled and a new
+    // generation stamped, so a slow older reply cannot overwrite newer player state.
     const updateMusicData = () => {
         if (isActorDestroyed(playerContainer)) return;
-        fetchMusicDataForConfig(config, onMusicData, state.currentPlayer);
+        state.fetchGeneration += 1;
+        const generation = state.fetchGeneration;
+        state.fetchCancellable.cancel();
+        state.fetchCancellable = new Gio.Cancellable();
+        fetchMusicDataForConfig(config, data => {
+            if (generation !== state.fetchGeneration) return;
+            onMusicData(data);
+        }, state.currentPlayer, state.fetchCancellable);
     };
 
     updateMusicData();

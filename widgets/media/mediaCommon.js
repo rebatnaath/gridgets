@@ -27,9 +27,8 @@ function isSupportedImage(filename) {
 }
 
 /**
- * Applies raw RGBA pixels to an St.ImageContent. set_bytes() gained a
- * leading CoglContext parameter in GNOME Shell 48; the extension supports
- * 45+, so both signatures are handled here in one place.
+ * set_bytes() gained a leading CoglContext parameter in GNOME Shell 48 and the
+ * extension supports 45+, so both signatures are handled here in one place.
  */
 export function setImageContentBytes(imageContent, bytes, pixelFormat, width, height, rowStride) {
     if (Number(PACKAGE_VERSION.split('.')[0]) >= SET_BYTES_COGL_CONTEXT_SHELL_VERSION) {

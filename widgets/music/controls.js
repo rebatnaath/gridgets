@@ -21,8 +21,7 @@ const BASE_CONTROL_CONTAINER_WIDTH = 240;
 const BASE_CONTROL_CONTAINER_HEIGHT = 140;
 const BASE_TIMER_FONT_SIZE = 12;
 
-// Single source of truth for the timer labels, so a resize cannot drop the
-// dimming that the build-time style sets.
+// Both timer labels share this so a resize cannot drop the build-time dimming.
 function buildTimerLabelStyle(fontCss, textColor, scale) {
     const fontSize = scaleFontSize(BASE_TIMER_FONT_SIZE, scale, MIN_FONT_SIZE.metadata);
     return `${fontCss}color: ${textColor}; font-size: ${fontSize}px; `
@@ -85,10 +84,6 @@ function connectControlButton(button, action) {
     });
 }
 
-/**
- * Applies responsive scaling to music playback control buttons and timer label.
- * Shared between small and large layout scaler callbacks to eliminate duplication.
- */
 export function updateControlButtonScaling(state, scale, fontFamily, textColor, trackColor) {
     const seekSize = Math.max(1, Math.round(BASE_SEEK_ICON_SIZE * scale));
     const playSize = Math.max(1, Math.round(BASE_PLAY_ICON_SIZE * scale));
@@ -142,7 +137,6 @@ export function updateControlButtonScaling(state, scale, fontFamily, textColor, 
     }
 }
 
-/** Builds playback controls layout actor. Returns null when controls are disabled for this widget. */
 export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINER_WIDTH, height = BASE_CONTROL_CONTAINER_HEIGHT) {
     if (config.showControls === false) return null;
 
@@ -161,8 +155,8 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: !isLargeLayout,
-        // the small layout stretches full width, otherwise the rows inside
-        // collapse to natural width and cluster in the center
+        // The small layout stretches full width, otherwise the rows inside
+        // collapse to natural width and cluster in the centre.
         x_align: isLargeLayout ? xAlign : Clutter.ActorAlign.FILL,
         y_align: yAlign,
     });
@@ -175,8 +169,8 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
 
     const seekIconSize = Math.max(1, Math.round(BASE_SEEK_ICON_SIZE * scale));
     const playIconSize = Math.max(1, Math.round(BASE_PLAY_ICON_SIZE * scale));
-    // spread layout needs small edge margins; the large centered cluster
-    // keeps the wide 16px gaps between buttons
+    // The spread layout needs small edge margins; the large centred cluster keeps
+    // the wide gaps between buttons.
     const buttonMargin = isLargeLayout
         ? Math.floor(BASE_BUTTON_MARGIN_LARGE * scale)
         : Math.max(1, Math.round(BASE_BUTTON_MARGIN_SMALL * scale));
@@ -202,7 +196,7 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
         buttonRow.add_child(playPauseBtn);
         buttonRow.add_child(seekForwardBtn);
     } else {
-        // equal expanders pin skip buttons to the edges and keep play centered
+        // Equal expanders pin the skip buttons to the edges and keep play centred.
         const leftSpacer = new St.Widget({ x_expand: true });
         const rightSpacer = new St.Widget({ x_expand: true });
         buttonRow.add_child(leftSpacer);

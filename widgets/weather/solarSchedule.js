@@ -12,7 +12,7 @@ import {
     resolveWidgetForegroundColor,
     resolveAccentColor } from '../../utils/widgetUtils.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, startPollingTimer, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
-import { WEATHER_METADATA_OPACITY, WEATHER_SUBTLE_OPACITY } from './weatherCommon.js';
+import { WEATHER_METADATA_OPACITY, WEATHER_SUBTLE_OPACITY, isCancelledError } from './weatherCommon.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, ICON_OPACITY_SECONDARY, GRAPHICS_OPACITY, scaleFontSize } from '../../utils/typography.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
@@ -35,6 +35,9 @@ const ORB_RADIUS_PX = 5;
 const METRIC_ITEM_SPACING_PX = 8;
 const METRIC_TEXT_SPACING_PX = 1;
 const REFERENCE_DAY_MINUTES = 720;
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
+const MILLISECONDS_PER_DAY = 86400000;
 const MIN_ARCH_HEIGHT_FACTOR = 0.3;
 const GAUSS_EDGE_FALLOFF = 0.07;
 const ARCH_SIGMA_SPAN_FRACTION = 0.5 / Math.sqrt(2 * Math.log(1 / GAUSS_EDGE_FALLOFF));
@@ -49,7 +52,7 @@ const decoder = new TextDecoder();
 
 function nowMinutesOfDay() {
     const now = GLib.DateTime.new_now_local();
-    return now.get_hour() * 60 + now.get_minute();
+    return now.get_hour() * MINUTES_PER_HOUR + now.get_minute();
 }
 
 function todayLocationDateStr(offsetShiftMinutes) {
@@ -64,11 +67,13 @@ function isoToDateString(isoString) {
 }
 
 function _dateToDayIndex(dateStr) {
-    if (!dateStr || typeof dateStr !== 'string') return 0;
+    if (typeof dateStr !== 'string') return null;
     const parts = dateStr.split('-');
-    if (parts.length !== 3) return 0;
-    const [y, m, d] = parts.map(Number);
-    return y * 366 + m * 31 + d;
+    if (parts.length !== 3) return null;
+    const [year, month, day] = parts.map(Number);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day))
+        return null;
+    return Math.floor(Date.UTC(year, month - 1, day) / MILLISECONDS_PER_DAY);
 }
 
 function formatClock(totalMinutes) {
@@ -87,7 +92,6 @@ function formatCountdown(deltaMinutes) {
     return deltaMinutes > 0 ? `In ${time}` : `${time} ago`;
 }
 
-// Extracts minutes-since-midnight from an Open-Meteo ISO local string.
 function isoToMinutes(isoString) {
     if (typeof isoString !== 'string') return null;
     const timePart = isoString.slice(11, 16);
@@ -96,13 +100,10 @@ function isoToMinutes(isoString) {
     return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
 }
 
-// Current time expressed in the forecast location's wall-clock minutes,
-// computed by shifting the system's local minutes by the timezone offset
-// difference between the location and the system.
 function nowInLocationMinutes(locationOffsetShiftMinutes) {
     const systemMinutes = nowMinutesOfDay();
     let locMinutes = systemMinutes + locationOffsetShiftMinutes;
-    return ((locMinutes % 1440) + 1440) % 1440;
+    return ((locMinutes % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
 }
 
 function systemUtcOffsetSeconds() {
@@ -121,8 +122,8 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
     let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
     let sunriseEvent = null; // {dateStr, minutes} or null — nearest sunrise for display
     let sunsetEvent = null;  // {dateStr, minutes} or null — nearest sunset for display
-    let arcSunriseMinutes = null; // today's sunrise minutes for arc rendering
-    let arcSunsetMinutes = null;  // today's sunset minutes for arc rendering
+    let arcSunriseMinutes = null; // arc span start; paired with a same-day sunset
+    let arcSunsetMinutes = null;  // arc span end; paired with a same-day sunrise
     let offsetShiftMinutes = 0;
 
     const state = { timerId: null, refreshTimerId: null, cancellable: new Gio.Cancellable() };
@@ -191,8 +192,14 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
         }
         item.timeLabel.text = formatClock(event.minutes);
         const todayStr = todayLocationDateStr(offsetShiftMinutes);
-        const dateDiff = _dateToDayIndex(event.dateStr) - _dateToDayIndex(todayStr);
-        const delta = dateDiff * 1440 + event.minutes - nowMinutes;
+        const eventDayIndex = _dateToDayIndex(event.dateStr);
+        const todayDayIndex = _dateToDayIndex(todayStr);
+        if (eventDayIndex === null || todayDayIndex === null) {
+            item.statusLabel.text = '';
+            return;
+        }
+        const dayDiff = eventDayIndex - todayDayIndex;
+        const delta = dayDiff * MINUTES_PER_DAY + event.minutes - nowMinutes;
         item.statusLabel.text = formatCountdown(delta);
     }
 
@@ -216,9 +223,8 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
     }
 
     /**
-     * The arch always spans the same fixed, centered base. The city's day
-     * length only sets the height: 12h of daylight is the full-height
-     * baseline, shorter days render lower, longer days cap at full height.
+     * The arch's span is fixed; day length only sets its height against a 12h
+     * baseline, so shorter days render lower and longer days cap at full height.
      */
     function archHeightFactor() {
         const dayLength = daylightMinutes();
@@ -310,8 +316,10 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
         session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (sourceObject, result) => {
             if (isActorDestroyed(container)) return;
             try {
-                if (message.get_status() !== HTTP_STATUS_OK) return;
+                // Finish the transfer before inspecting the status: on a transport
+                // failure the status is 0, so checking first would leak the result.
                 const bytes = sourceObject.send_and_read_finish(result);
+                if (message.get_status() !== HTTP_STATUS_OK) return;
                 if (!bytes || bytes.get_size() === 0) return;
                 const payload = JSON.parse(decoder.decode(bytes.get_data()));
                 const daily = payload && payload.daily ? payload.daily : {};
@@ -324,9 +332,8 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
                 const now = nowInLocationMinutes(offsetShiftMinutes);
                 const todayStr = todayLocationDateStr(offsetShiftMinutes);
 
-                // One search for all four events: past events scan backwards for
-                // the latest already-occurred entry, upcoming events scan forwards
-                // for the earliest still-to-come one.
+                // One search for all four events: past scans backwards for the latest
+                // occurred entry, upcoming scans forwards for the earliest still to come.
                 const findEvent = (series, isPast) => {
                     if (!Array.isArray(series)) return null;
                     const indices = isPast
@@ -360,7 +367,8 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
                     sunriseEvent = nextSunrise;
                 }
 
-                // Arc always uses today's sunrise/sunset (same day for correct progress calc).
+                // Both branches pair sunrise and sunset from one day so the progress and
+                // arch maths stay coherent. After sunset that day is tomorrow.
                 if (isDaylight) {
                     arcSunriseMinutes = lastSunrise ? lastSunrise.minutes : null;
                     arcSunsetMinutes = nextSunset ? nextSunset.minutes : null;
@@ -383,8 +391,11 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
                 }
 
                 renderDynamic();
-            } catch (_err) {
-                /* keep previous schedule until the next refresh */
+            } catch (error) {
+                if (isCancelledError(error))
+                    return;
+                // The previous schedule stays on screen, so a failure is not worth logging.
+                console.debug('Gridgets: could not refresh solar schedule:', error.message);
             }
         });
     }
@@ -415,9 +426,8 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
                 + `font-weight: ${STATUS_FONT_WEIGHT}; color: ${textColor}; opacity: ${WEATHER_METADATA_OPACITY};`;
         }
 
-        // Padding goes on the content box, not the container: assigning
-        // container.style would replace the themed background, corner radius and
-        // foreground colour that createWidgetContainer already applied.
+        // Padding goes on the content box: assigning container.style would replace the
+        // themed background, corner radius and foreground createWidgetContainer applied.
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px;`
             + `spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
 

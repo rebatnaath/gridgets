@@ -70,7 +70,6 @@ const ISO_DATE_KEY_LENGTH = 10;
 const ISO_HOUR_KEY_LENGTH = 13;
 const LAYOUT_PADDING_PX = 12;
 
-// In-session cache of geocode coords keyed by location name.
 const GEOCODE_CACHE = new Map();
 const GEOCODE_CACHE_LIMIT = 32;
 
@@ -96,16 +95,18 @@ const WEATHER_CODE_CLEAR = 1000;
 const WEATHER_CODE_PARTLY_CLOUDY = 1003;
 const WEATHER_CODE_CLOUDY_1 = 1006;
 const WEATHER_CODE_CLOUDY_2 = 1009;
-const WEATHER_CODE_FOG_GROUP = [1030, 1039, 1042, 1135, 1147];
+// These groups must stay exhaustive over the WeatherAPI condition code space
+// (https://www.weatherapi.com/docs/weather_conditions.json). A code in no group falls
+// through to clear-sky, which silently renders rain as a sunny day.
+const WEATHER_CODE_FOG_GROUP = [1012, 1030, 1039, 1042, 1135, 1147];
 const WEATHER_CODE_DUST_GROUP = [1015, 1018, 1021, 1024, 1027, 1033, 1036, 1045, 1048];
-const WEATHER_CODE_SLEET_GROUP = [1198, 1201];
+const WEATHER_CODE_SLEET_GROUP = [1069, 1198, 1201, 1204, 1207, 1249, 1252];
 const WEATHER_CODE_HAIL_GROUP = [1237, 1261, 1264];
-const WEATHER_CODE_RAIN_GROUP = [1063, 1072, 1150, 1153, 1168, 1171, 1180, 1183, 1186, 1189, 1192, 1195];
+const WEATHER_CODE_RAIN_GROUP = [1063, 1072, 1150, 1153, 1168, 1171, 1180, 1183, 1186, 1189, 1192, 1195, 1240, 1243, 1246];
 const WEATHER_CODE_THUNDERSTORMS_GROUP = [1087, 1273, 1276, 1279, 1282];
 const WEATHER_CODE_SNOW_BLIZZARD = 1117;
-const WEATHER_CODE_SNOW_GROUP = [1066, 1114, 1210, 1213, 1219, 1222, 1225];
+const WEATHER_CODE_SNOW_GROUP = [1066, 1114, 1210, 1213, 1216, 1219, 1222, 1225, 1255, 1258];
 
-// Resolves code or text description to a standard WeatherAPI condition code.
 function resolveConditionCode(code, text = '') {
     if (typeof code === 'number' && code > 0) return code;
     const lower = (text || '').toLowerCase();
@@ -226,8 +227,7 @@ function resolveSaneExtent(extent) {
     return Math.round(extent);
 }
 
-// Keeps a child actor the same size as its widget node. The signal ids are
-// stored on the actor so the caller can disconnect them on teardown.
+// Keeps a child actor the same size as its widget node, storing the signal ids on it.
 function trackWidgetSize(actor, widgetNode) {
     actor.backgroundSignalIds = [
         widgetNode.connect('notify::width', () => {
@@ -492,11 +492,19 @@ function wmoToWeatherApiCode(wmo) {
     return 1000;
 }
 
+// Gio.IOErrorEnum is an enum namespace, not a constructor, so `instanceof` against it is
+// always false. A refresh aborts its own request first, so cancellation is expected here.
+export function isCancelledError(error) {
+    return Boolean(error.matches) && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
+}
+
 function fetchJsonAsync(session, url) {
     return new Promise((resolve, reject) => {
         const message = Soup.Message.new('GET', url);
         session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (sessionObject, result) => {
             try {
+                // Finish the transfer before inspecting the status: on a transport failure
+                // the status is 0, so checking first would leak the result.
                 const bytes = sessionObject.send_and_read_finish(result);
                 if (message.get_status() !== HTTP_STATUS_OK) {
                     reject(new Error(`HTTP ${message.get_status()}`));
@@ -531,8 +539,8 @@ export async function fetchOpenMeteoFallback(locationName, context) {
 
         await fetchOpenMeteoWeather({ latitude, longitude, name }, context);
     } catch (error) {
-        if (error instanceof Gio.IOErrorEnum && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) return;
-        console.error('Error fetching Open-Meteo fallback:', error);
+        if (isCancelledError(error)) return;
+        console.error('Error geocoding location for Open-Meteo fallback:', error);
     }
 }
 
@@ -633,7 +641,7 @@ async function fetchOpenMeteoWeather({ latitude, longitude, name }, context) {
         if (isActorDestroyed(widgetNode) || !weatherJson.current_weather) return;
         updateWeatherUi(buildOpenMeteoPayload(weatherJson, name), context);
     } catch (error) {
-        if (error instanceof Gio.IOErrorEnum && error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) return;
+        if (isCancelledError(error)) return;
         console.error('Error fetching Open-Meteo fallback:', error);
     }
 }

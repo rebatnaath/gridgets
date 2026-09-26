@@ -58,8 +58,7 @@ function buildTimeAndDateLabels({ is24h, fontCss, textColor, timeFontSize, ampmF
     return { timeRow, timeLabel, ampmLabel, dateLabel, is24h };
 }
 
-// Resize restyles the existing labels instead of rebuilding the actor tree,
-// which would otherwise churn actors on every resize event.
+// Resize restyles the existing labels rather than rebuilding the actor tree.
 function applyLabelTypography(elements, typography) {
     elements.timeLabel.style = timeLabelStyle(typography);
     if (elements.ampmLabel)
@@ -77,7 +76,6 @@ function updateTimeAndDate(elements, is24h) {
 }
 
 export function createDigitalTimeNode(widgetData, width, height, xPosition, yPosition) {
-    const is24h = resolveUse24h(widgetData);
     const fontFamily = resolveExplicitFontFamily(widgetData);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(widgetData);
@@ -96,7 +94,10 @@ export function createDigitalTimeNode(widgetData, width, height, xPosition, yPos
 
     let timeElements = null;
 
+    // Re-read per pass rather than captured once, so a per-widget override applied
+    // without a grid rebuild is picked up and the rebuild branch stays reachable.
     const applyScale = (scale) => {
+        const is24h = resolveUse24h(widgetData);
         const typography = {
             fontCss,
             textColor,
@@ -132,6 +133,7 @@ export function createDigitalTimeNode(widgetData, width, height, xPosition, yPos
 
     const updateDisplay = () => {
         if (isActorDestroyed(widgetNode)) return GLib.SOURCE_REMOVE;
+        const is24h = timeElements ? timeElements.is24h : resolveUse24h(widgetData);
         updateTimeAndDate(timeElements, is24h);
         return GLib.SOURCE_CONTINUE;
     };

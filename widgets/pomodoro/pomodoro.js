@@ -103,8 +103,6 @@ export function createPomodoroNode(config, width, height, xPosition, yPosition) 
         sessionDotsBox.add_child(dot);
     }
 
-        // Single source of truth for the three control buttons, so the build-time
-    // and resize paths cannot drift apart.
     const controlButtonStyle = iconSize => {
         const size = Math.max(CONTROL_BUTTON_MIN_SIZE_PX, iconSize + CONTROL_BUTTON_PADDING_PX);
         return `border-radius: ${CONTROL_BUTTON_RADIUS_PX}px; margin: 0px ${CONTROL_BUTTON_MARGIN_PX}px; `

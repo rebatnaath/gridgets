@@ -265,7 +265,6 @@ export function createWorldTimeNode(widgetData, width, height, xPosition, yPosit
     connectShortClick(widgetNode, () => launchApplication('gnome-clocks'));
 
     const cities = widgetData.cities || DEFAULT_CITIES;
-    // Keep a stable left/right mapping so the responsive scaler updates the same labels.
     const ui = buildWorldClockUI(widgetNode, fontCss, textColor, cities);
 
     const state = {
@@ -274,8 +273,7 @@ export function createWorldTimeNode(widgetData, width, height, xPosition, yPosit
 
     const updateDisplay = () => {
         if (isActorDestroyed(widgetNode)) return GLib.SOURCE_REMOVE;
-        // Re-evaluate on every tick so toggling the 24h setting takes effect
-        // without needing to recreate the widget.
+        // Re-evaluated per tick so toggling 24h takes effect without a rebuild.
         const is24h = resolveUse24h(widgetData);
         updateWorldTimes(ui, is24h);
         return GLib.SOURCE_CONTINUE;

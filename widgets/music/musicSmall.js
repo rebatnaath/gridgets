@@ -39,9 +39,8 @@ export function buildSmallLayout(config, state) {
     const controlsBox = buildControlsColumn(config, state);
     if (controlsBox) state.container.add_child(controlsBox);
 
-    // The controls and timer sit on the scrim, which is always dark, so they
-    // take the light contrast colour. The themed foreground would be
-    // unreadable here on any light theme.
+    // The controls sit on the always-dark scrim, so they take the light contrast
+    // colour; the themed foreground would be unreadable here on a light theme.
     const textColor = LIGHT_TEXT_ON_DARK_COVER;
     const fontFamily = resolveExplicitFontFamily(config);
     const { highlight } = resolveWidgetSurfaces(config);

@@ -44,7 +44,6 @@ export async function extractDominantColor(filePath, state) {
     return color;
 }
 
-/** Asynchronously decodes a small thumbnail of the image without blocking the main loop. */
 async function loadScaledPixbuf(filePath, cancellable) {
     const file = Gio.File.new_for_path(filePath);
     const stream = await new Promise((resolve, reject) => {
@@ -74,10 +73,7 @@ async function loadScaledPixbuf(filePath, cancellable) {
     });
 }
 
-/**
- * Samples every pixel of a decoded pixbuf, grouping them into fine color buckets,
- * returning the average color of the most populated bucket.
- */
+/** Groups pixels into fine colour buckets and returns the most populated bucket's average. */
 function computeDominantColorFromPixbuf(pixbuf) {
     if (!pixbuf) return null;
 
@@ -242,9 +238,8 @@ function flushArtworkQueue(artUrl, resolvedPath) {
 }
 
 /**
- * Creates one retry wait for a state. Each call owns its own timeout source and
- * resolver, tracked in state.artworkRetryWaits, so concurrent waits cannot
- * overwrite each other and destroy-cleanup can settle all of them at once.
+ * Each wait owns its own source and resolver, tracked in state.artworkRetryWaits, so
+ * concurrent waits cannot overwrite each other and teardown can settle them all.
  */
 function waitForArtworkRetry(state) {
     return new Promise(resolve => {
@@ -273,11 +268,9 @@ function waitForArtworkRetry(state) {
 }
 
 /**
- * Resolves an MPRIS artwork URL to a local file path.
- * Remote http(s) URLs are downloaded once into the user cache directory since
- * St CSS backgrounds cannot load remote URLs directly. Missing local files are
- * retried a few times on independent timers tracked in state.artworkRetryWaits
- * so they can be removed on widget destruction.
+ * Remote URLs are downloaded into the user cache first, because an St CSS background
+ * cannot load one. A missing local file is retried on timers held in
+ * state.artworkRetryWaits so they can be cleared on widget destruction.
  */
 export async function ensureLocalArtwork(artUrl, state, callback) {
     if (!artUrl) {

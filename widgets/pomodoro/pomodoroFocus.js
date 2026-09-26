@@ -114,13 +114,15 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
                 y_align: Clutter.ActorAlign.CENTER,
             }),
         });
+        // Feedback first: the press handler returns EVENT_STOP, which stops emission
+        // and would leave this handler unreachable.
+        attachButtonFeedback(button);
         button.connect('button-press-event', (_actor, event) => {
             if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
                 return Clutter.EVENT_PROPAGATE;
             timer.switchToPhase(phase);
             return Clutter.EVENT_STOP;
         });
-        attachButtonFeedback(button);
         modeSelector.add_child(button);
         return button;
     };

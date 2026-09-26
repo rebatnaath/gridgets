@@ -26,7 +26,6 @@ export function setAlbumColor(state, color) {
     if (state.refreshBackground) state.refreshBackground();
 }
 
-// Single source of truth for artwork layer CSS.
 export function resolveArtworkLayerStyle(state) {
     const borderRadius = state.config.appliedBorderRadius !== undefined ? `${state.config.appliedBorderRadius}px` : '0px';
     const radius = state.config.isLargeLayout

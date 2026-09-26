@@ -17,9 +17,8 @@ const SPURIOUS_ZERO_THRESHOLD_MICROSECONDS = 3000000;
 const POSITION_JUMP_RESYNC_THRESHOLD_MICROSECONDS = 3000000;
 
 // A newly reported track must stay "Playing" for this long before the widget
-// adopts it. YouTube hover previews start a real media session for as long as
-// the pointer rests on a thumbnail, so switching instantly would hijack the
-// widget even when the preview plays muted in the background.
+// adopts it. A YouTube hover preview holds a real media session for as long as the
+// pointer rests on it, so switching instantly would hijack the widget.
 const TRACK_ADOPT_DELAY_MICROSECONDS = 5000000;
 
 let seekedSignalId = 0;
@@ -91,9 +90,8 @@ export function applyPlayerState(properties, state) {
 
     const track = extractTrackMetadata(properties);
 
-    // Firefox can report the same mpris:trackid for a hover preview and for
-    // the video actually playing, so the visible metadata has to be part of
-    // the key for a change to be detected at all.
+    // Firefox reports the same mpris:trackid for a hover preview and for the video
+    // actually playing, so the visible metadata has to be part of the key.
     const trackKey = `${track.trackId}|${track.title}|${track.artist}`;
     if (state.adoptedTrackKey !== null && trackKey !== state.adoptedTrackKey) {
         const nowMicro = GLib.get_monotonic_time();
@@ -165,22 +163,29 @@ export function applyPlayerState(properties, state) {
     applyArtworkToBackground(state.backgroundLayer, state.lastArtUrl || track.artUrl, state.config, state);
 }
 
-export function fetchMusicDataForConfig(config, callback, preferredPlayer = '') {
-    (async () => {
-        const activePlayer = await getActiveMediaPlayer(config, preferredPlayer);
-        if (activePlayer) {
-            const properties = await fetchPlayerProperties(activePlayer);
-            if (properties) {
-                const livePosition = await fetchPlayerPosition(activePlayer);
-                if (livePosition !== null && livePosition !== undefined) {
-                    properties['Position'] = new GLib.Variant('x', livePosition);
-                }
-                callback({ activePlayer, properties });
-                return;
-            }
-        }
+export async function fetchMusicDataForConfig(config, callback, preferredPlayer, cancellable) {
+    // Checked before every callback because a cancelled fetch and an idle player
+    // both surface as "no data", and only the latter may reset the widget.
+    const activePlayer = await getActiveMediaPlayer(config, preferredPlayer, cancellable);
+    if (cancellable.is_cancelled()) return;
+    if (activePlayer === null) {
         callback({ activePlayer: null, properties: null });
-    })();
+        return;
+    }
+
+    const properties = await fetchPlayerProperties(activePlayer, cancellable);
+    if (cancellable.is_cancelled()) return;
+    if (properties === null) {
+        callback({ activePlayer: null, properties: null });
+        return;
+    }
+
+    const livePosition = await fetchPlayerPosition(activePlayer, cancellable);
+    if (cancellable.is_cancelled()) return;
+    if (livePosition !== null && livePosition !== undefined)
+        properties['Position'] = new GLib.Variant('x', livePosition);
+
+    callback({ activePlayer, properties });
 }
 
 function isSeekSenderMatch(state, senderUniqueName) {
@@ -223,13 +228,11 @@ function setupDbusSignalListeners() {
     }
 }
 
-// Adds the widget to the global set so D-Bus Seeked signals reach it.
 export function registerMusicWidgetInstance(state) {
     activeMusicWidgetInstances.add(state);
     setupDbusSignalListeners();
 }
 
-// Removes the widget from the global set and cleans up D-Bus listener when empty.
 export function unregisterMusicWidgetInstance(state) {
     activeMusicWidgetInstances.delete(state);
     if (activeMusicWidgetInstances.size === 0 && seekedSignalId !== 0) {

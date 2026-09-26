@@ -45,8 +45,8 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
 
         const iter = animation.get_iter(null);
         const imageActor = new St.Widget();
-        // The caption overlay is attached before the async load finishes;
-        // keep frames below it so the caption is never covered.
+        // The caption overlay is added while the load is still in flight, so index 0
+        // keeps the frames behind it.
         widgetNode.insert_child_at_index(imageActor, 0);
 
         const updateImage = (pixbuf) => {

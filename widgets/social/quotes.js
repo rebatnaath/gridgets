@@ -11,6 +11,7 @@ import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const QUOTE_ROTATE_INTERVAL_SEC = 30;
 const QUOTES_URL = 'https://raw.githubusercontent.com/rebatnaath/gridgets/main/github/quotesData.json';
+const HTTP_STATUS_OK = 200;
 
 export function createQuotesNode(config, width, height, xPosition, yPosition) {
     const textColor = resolveWidgetForegroundColor(config);
@@ -53,7 +54,12 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
     outerBox.add_child(authorLabel);
 
     const session = new Soup.Session();
-    const state = { timerId: null, refreshTimerId: null, cancellable: new Gio.Cancellable() };
+    const state = {
+        timerId: null,
+        refreshTimerId: null,
+        cancellable: new Gio.Cancellable(),
+        fetchCancellable: new Gio.Cancellable(),
+    };
     let quotes = [];
     let lastErrorMessage = '';
 
@@ -69,11 +75,18 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
     }
 
     function fetchQuotes() {
+        // Supersede any request still in flight so a slow earlier reply cannot
+        // land after a newer one and leave the label showing older data.
+        state.fetchCancellable.cancel();
+        state.fetchCancellable = new Gio.Cancellable();
+        const fetchCancellable = state.fetchCancellable;
+
         const message = Soup.Message.new('GET', QUOTES_URL);
-        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (sourceObject, result) => {
+        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, fetchCancellable, (sourceObject, result) => {
+            if (fetchCancellable.is_cancelled()) return;
             if (isActorDestroyed(container)) return;
             try {
-                if (message.get_status() !== 200) {
+                if (message.get_status() !== HTTP_STATUS_OK) {
                     reportFetchError(`Quotes fetch returned status ${message.get_status()}`);
                     return;
                 }
@@ -90,6 +103,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
                     showQuote(quote);
                 }
             } catch (err) {
+                if (err.matches && err.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)) return;
                 reportFetchError(`Failed to fetch quotes: ${err.message}`);
             }
         });
@@ -122,6 +136,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
         if (state.cancellable) {
             state.cancellable.cancel();
         }
+        state.fetchCancellable.cancel();
         session.abort();
     });
 

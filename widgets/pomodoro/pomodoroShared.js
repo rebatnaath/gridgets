@@ -9,12 +9,12 @@ const POMODORO_DEFAULTS = Object.freeze({
 
 const POMODORO_TICK_INTERVAL_MS = 1000;
 const SECONDS_PER_MINUTE = 60;
+const MICROSECONDS_PER_SECOND = 1000000;
 
 export const PHASE_WORK = 'work';
 export const PHASE_SHORT_BREAK = 'short_break';
 const PHASE_LONG_BREAK = 'long_break';
 
-// Builds the phase configuration lookup table with widget-specific labels.
 export function buildPomodoroPhaseConfig(workLabel, shortBreakLabel) {
     return Object.freeze({
         [PHASE_WORK]: {
@@ -35,7 +35,6 @@ export function buildPomodoroPhaseConfig(workLabel, shortBreakLabel) {
     });
 }
 
-// Reads a configured duration in seconds for the given phase.
 export function getPhaseDurationSeconds(phaseConfig, config, phase) {
     const phaseEntry = phaseConfig[phase];
     const rawValue = config ? config[phaseEntry.minutesField] : undefined;
@@ -43,7 +42,6 @@ export function getPhaseDurationSeconds(phaseConfig, config, phase) {
     return Math.round(minutes * SECONDS_PER_MINUTE);
 }
 
-// Reads the configured sessions-before-long-break count.
 export function getSessionsBeforeLongBreak(config) {
     const rawValue = config ? config.sessionsBeforeLongBreak : undefined;
     return Number.isFinite(rawValue) && rawValue > 0
@@ -57,7 +55,6 @@ export function formatSeconds(totalSeconds) {
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
-// Creates the shared pomodoro timer state machine.
 export function createPomodoroTimer(config, phaseConfig, onChange) {
     const state = {
         phase: PHASE_WORK,
@@ -65,6 +62,27 @@ export function createPomodoroTimer(config, phaseConfig, onChange) {
         isRunning: false,
         completedSessions: 0,
         timerId: null,
+        deadlineMicro: null,
+    };
+
+    // Remaining time is measured from a deadline rather than decremented per tick, so
+    // a stalled main loop costs no accuracy. Real time is used because it keeps
+    // advancing across suspend, which is when a phase should count as elapsed; the
+    // result is clamped to the phase length so a clock correction cannot stretch it.
+    const remainingSeconds = () => {
+        if (state.deadlineMicro === null)
+            return state.secondsRemaining;
+        const phaseDuration = getPhaseDurationSeconds(phaseConfig, config, state.phase);
+        const remaining = Math.ceil((state.deadlineMicro - GLib.get_real_time()) / MICROSECONDS_PER_SECOND);
+        return Math.max(0, Math.min(phaseDuration, remaining));
+    };
+
+    // Re-arms the deadline whenever the phase or run state changes, including a
+    // phase switch made while the timer is running.
+    const armDeadline = () => {
+        state.deadlineMicro = state.isRunning
+            ? GLib.get_real_time() + (state.secondsRemaining * MICROSECONDS_PER_SECOND)
+            : null;
     };
 
     const stopTimer = () => {
@@ -72,7 +90,10 @@ export function createPomodoroTimer(config, phaseConfig, onChange) {
             GLib.Source.remove(state.timerId);
             state.timerId = null;
         }
+        if (state.isRunning)
+            state.secondsRemaining = remainingSeconds();
         state.isRunning = false;
+        state.deadlineMicro = null;
     };
 
     const advanceToNextPhase = () => {
@@ -88,14 +109,16 @@ export function createPomodoroTimer(config, phaseConfig, onChange) {
             state.phase = PHASE_WORK;
         }
         state.secondsRemaining = getPhaseDurationSeconds(phaseConfig, config, state.phase);
+        armDeadline();
         onChange();
     };
 
     const startTimer = () => {
         if (state.isRunning || state.secondsRemaining <= 0) return;
         state.isRunning = true;
+        armDeadline();
         state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POMODORO_TICK_INTERVAL_MS, () => {
-            state.secondsRemaining--;
+            state.secondsRemaining = remainingSeconds();
             if (state.secondsRemaining <= 0) {
                 stopTimer();
                 advanceToNextPhase();
@@ -109,6 +132,7 @@ export function createPomodoroTimer(config, phaseConfig, onChange) {
     const resetCurrentPhase = () => {
         stopTimer();
         state.secondsRemaining = getPhaseDurationSeconds(phaseConfig, config, state.phase);
+        armDeadline();
         onChange();
     };
 
@@ -116,6 +140,7 @@ export function createPomodoroTimer(config, phaseConfig, onChange) {
         stopTimer();
         state.phase = phase;
         state.secondsRemaining = getPhaseDurationSeconds(phaseConfig, config, phase);
+        armDeadline();
         onChange();
     };
 

@@ -3,11 +3,14 @@ import GLib from 'gi://GLib';
 
 export const DBUS_POLL_INTERVAL_MS = 1000;
 
+// A player that stops answering must not wedge the poller forever: every call
+// carries a deadline so a hung session fails the fetch instead of pinning it.
+const DBUS_CALL_TIMEOUT_MS = 2000;
+
 const BROWSER_MPRIS_PATTERNS = ['chromium', 'firefox', 'chrome', 'brave', 'edge', 'opera', 'vivaldi', 'mozilla'];
 
-// Properties fetched through GetAll arrive already deep-unpacked into plain
-// JS values, so some call sites hold a GLib.Variant and others hold the plain
-// value directly. Unwrap only when there is actually a variant to unwrap.
+// Some call sites hold a GLib.Variant and others the plain value, so unwrap only
+// when there is actually a variant to unwrap.
 export function unpackVariantValue(value) {
     if (value === null || value === undefined) return value;
     if (typeof value.deep_unpack === 'function') return value.deep_unpack();
@@ -19,8 +22,7 @@ function isBrowserPlayer(playerName) {
     return BROWSER_MPRIS_PATTERNS.some(browserPattern => lower.includes(browserPattern));
 }
 
-// Browsers append a volatile ".instanceNNN" suffix to their MPRIS bus name and
-// re-acquire a new one whenever the active media session changes, so the suffix
+// Browsers append a volatile ".instanceNNN" suffix to their MPRIS bus name, so it
 // cannot be used as a stable application identity.
 function normalizePlayerBusName(busName) {
     const instanceMarker = '.instance';
@@ -43,7 +45,7 @@ function isWithinActionLockWindow() {
     return Date.now() - lastActionEpochMs < ACTION_LOCK_DURATION_MS;
 }
 
-export async function getActiveMediaPlayer(config = {}, preferredPlayer = '') {
+export async function getActiveMediaPlayer(config = {}, preferredPlayer = '', cancellable = null) {
     try {
         const response = await Gio.DBus.session.call(
             'org.freedesktop.DBus',
@@ -51,8 +53,9 @@ export async function getActiveMediaPlayer(config = {}, preferredPlayer = '') {
             'org.freedesktop.DBus',
             'ListNames',
             null, null,
-            Gio.DBusCallFlags.NONE, -1, null
+            Gio.DBusCallFlags.NONE, DBUS_CALL_TIMEOUT_MS, cancellable
         );
+        if (cancellable !== null && cancellable.is_cancelled()) return null;
         const busNames = response.deep_unpack()[0];
         let mediaPlayers = busNames.filter(name => name.startsWith('org.mpris.MediaPlayer2.'));
 
@@ -75,18 +78,17 @@ export async function getActiveMediaPlayer(config = {}, preferredPlayer = '') {
         if (mediaPlayers.length === 0) return null;
         if (mediaPlayers.length === 1) return mediaPlayers[0];
 
-        // Right after a control press the player is mid-transition, so state
-        // changes are unreliable. Honour the last action target unconditionally
-        // for a short window instead of re-deciding where the command should go.
+        // Right after a control press the player is mid-transition and its state is
+        // unreliable, so the last action target is honoured unconditionally for a
+        // short window instead of re-deciding where the command goes.
         if (preferredPlayer && mediaPlayers.includes(preferredPlayer) && isWithinActionLockWindow()) {
             return preferredPlayer;
         }
 
-        // Stays on the player already being followed so a short-lived
-        // "Playing" session elsewhere (e.g. a YouTube hover preview) cannot
-        // take over the track currently playing.
+        // Stays on the player being followed, so a short-lived "Playing" session
+        // elsewhere (e.g. a YouTube hover preview) cannot take over the track.
         if (preferredPlayer && mediaPlayers.includes(preferredPlayer)) {
-            const preferredProperties = await fetchPlayerProperties(preferredPlayer);
+            const preferredProperties = await fetchPlayerProperties(preferredPlayer, cancellable);
             const preferredStatus = unpackVariantValue(preferredProperties?.['PlaybackStatus']);
             if (preferredStatus === 'Playing')
                 return preferredPlayer;
@@ -94,7 +96,8 @@ export async function getActiveMediaPlayer(config = {}, preferredPlayer = '') {
 
         const candidates = [];
         for (const player of mediaPlayers) {
-            const properties = await fetchPlayerProperties(player);
+            if (cancellable !== null && cancellable.is_cancelled()) return null;
+            const properties = await fetchPlayerProperties(player, cancellable);
             const status = unpackVariantValue(properties?.['PlaybackStatus']);
             const metadata = unpackVariantValue(properties?.['Metadata']) || {};
             const hasTitle = Boolean(unpackVariantValue(metadata['xesam:title']));
@@ -108,9 +111,8 @@ export async function getActiveMediaPlayer(config = {}, preferredPlayer = '') {
             candidates.push({ player, score });
         }
 
-        // A browser can expose several instances of itself at once while it
-        // hands media over between them. They are one logical app, so collapse
-        // them onto the strongest-scoring instance before ranking.
+        // A browser exposes several instances of itself while handing media between
+        // them; they are one logical app, so collapse onto the best before ranking.
         const strongestPerApp = new Map();
         for (const candidate of candidates) {
             const appKey = normalizePlayerBusName(candidate.player);
@@ -121,17 +123,16 @@ export async function getActiveMediaPlayer(config = {}, preferredPlayer = '') {
 
         const ranked = [...strongestPerApp.values()].sort((a, b) => b.score - a.score);
 
-        // A session that momentarily reports no title still beats a null
-        // player: null makes the widget call resetWidgetState(), which throws
-        // away the current track position. A title-less session is more useful
-        // than dropping playback state over one blank frame.
+        // A title-less session still beats a null player: null makes the widget call
+        // resetWidgetState(), throwing away the current track position over one
+        // blank frame.
         return ranked[0].player;
     } catch (_error) {
         return null;
     }
 }
 
-export async function fetchPlayerProperties(playerName) {
+export async function fetchPlayerProperties(playerName, cancellable = null) {
     try {
         const response = await Gio.DBus.session.call(
             playerName,
@@ -140,7 +141,7 @@ export async function fetchPlayerProperties(playerName) {
             'GetAll',
             new GLib.Variant('(s)', ['org.mpris.MediaPlayer2.Player']),
             null,
-            Gio.DBusCallFlags.NONE, -1, null
+            Gio.DBusCallFlags.NONE, DBUS_CALL_TIMEOUT_MS, cancellable
         );
         return response.deep_unpack()[0];
     } catch (_error) {
@@ -148,7 +149,7 @@ export async function fetchPlayerProperties(playerName) {
     }
 }
 
-export async function fetchPlayerPosition(playerName) {
+export async function fetchPlayerPosition(playerName, cancellable = null) {
     if (!playerName) return null;
     try {
         const response = await Gio.DBus.session.call(
@@ -158,7 +159,7 @@ export async function fetchPlayerPosition(playerName) {
             'Get',
             new GLib.Variant('(ss)', ['org.mpris.MediaPlayer2.Player', 'Position']),
             null,
-            Gio.DBusCallFlags.NONE, -1, null
+            Gio.DBusCallFlags.NONE, DBUS_CALL_TIMEOUT_MS, cancellable
         );
         const rawVariant = response.deep_unpack()[0];
         if (rawVariant !== undefined && rawVariant !== null) {
@@ -171,7 +172,6 @@ export async function fetchPlayerPosition(playerName) {
     }
 }
 
-// Sends a D-Bus method call to the MPRIS Player interface.
 async function callPlayerMethod(playerName, method) {
     if (!playerName) return;
     try {
@@ -181,7 +181,7 @@ async function callPlayerMethod(playerName, method) {
             'org.mpris.MediaPlayer2.Player',
             method,
             null, null,
-            Gio.DBusCallFlags.NONE, -1, null
+            Gio.DBusCallFlags.NONE, DBUS_CALL_TIMEOUT_MS, null
         );
     } catch (error) {
         // A player that does not implement a control (Firefox has no Next)
@@ -190,9 +190,8 @@ async function callPlayerMethod(playerName, method) {
     }
 }
 
-// Chrome releases and re-acquires its MPRIS bus name whenever the active media
-// session changes (for example when a YouTube hover preview starts), so a
-// cached name can stop having an owner. Re-resolve before issuing a command.
+// A cached bus name can stop having an owner, so re-resolve before issuing a
+// command.
 async function resolveLivePlayer(config, state) {
     const cachedPlayer = state.currentPlayer;
     if (cachedPlayer && await resolveBusOwner(cachedPlayer))
@@ -240,7 +239,7 @@ export function extractTrackMetadata(properties) {
     return { title, artist, album, artUrl, lengthMicro, trackId };
 }
 
-export async function resolveBusOwner(playerName) {
+export async function resolveBusOwner(playerName, cancellable = null) {
     try {
         const reply = await Gio.DBus.session.call(
             'org.freedesktop.DBus',
@@ -249,7 +248,7 @@ export async function resolveBusOwner(playerName) {
             'GetNameOwner',
             new GLib.Variant('(s)', [playerName]),
             null,
-            Gio.DBusCallFlags.NONE, -1, null
+            Gio.DBusCallFlags.NONE, DBUS_CALL_TIMEOUT_MS, cancellable
         );
         return reply.deep_unpack()[0];
     } catch (_error) {
