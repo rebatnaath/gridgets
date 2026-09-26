@@ -57,11 +57,12 @@ export function buildWidgetEditPanel(parentWindow, widget, settings, onSavedCall
         case 'slideshow':
             rowIdx = buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandlers);
             break;
-        case 'gif':
-            rowIdx = buildGifSettings(grid, rowIdx, widget, saveHandlers);
-            break;
         case 'image':
+            // The animate switch used to sit behind a 'gif' case that nothing ever
+            // produced: an image widget is stored with type 'image' and only becomes
+            // animated at runtime. Without this the per-widget override was unsettable.
             rowIdx = buildImageSettings(grid, rowIdx, widget, settings, saveHandlers, parentWindow);
+            rowIdx = buildGifSettings(grid, rowIdx, widget, saveHandlers);
             break;
     }
 

@@ -6,6 +6,7 @@ import { MAX_APP_LAUNCHER_ITEMS, normalizeAppLauncherApps } from '../utils/widge
 import { clearBox } from './displayUtils.js';
 
 const MAX_RENDERED_APP_ROWS = 80;
+const SEARCH_DEBOUNCE_MS = 150;
 
 let cachedDesktopApplications = null;
 
@@ -206,7 +207,19 @@ export function createAppSelectionControls(grid, rowIdx, defaultApps = []) {
         }
     };
 
-    searchEntry.connect('search-changed', renderAppRows);
+    // Each row is a ListBoxRow holding a box, an image and two labels, so rebuilding
+    // the list on every keystroke meant constructing hundreds of widgets per
+    // character typed. Waiting for a pause in typing collapses a word into one pass.
+    let searchDebounceId = 0;
+    searchEntry.connect('search-changed', () => {
+        if (searchDebounceId)
+            GLib.Source.remove(searchDebounceId);
+        searchDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SEARCH_DEBOUNCE_MS, () => {
+            searchDebounceId = 0;
+            renderAppRows();
+            return GLib.SOURCE_REMOVE;
+        });
+    });
     renderAppRows();
 
     controlsBox.append(searchEntry);

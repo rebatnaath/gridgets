@@ -40,7 +40,8 @@ export function buildIndividualSettingsPage(window, settings) {
         if (isListDirty)
             refreshActiveWidgets();
 
-        const targetRow = page.activeRows.find(row => row.widgetId === widgetId);
+        const rowsById = page.activeRowsById instanceof Map ? page.activeRowsById : new Map();
+        const targetRow = rowsById.get(widgetId);
         if (targetRow)
             targetRow.set_expanded(true);
         return Boolean(targetRow);

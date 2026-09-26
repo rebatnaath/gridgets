@@ -38,7 +38,10 @@ export function createColorRow(title, subtitle, settings, key, defaultVal = DEFA
     });
     // Selecting a different theme rewrites these keys, so the swatch has to
     // follow it or it keeps showing the previously selected theme's colour.
-    settings.connect(`changed::${key}`, refresh);
+    // The settings object outlives the row, so the handler is released with the
+    // row instead of accumulating one dead handler per window opening.
+    const changedId = settings.connect(`changed::${key}`, refresh);
+    row.connect('destroy', () => settings.disconnect(changedId));
     row.add_suffix(btn);
     return row;
 }

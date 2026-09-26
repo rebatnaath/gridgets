@@ -15,6 +15,7 @@ import { createAppSelectionControls } from './appSelection.js';
 import { createGnomeClocksLocationPicker } from './gnomeClocksLocations.js';
 import { createGnomeWeatherLocationPicker } from './gnomeWeatherLocations.js';
 import { buildCaptionRows } from './captionControls.js';
+import { STORE_WIDGETS, parseStoreGridSize } from './widgetCatalog.js';
 import { MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
 
 export { MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
@@ -97,7 +98,8 @@ export function openAddImageDialog(parentWindow, settings) {
         if (responseId === Gtk.ResponseType.OK) {
             const imagePath = imagePathEntry.get_text().trim();
             if (imagePath) {
-                addImageWidget(settings, imagePath, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), 4, 3);
+                const { width, height } = parseStoreGridSize(STORE_WIDGETS.imageGif.gridSize);
+                addImageWidget(settings, imagePath, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), width, height);
             }
         }
         dialogWindow.destroy();
@@ -140,7 +142,8 @@ export function openAddSlideshowDialog(parentWindow, settings) {
         if (responseId === Gtk.ResponseType.OK) {
             const folderPath = folderEntry.get_text().trim();
             if (folderPath) {
-                addSlideshowWidget(settings, folderPath, intervalSpin.get_value_as_int(), 4, 3, captionEntry.get_text().trim(), showCaptionSwitch.get_active());
+                const { width, height } = parseStoreGridSize(STORE_WIDGETS.imageSlideshow.gridSize);
+                addSlideshowWidget(settings, folderPath, intervalSpin.get_value_as_int(), width, height, captionEntry.get_text().trim(), showCaptionSwitch.get_active());
             }
         }
         dialogWindow.destroy();
