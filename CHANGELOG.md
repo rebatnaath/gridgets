@@ -56,6 +56,12 @@ widget appears at.
 - Widget corners are now 15px to match GNOME, and the gap between grid cells is
   15px too.
 
+### New widgets
+
+- **Calendar Events** - a month grid with the selected day's events listed
+  beside it. Double-click a day in the grid to switch to it, scroll the list for the
+  rest, and click any of them to open GNOME Calendar.
+
 ### Widgets
 
 - The calendar shows events as dots and has arrow buttons to move between months.
