@@ -21,7 +21,7 @@ class PollingEngine {
 
     subscribe(callback) {
         this.subscribers.push(callback);
-        
+
         if (this.lastData !== null) {
             callback(this.lastData);
         }
@@ -35,9 +35,9 @@ class PollingEngine {
                 this.fetchFn((data) => {
                     if (fetchCancellable.is_cancelled()) return;
                     this.lastData = data;
-                    for (const callback of [...this.subscribers]) {
+                    for (const subscriber of [...this.subscribers]) {
                         try {
-                            callback(data);
+                            subscriber(data);
                         } catch (error) {
                             console.error('Subscriber callback error:', error);
                         }
@@ -57,18 +57,24 @@ class PollingEngine {
 
     unsubscribe(callback) {
         this.subscribers = this.subscribers.filter(cb => cb !== callback);
-        if (this.subscribers.length === 0 && this.timerId) {
+        if (this.subscribers.length === 0)
+            this.stop();
+    }
+
+    /** Releases the poll regardless of who subscribed, so no teardown path depends on a consumer remembering to unsubscribe. */
+    stop() {
+        if (this.timerId) {
             GLib.Source.remove(this.timerId);
             this.timerId = null;
-            this.lastData = null;
-            if (this.cancellable) {
-                this.cancellable.cancel();
-                this.cancellable = null;
-            }
-            if (this.resetFn) {
-                this.resetFn();
-            }
         }
+        this.lastData = null;
+        this.subscribers = [];
+        if (this.cancellable) {
+            this.cancellable.cancel();
+            this.cancellable = null;
+        }
+        if (this.resetFn)
+            this.resetFn();
     }
 }
 
@@ -230,3 +236,9 @@ function resetNetworkState() {
 }
 
 export const networkEngine = new PollingEngine(DEFAULT_ENGINE_POLL_INTERVAL_MS, fetchNetworkData, resetNetworkState);
+
+/** Stops both monitors and clears their sampling state; called from the extension's disable(). */
+export function resetSystemMonitorEngines() {
+    cpuRamEngine.stop();
+    networkEngine.stop();
+}

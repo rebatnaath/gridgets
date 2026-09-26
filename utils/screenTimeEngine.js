@@ -1,6 +1,6 @@
 import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
-import { DESKTOP_APP_KEY, getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile, todayDateString } from './widgetUtils.js';
+import { DESKTOP_APP_KEY, getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile, saveJsonToFileSync, todayDateString, toDateString } from './widgetUtils.js';
 export { DESKTOP_APP_KEY } from './widgetUtils.js';
 
 const TICK_INTERVAL_MS = 1000;
@@ -130,9 +130,10 @@ export const screenTimeEngine = {
             this._focusSignalId = 0;
         }
         this._flushFocused(GLib.get_real_time());
-        this._saveNow();
+        this._saveNow(true);
         this._appHours.clear();
-        this._listeners.clear();
+        // _listeners is owned by its registrants: a consumer that is still alive
+        // must keep receiving updates if tracking is acquired again later.
         this._focusedKey = null;
         this._focusStartMicro = null;
     },
@@ -149,15 +150,22 @@ export const screenTimeEngine = {
         this._flushFocused(now);
         this._maybeRollover();
         this._scheduleSave();
-        for (const callback of this._listeners)
+        // Copied because a listener may remove itself while being notified.
+        for (const callback of [...this._listeners])
             callback();
     },
 
-    _maybeRollover() {
-        const today = todayDateString();
-        if (today === this._currentDate) return;
+    /**
+     * Advances the tracked day when a segment belongs to a later date than the one
+     * being accumulated. Callers pass the segment's own date so a flush that
+     * crosses midnight attributes each part to the day it actually happened on,
+     * instead of comparing against the wall clock and dropping the pre-midnight
+     * seconds into the new day.
+     */
+    _maybeRollover(segmentDateString = todayDateString()) {
+        if (segmentDateString === this._currentDate) return;
         this._saveNow();
-        this._currentDate = today;
+        this._currentDate = segmentDateString;
         this._appHours.clear();
     },
 
@@ -174,8 +182,10 @@ export const screenTimeEngine = {
             const segmentStart = GLib.DateTime.new_from_unix_local(epochSecond);
             const secondsIntoHour = segmentStart.get_minute() * 60 + segmentStart.get_second();
 
-            this._maybeRollover();
-
+            // Rolls over before the segment is added, so a segment starting at
+            // 23:59 stays on the previous day and only the segments after
+            // midnight open the new one.
+            this._maybeRollover(toDateString(segmentStart));
 
             const boundaryEpochSecond = epochSecond - secondsIntoHour + SECONDS_PER_HOUR;
             const cursorEnd = Math.min(nowMicro, boundaryEpochSecond * MICROSECONDS_PER_SECOND);
@@ -214,14 +224,21 @@ export const screenTimeEngine = {
         });
     },
 
-    _saveNow() {
+    _saveNow(isTeardown = false) {
         if (this._saveThrottleId) {
             GLib.Source.remove(this._saveThrottleId);
             this._saveThrottleId = 0;
         }
-        saveJsonToFile(dayFilePath(this._currentDate), {
+        const filePath = dayFilePath(this._currentDate);
+        const payload = {
             date: this._currentDate,
             apps: Object.fromEntries(this._appHours),
-        });
+        };
+        // An async write issued while the extension is disabling may never land,
+        // which would silently discard the final segment of the session.
+        if (isTeardown)
+            saveJsonToFileSync(filePath, payload);
+        else
+            saveJsonToFile(filePath, payload);
     },
 };

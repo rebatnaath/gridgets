@@ -38,9 +38,13 @@ function requestMonthLoad(monthKey, dateString, onLoaded) {
         }
         if (generation === monthLoadGeneration) {
             monthCache.set(monthKey, data && typeof data === 'object' ? data : {});
-            for (const callback of callbacks) {
-                callback();
-            }
+        }
+        // Waiters are released even when the cache was invalidated while this read
+        // was in flight. They only need to learn that the read finished so they
+        // can render; dropping them would strand loadDatesAsync's countdown and
+        // leave the caller waiting forever.
+        for (const callback of callbacks) {
+            callback();
         }
     });
 }
@@ -123,55 +127,7 @@ export function clearMoodStoreCache() {
     pendingMonthLoads.clear();
 }
 
-export function listMoodDates(callback) {
-    const moodDir = getGridgetsDataDir('mood');
-    const dates = [];
-    try {
-        const dirFile = Gio.File.new_for_path(moodDir);
-        const enumerator = dirFile.enumerate_children('standard::name,standard::type', Gio.FileQueryInfoFlags.NONE, null);
-        let yearInfo;
-        while ((yearInfo = enumerator.next_file(null)) !== null) {
-            if (yearInfo.get_file_type() !== Gio.FileType.DIRECTORY) continue;
-            const yearName = yearInfo.get_name();
-            const yearDir = Gio.File.new_for_path(GLib.build_filenamev([moodDir, yearName]));
-            let monthEnum;
-            try {
-                monthEnum = yearDir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
-            } catch (_e) {
-                continue;
-            }
-            let monthInfo;
-            while ((monthInfo = monthEnum.next_file(null)) !== null) {
-                const monthName = monthInfo.get_name();
-                if (!monthName.endsWith('.json')) continue;
-                const monthKey = monthName.replace('.json', '');
-                const filePath = GLib.build_filenamev([moodDir, yearName, monthName]);
-                const file = Gio.File.new_for_path(filePath);
-                let contents;
-                try {
-                    const [ok, bytes] = file.load_contents(null);
-                    if (!ok) continue;
-                    contents = JSON.parse(new TextDecoder('utf-8').decode(bytes));
-                } catch (_e) {
-                    continue;
-                }
-                if (typeof contents === 'object' && contents !== null) {
-                    const prefix = `${yearName}-${monthKey}`;
-                    for (const dateKey of Object.keys(contents)) {
-                        if (dateKey.startsWith(prefix) && contents[dateKey] > 0)
-                            dates.push(dateKey);
-                    }
-                }
-            }
-        }
-    } catch (e) {
-        console.error('Error listing mood dates:', e);
-    }
-    dates.sort().reverse();
-    callback(dates);
-}
-
-/** Synchronous version of listMoodDates for use in prefs where async may not complete. */
+/** Walks the mood directory and returns every date with a logged level, newest first. */
 export function listMoodDatesSync() {
     const moodDir = getGridgetsDataDir('mood');
     const dates = [];

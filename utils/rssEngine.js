@@ -118,6 +118,7 @@ class RssFeedEngine {
         this.timerId = null;
         this.cancellable = null;
         this.lastItems = feedCache.get(feedUrl) || [];
+        this._activeIntervalSeconds = null;
         this.etag = null;
         this.lastModified = null;
         this.lastFetchFailed = false;
@@ -129,6 +130,10 @@ class RssFeedEngine {
     subscribe(intervalSeconds, callback) {
         this.subscribers.set(callback, intervalSeconds);
         const fastestInterval = Math.min(...this.subscribers.values());
+        // Cached items are delivered to every new subscriber, including the first.
+        // Otherwise a widget recreated for a feed that is already cached shows
+        // nothing until a fetch happens to succeed.
+        callback(this.lastItems);
         if (this.subscribers.size === 1) {
             this._startTimer(fastestInterval);
             this._runFetch();
@@ -136,7 +141,6 @@ class RssFeedEngine {
         }
         if (fastestInterval !== this._activeIntervalSeconds && this.timerId)
             this._startTimer(fastestInterval);
-        callback(this.lastItems);
         return () => this.unsubscribe(callback);
     }
 
