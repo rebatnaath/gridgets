@@ -1,7 +1,15 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveDesktopAppInfo, resolveWidgetSurfaces, normalizeAppLauncherApps, DEFAULT_CHILD_CORNER_RADIUS_PX, resolveChildCornerRadius } from '../../utils/widgetUtils.js';
+import {
+    resolveWidgetForegroundColor,
+    resolveExplicitFontFamily,
+    resolveWidgetSurfaces,
+    normalizeAppLauncherApps,
+    DEFAULT_CHILD_CORNER_RADIUS_PX,
+    resolveChildCornerRadius,
+} from '../../utils/widgetUtils.js';
+import { resolveDesktopAppInfo } from '../../shell/appResolution.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
@@ -16,6 +24,8 @@ const GRID_GAP = 10;
 const TILE_PADDING_RATIO = 0.1;
 const TILE_PADDING_MIN = 3;
 const TILE_PADDING_MAX = 10;
+
+const TILE_RADIUS_REFERENCE_CELL_PX = 80;
 
 const ICON_SIZE_RATIO = 0.72;
 const MIN_ICON_SIZE = 8;
@@ -223,7 +233,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
         const minCell = Math.max(MIN_ICON_SIZE, Math.min(cellWidth, cellHeight));
 
         const padding = Math.min(TILE_PADDING_MAX, Math.max(TILE_PADDING_MIN, Math.round(minCell * TILE_PADDING_RATIO)));
-        const tileRadius = resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, minCell / 80);
+        const tileRadius = resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, minCell / TILE_RADIUS_REFERENCE_CELL_PX);
         const available = Math.max(MIN_ICON_SIZE, minCell - (padding * 2));
 
         const iconSize = Math.min(MAX_ICON_SIZE, Math.max(MIN_ICON_SIZE, Math.round(available * ICON_SIZE_RATIO)));

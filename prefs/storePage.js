@@ -15,6 +15,7 @@ import {
     addQuotesWidget,
     addScreenTimeWidget,
     addCalendarGridWidget,
+    addCalendarAgendaWidget,
     addTodoWidget,
     addMoodWidget,
 } from './widgetAdders.js';
@@ -214,6 +215,7 @@ export function buildStorePage(window, settings, extensionPath) {
         buildStoreCard(extensionPath, STORE_WIDGETS.worldClock, () => openAddWorldClockDialog(window, settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.calendarWidget, () => addCalendarWidget(settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.calendarGrid, () => addCalendarGridWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.calendarAgenda, () => addCalendarAgendaWidget(settings)),
     ]);
 
     addStoreCategory(page, 'Personal', [

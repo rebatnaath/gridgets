@@ -53,14 +53,14 @@ export const STORE_WIDGETS = Object.freeze({
     imageGif: {
         title: 'Image / GIF',
         description: 'Display an image or animated GIF directly on your desktop.',
-        gridSize: '2x2',
+        gridSize: '4x3',
         thumbnail: 'images/image-and-slideshow.svg',
         fallbackIconName: 'image-x-generic-symbolic',
     },
     imageSlideshow: {
         title: 'Image Slideshow',
         description: 'Cycle through images in a folder with crossfade transitions.',
-        gridSize: '4x4',
+        gridSize: '4x3',
         thumbnail: 'images/image-and-slideshow.svg',
         fallbackIconName: 'view-paged-symbolic',
     },
@@ -121,7 +121,7 @@ export const STORE_WIDGETS = Object.freeze({
         fallbackIconName: 'view-grid-symbolic',
     },
     calendarWidget: {
-        title: 'Calendar',
+        title: 'Calendar Minimal',
         description: 'A monthly calendar with today highlighted and month navigation.',
         gridSize: '4x3',
         thumbnail: 'calendar/calendar.svg',
@@ -142,9 +142,16 @@ export const STORE_WIDGETS = Object.freeze({
         fallbackIconName: 'preferences-system-time-symbolic',
     },
     calendarGrid: {
-        title: 'Month Calendar',
+        title: 'Calendar Standard',
         description: 'A compact month grid with today highlighted and weekends colored.',
         gridSize: '4x4',
+        thumbnail: 'calendar/month-calendar.svg',
+        fallbackIconName: 'x-office-calendar-symbolic',
+    },
+    calendarAgenda: {
+        title: 'Calendar Events',
+        description: 'A month grid beside the selected date and its events.',
+        gridSize: '7x4',
         thumbnail: 'calendar/month-calendar.svg',
         fallbackIconName: 'x-office-calendar-symbolic',
     },
@@ -185,8 +192,23 @@ export const STORE_WIDGETS = Object.freeze({
     },
 });
 
+/**
+ * Reads a catalog 'WxH' declaration as a footprint. The store card shows this size and
+ * the add dialogs spawn the widget at it, so the two can no longer disagree.
+ */
+export function parseStoreGridSize(gridSize) {
+    const [width, height] = String(gridSize).split('x').map(Number);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
+        return { width: 4, height: 3 };
+    return { width, height };
+}
+
 function getWeatherEntryKey(widget) {
-    const layout = widget.layout || (widget.width >= 6 ? 'forecast' : (widget.width === 4 ? 'simple' : 'standard'));
+    // The stored layout decides the entry. Inferring it from the width was wrong:
+    // the Large tier of the standard and simple layouts is 6 columns wide, the same
+    // as the Small tier of the forecast layout, so a large standard widget was
+    // labelled "Weather Forecast" and a small one "Weather".
+    const layout = widget.layout || 'standard';
     if (layout === 'forecast') {
         return 'weatherForecast';
     }
@@ -235,6 +257,8 @@ function getStoreWidgetKey(widget) {
             return 'calendarWidget';
         case 'calendar-grid':
             return 'calendarGrid';
+        case 'calendar-agenda':
+            return 'calendarAgenda';
         case 'quotes':
             return 'quotesWidget';
         case 'screen-time':

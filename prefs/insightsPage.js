@@ -4,7 +4,7 @@ import Adw from 'gi://Adw';
 import GLib from 'gi://GLib';
 import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
-import { DESKTOP_APP_KEY, getGridgetsDataDir, todayDateString, resolveDesktopAppInfo } from '../utils/widgetUtils.js';
+import { DESKTOP_APP_KEY, getGridgetsDataDir, todayDateString } from '../utils/widgetUtils.js';
 import { listMoodDatesSync, getMood, loadDatesSync } from '../utils/moodStore.js';
 import { clearBox } from './displayUtils.js';
 
@@ -35,6 +35,7 @@ function applyInsightsStyles(page) {
 }
 
 const HOURS_PER_DAY = 24;
+const RANGE_REFRESH_DEBOUNCE_MS = 120;
 
 const RANGE_PRESETS = [
     { label: 'Last 7 Days', days: 7 },
@@ -73,13 +74,37 @@ function daysAgoDate(days) {
     return `${y}-${m}-${d}`;
 }
 
+// Reading GDesktopAppInfo needs the GioUnix platform library, which stays out of the
+// preferences process. The same name and icon are available from the plain Gio app
+// list, so the details are resolved from there instead.
+let appDetailsById = null;
+
+function getAppDetailsById() {
+    if (appDetailsById !== null)
+        return appDetailsById;
+    appDetailsById = new Map();
+    for (const appInfo of Gio.AppInfo.get_all()) {
+        const id = appInfo.get_id();
+        if (!id || appDetailsById.has(id))
+            continue;
+        appDetailsById.set(id, {
+            displayName: appInfo.get_display_name(),
+            icon: appInfo.get_icon(),
+        });
+    }
+    return appDetailsById;
+}
+
+function getAppDetails(appId) {
+    const detailsById = getAppDetailsById();
+    return detailsById.get(appId) || detailsById.get(`${appId}.desktop`) || null;
+}
+
 function resolveAppName(appId) {
     if (appId === DESKTOP_APP_KEY) return 'Desktop';
-    const appInfo = resolveDesktopAppInfo(appId);
-    if (appInfo) {
-        const name = appInfo.get_display_name();
-        if (name && name.trim() !== '') return name;
-    }
+    const details = getAppDetails(appId);
+    if (details && details.displayName && details.displayName.trim() !== '')
+        return details.displayName;
     const base = appId.replace(/\.desktop$/i, '');
     return base.split('.').pop() || appId;
 }
@@ -96,16 +121,43 @@ function listDayFiles() {
             if (name.endsWith('.json'))
                 files.push(name.replace('.json', ''));
         }
-    } catch (_e) {
-        // Directory doesn't exist yet
+    } catch (error) {
+        // getGridgetsDataDir creates the directory, so a failure here is a real
+        // read error rather than a missing folder.
+        console.debug('Gridgets: could not read screen-time data:', error.message);
     }
     files.sort().reverse();
     return files;
 }
 
+// Parsing a day means opening the file and running JSON.parse over it, and a year
+// of history means doing that a few hundred times. The summary is therefore kept
+// per day and revalidated against the file's mtime, so changing the range filter
+// costs a stat per day instead of a full re-read, while an external change to the
+// data is still picked up.
+const daySummaryCache = new Map();
+
 function loadDaySummary(dateString) {
     const filePath = GLib.build_filenamev([getGridgetsDataDir('screen-time'), `${dateString}.json`]);
     const file = Gio.File.new_for_path(filePath);
+
+    let mtimeSeconds = -1;
+    try {
+        mtimeSeconds = file.query_info('time::modified', Gio.FileQueryInfoFlags.NONE, null)
+            .get_modified_time();
+    } catch (_e) {
+        mtimeSeconds = -1;
+    }
+    const cached = daySummaryCache.get(dateString);
+    if (cached && cached.mtimeSeconds === mtimeSeconds)
+        return cached.summary;
+
+    const summary = parseDaySummary(file);
+    daySummaryCache.set(dateString, { mtimeSeconds, summary });
+    return summary;
+}
+
+function parseDaySummary(file) {
     try {
         const [ok, bytes] = file.load_contents(null);
         if (!ok) return null;
@@ -224,6 +276,16 @@ export function buildInsightsPage(settings) {
     });
     applyInsightsStyles(page);
 
+    // Async work started by this page must not resume once the page is gone:
+    // its callbacks write straight into the rows below.
+    const pageCancellable = new Gio.Cancellable();
+    let rangeRefreshId = 0;
+    page.connect('destroy', () => {
+        pageCancellable.cancel();
+        if (rangeRefreshId)
+            GLib.Source.remove(rangeRefreshId);
+    });
+
     let selectedRange = 2;
     let stAvailableDates = [];
     let stSelectedDate = '';
@@ -244,9 +306,17 @@ export function buildInsightsPage(settings) {
         model: rangeModel,
         selected: selectedRange,
     });
+    // Each refresh walks the whole selected range, so stepping through the presets
+    // is coalesced into one rebuild once the user settles on a value.
     rangeRow.connect('notify::selected', () => {
         selectedRange = rangeRow.get_selected();
-        refreshAll();
+        if (rangeRefreshId)
+            GLib.Source.remove(rangeRefreshId);
+        rangeRefreshId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, RANGE_REFRESH_DEBOUNCE_MS, () => {
+            rangeRefreshId = 0;
+            refreshAll();
+            return GLib.SOURCE_REMOVE;
+        });
     });
     filterGroup.add(rangeRow);
     page.add(filterGroup);
@@ -281,8 +351,9 @@ export function buildInsightsPage(settings) {
         dialog.set_default_response('cancel');
         dialog.set_close_response('cancel');
         dialog.connect('response', (_dlg, responseId) => {
-            if (responseId === 'clear') clearAllScreenTimeData(refreshAll);
-            else refreshAll();
+            // Dismissing changes nothing, so it must not trigger a rebuild.
+            if (responseId === 'clear')
+                clearAllScreenTimeData(refreshAll, pageCancellable);
         });
         dialog.present(page.get_root());
     });
@@ -579,8 +650,8 @@ export function buildInsightsPage(settings) {
         stAppsNav.nextBtn.set_sensitive(stAppPage < pageCount - 1);
 
         for (const app of pageApps) {
-            const appInfo = resolveDesktopAppInfo(app.key);
-            const gicon = appInfo ? appInfo.get_icon() : null;
+            const appDetails = getAppDetails(app.key);
+            const gicon = appDetails ? appDetails.icon : null;
             const row = new Adw.ActionRow({
                 title: resolveAppName(app.key),
                 subtitle: `${formatCompactDuration(app.seconds)}  ·  ${Math.round((app.seconds / dayTotal) * 100)}%`,
@@ -807,15 +878,16 @@ export function buildInsightsPage(settings) {
     return page;
 }
 
-function clearAllScreenTimeData(callback) {
+function clearAllScreenTimeData(callback, cancellable) {
     const dir = getGridgetsDataDir('screen-time');
     const dirFile = Gio.File.new_for_path(dir);
     dirFile.enumerate_children_async(
         'standard::name',
         Gio.FileQueryInfoFlags.NONE,
         GLib.PRIORITY_DEFAULT,
-        null,
+        cancellable,
         (sourceObj, res) => {
+            if (cancellable.is_cancelled()) return;
             try {
                 const enumerator = sourceObj.enumerate_children_finish(res);
                 let info;
@@ -826,7 +898,10 @@ function clearAllScreenTimeData(callback) {
                         file.delete(null);
                     }
                 }
+                daySummaryCache.clear();
             } catch (e) {
+                if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                    return;
                 console.error('Error clearing screen time data:', e);
             }
             if (callback) callback();

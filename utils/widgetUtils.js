@@ -1,6 +1,5 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import GioUnix from 'gi://GioUnix';
 import { findThemePreset } from './themePresets.js';
 
 /** Empty string means no font-family override; widgets inherit the system theme font. */
@@ -43,6 +42,7 @@ export const MIN_WIDGET_SIZES = Object.freeze({
     'quotes': { minCols: 3, minRows: 3 },
     'screen-time': { minCols: 6, minRows: 3 },
     'calendar-grid': { minCols: 4, minRows: 4 },
+    'calendar-agenda': { minCols: 5, minRows: 4 },
     'mood': { minCols: 4, minRows: 2 },
     'system-dashboard': { minCols: 4, minRows: 4 },
     'pomodoro-focus': { minCols: 8, minRows: 4 },
@@ -379,6 +379,23 @@ export function cssColorToRgba(colorString, alpha = 1) {
     return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`;
 }
 
+/**
+ * Flattens a translucent colour against a backdrop into a solid hex colour.
+ * Use this to work out what a `rgba()` fill will actually look like, so text
+ * placed on top of it can be given a readable colour.
+ *
+ * An alpha carried by the colour string is honoured as well as the `alpha`
+ * argument, so a derived surface like `rgba(255,255,255,0.2)` flattens correctly.
+ */
+export function blendCssColor(foreground, background, alpha = 1) {
+    const top = parseCssColor(foreground);
+    const bottom = parseCssColor(background);
+    const weight = alpha * (top.a ?? 1);
+    const mix = (a, b) => Math.round(((a * weight) + (b * (1 - weight))) * 255);
+    const toHex = value => value.toString(16).padStart(2, '0');
+    return `#${toHex(mix(top.r, bottom.r))}${toHex(mix(top.g, bottom.g))}${toHex(mix(top.b, bottom.b))}`;
+}
+
 const LUMINANCE_RED_WEIGHT = 0.299;
 const LUMINANCE_GREEN_WEIGHT = 0.587;
 const LUMINANCE_BLUE_WEIGHT = 0.114;
@@ -568,94 +585,27 @@ export function resolveExplicitFontFamily(config) {
     return (config.fontFamily || config.globalFontFamily) || '';
 }
 
-/**
- * Small/Medium/Large footprints on the fixed grid, indexed 0-2.
- * image / slideshow stay free-resizable instead ("free flow").
- */
-export const SIZE_PRESET_TIERS = ['Small', 'Medium', 'Large'];
-const SIZE_PRESETS = {
-    'time': [[4, 3], [5, 4], [6, 5]],
-    'worldClock': [[4, 4], [5, 5], [6, 6]],
-    'weatherStandard': [[4, 4], [5, 5], [6, 6]],
-    'weatherSimple': [[4, 4], [5, 5], [6, 5]],
-    'weatherForecast': [[6, 4], [8, 5], [10, 6]],
-    'sun-schedule': [[7, 5], [7, 6], [8, 7]],
-    'musicSmall': [[4, 4], [5, 5], [6, 6]],
-    'musicWide': [[8, 4], [10, 5], [12, 6]],
-    'calendar': [[4, 4], [5, 5], [5, 6]],
-    'calendar-grid': [[5, 4], [6, 5], [8, 7]],
-    'system-dashboard': [[4, 4], [5, 5], [6, 6]],
-    'pomodoro': [[4, 4], [5, 5], [6, 6]],
-    'pomodoro-focus': [[8, 4], [10, 5], [12, 6]],
-    'cpu-ram': [[4, 2], [6, 3], [8, 4]],
-    'network-speed': [[4, 2], [6, 3], [8, 4]],
-    'notes': [[4, 4], [5, 5], [6, 6]],
-    'clipboard': [[4, 4], [5, 5], [6, 6]],
-    'quotes': [[4, 4], [5, 5], [6, 6]],
-    'screen-time': [[8, 4], [10, 5], [12, 6]],
-    'todo': [[6, 4], [7, 4], [8, 5]],
-    'github': [[8, 4], [10, 5], [12, 6]],
-    'mood': [[6, 3], [8, 4], [10, 5]],
-    'rss-headlines': [[4, 4], [5, 5], [6, 6]],
+// Widget identity — layout classification, size tiers, the wide-music test and the
+// per-type data folders — lives in widgetRegistry so the shell and the preferences
+// process cannot drift apart. Imported as well as re-exported because this module
+// calls into them below, and `export { X } from` on its own binds nothing locally.
+import {
+    SIZE_PRESET_TIERS,
+    FREE_FLOW_SIZE_TYPES,
+    WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
+    isWideMusicLayout,
+    supportsSizePresets,
+    resolveWidgetSizePreset,
+} from './widgetRegistry.js';
+
+export {
+    SIZE_PRESET_TIERS,
+    FREE_FLOW_SIZE_TYPES,
+    WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
+    isWideMusicLayout,
+    supportsSizePresets,
+    resolveWidgetSizePreset,
 };
-
-export const FREE_FLOW_SIZE_TYPES = ['image', 'slideshow'];
-
-function resolveSizePresetTable(widgetData) {
-    switch (widgetData.type) {
-        case 'time':
-            return (widgetData.layout === 'world') ? SIZE_PRESETS.worldClock : SIZE_PRESETS.time;
-        case 'weather': {
-            const layout = widgetData.layout || 'standard';
-            if (layout === 'forecast')
-                return SIZE_PRESETS.weatherForecast;
-            return (layout === 'simple') ? SIZE_PRESETS.weatherSimple : SIZE_PRESETS.weatherStandard;
-        }
-        case 'music':
-            return isWideMusicLayout(widgetData) ? SIZE_PRESETS.musicWide : SIZE_PRESETS.musicSmall;
-        default:
-            return SIZE_PRESETS[widgetData.type] || null;
-    }
-}
-
-/** App launcher tiles grow with the app count; frames scale one step per preset tier. */
-function resolveAppLauncherPreset(widgetData, sizeIndex) {
-    const appCount = Array.isArray(widgetData.apps) ? widgetData.apps.length : 0;
-    let tileCols = 1;
-    let tileRows = 1;
-    if (appCount > 6) { tileCols = 4; tileRows = 2; }
-    else if (appCount > 4) { tileCols = 3; tileRows = 2; }
-    else if (appCount > 2) { tileCols = 2; tileRows = 2; }
-    else if (appCount === 2) { tileCols = 2; tileRows = 1; }
-    return { width: tileCols + 2 + sizeIndex, height: tileRows + 1 + sizeIndex };
-}
-
-/** Returns whether the widget's context menu should offer S/M/L sizing. */
-export function supportsSizePresets(widgetData) {
-    return !FREE_FLOW_SIZE_TYPES.includes(widgetData.type)
-        && (resolveSizePresetTable(widgetData) !== null || widgetData.type === 'app-launcher');
-}
-
-/** Returns the {width, height} footprint for a preset tier, or null when unsupported. */
-export function resolveWidgetSizePreset(widgetData, sizeIndex) {
-    if (widgetData.type === 'app-launcher')
-        return resolveAppLauncherPreset(widgetData, sizeIndex);
-    const table = resolveSizePresetTable(widgetData);
-    if (!table || !table[sizeIndex])
-        return null;
-    return { width: table[sizeIndex][0], height: table[sizeIndex][1] };
-}
-
-export const WIDE_MUSIC_LAYOUT_ASPECT_RATIO = 1.5;
-
-/**
- * Single source of truth for classifying the wide music layout; shared by the
- * shell-side music widget and the preferences catalog/edit panel.
- */
-export function isWideMusicLayout(widget) {
-    if (widget.isLargeLayout) return true;
-    return widget.height > 0 && widget.width / widget.height >= WIDE_MUSIC_LAYOUT_ASPECT_RATIO;
-}
 
 /** Validates and constrains a widget's proposed new position and size during resize operations. */
 export function calculateResizedDimensions(widgetData, newCols, newRows, newGridX, widgets = null, maxCols = COLUMNS_COUNT, maxRows = Number.POSITIVE_INFINITY) {
@@ -797,20 +747,4 @@ export function addWidget(settings, widgetData, defaultWidth, defaultHeight) {
     widgetData.height = spawnHeight;
     widgets.push(widgetData);
     saveWidgets(settings, widgets);
-}
-
-/**
- * Resolves a .desktop app id to a DesktopAppInfo;
- * the class lives in the GioUnix platform library.
- */
-export function resolveDesktopAppInfo(appId) {
-    if (!appId || typeof appId !== 'string') return null;
-
-    const idCandidates = appId.endsWith('.desktop') ? [appId] : [appId, `${appId}.desktop`];
-
-    for (const candidate of idCandidates) {
-        const appInfo = GioUnix.DesktopAppInfo.new(candidate);
-        if (appInfo && appInfo.get_id()) return appInfo;
-    }
-    return null;
 }

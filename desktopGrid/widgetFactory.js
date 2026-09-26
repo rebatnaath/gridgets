@@ -2,7 +2,7 @@ import { createTimeNode } from '../widgets/time/index.js';
 import { createWeatherNode, createSunScheduleNode } from '../widgets/weather/index.js';
 import { createMusicNode } from '../widgets/music/index.js';
 import { createNotesNode, createClipboardNode, createTodoNode } from '../widgets/productivity/index.js';
-import { createCalendarNode, createCalendarGridNode } from '../widgets/calendar/index.js';
+import { createCalendarNode, createCalendarGridNode, createCalendarAgendaNode } from '../widgets/calendar/index.js';
 import { createQuotesNode, createGithubNode, createRssHeadlinesNode } from '../widgets/social/index.js';
 import {
     createCpuRamNode,
@@ -43,6 +43,7 @@ const WIDGET_CREATORS = {
     'quotes': (data, w, h, x, y) => createQuotesNode(data, w, h, x, y),
     'screen-time': (data, w, h, x, y) => createScreenTimeNode(data, w, h, x, y),
     'calendar-grid': (data, w, h, x, y) => createCalendarGridNode(data, w, h, x, y),
+    'calendar-agenda': (data, w, h, x, y) => createCalendarAgendaNode(data, w, h, x, y),
     'todo': (data, w, h, x, y) => createTodoNode(data, w, h, x, y),
     'github': (data, w, h, x, y) => createGithubNode(data, w, h, x, y),
     'sun-schedule': (data, w, h, x, y) => createSunScheduleNode(data, w, h, x, y),

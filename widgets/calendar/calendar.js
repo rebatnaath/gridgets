@@ -12,6 +12,7 @@ const TOP_BAR_RADIUS_PX = 12;
 const DAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.title;
 const DATE_FONT_SIZE_PX = 70;
 const MONTH_FONT_SIZE_PX = TYPOGRAPHY_SIZE.title;
+const MONTH_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.bold;
 const SECONDARY_TEXT_OPACITY = TEXT_OPACITY.subtle;
 const SECONDARY_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.semibold;
 const MONTH_MARGIN_BOTTOM_PX = 8;
@@ -87,7 +88,7 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const monthLabel = new St.Label({
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(MONTH_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT}; `
+        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(MONTH_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${MONTH_FONT_WEIGHT}; `
             + `opacity: ${SECONDARY_TEXT_OPACITY}; margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`,
     });
     contentBox.add_child(monthLabel);
@@ -99,7 +100,7 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
         scale = newScale;
         dayLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT}; opacity: ${SECONDARY_TEXT_OPACITY};`;
         dateNumber.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DATE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; font-weight: ${TYPOGRAPHY_WEIGHT.black};`;
-        monthLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(MONTH_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT}; `
+        monthLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(MONTH_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${MONTH_FONT_WEIGHT}; `
             + `opacity: ${SECONDARY_TEXT_OPACITY}; margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`;
     }
 

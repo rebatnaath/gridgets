@@ -82,6 +82,10 @@ export function addCalendarGridWidget(settings, width = 4, height = 4) {
     addWidget(settings, { id: nextWidgetId(settings, 'calendar-grid'), type: 'calendar-grid' }, width, height);
 }
 
+export function addCalendarAgendaWidget(settings, width = 7, height = 4) {
+    addWidget(settings, { id: nextWidgetId(settings, 'calendar-agenda'), type: 'calendar-agenda' }, width, height);
+}
+
 export function addTodoWidget(settings, width = 5, height = 3) {
     addWidget(settings, { id: nextWidgetId(settings, 'todo'), type: 'todo' }, width, height);
 }
@@ -140,7 +144,7 @@ export function addSlideshowWidget(settings, folderPath, intervalSeconds = 10, w
         intervalSeconds,
         caption: finalCaption,
         showCaption: showCaption !== false,
-        captionFollowGlobal: showCaption !== false,
+        captionFollowGlobal: false,
     };
 
     addWidget(settings, widgetConfig, width, height);
@@ -154,7 +158,7 @@ export function addImageWidget(settings, imagePath, caption = 'My Image', showCa
         imagePath,
         caption: finalCaption,
         showCaption: showCaption !== false,
-        captionFollowGlobal: showCaption !== false,
+        captionFollowGlobal: false,
     };
 
     addWidget(settings, widgetConfig, width, height);

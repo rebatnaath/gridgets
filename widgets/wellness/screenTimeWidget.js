@@ -9,7 +9,6 @@ import {
     cssColorToRgba,
     CAIRO_OPERATOR_CLEAR,
     CAIRO_OPERATOR_OVER,
-    resolveDesktopAppInfo,
     resolveWidgetSurfaces,
     resolveChildCornerRadius,
     DEFAULT_CHILD_CORNER_RADIUS_PX,
@@ -18,6 +17,7 @@ import {
 import { MONTH_NAMES_ABBREVIATED as MONTH_NAMES, createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { screenTimeEngine } from '../../utils/screenTimeEngine.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { resolveDesktopAppInfo } from '../../shell/appResolution.js';
 import { toDateString } from '../../utils/moodStore.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, GRAPHICS_OPACITY, scaleFontSize } from '../../utils/typography.js';
@@ -32,8 +32,8 @@ const X_AXIS_HEIGHT_PX = 15;
 const BAR_WIDTH_PX = 4;
 const HOURS_PER_DAY = 24;
 
-// Dynamic axis: tallest hour bucket, rounded up to a 5-minute multiple.
-const MIN_SCALE_SECONDS = 300;
+// The axis step the tallest hour bucket is rounded up to.
+const MIN_SCALE_SECONDS = 300; // 5 minutes
 const HEADER_RESERVED_HEIGHT_PX = 46;
 const HEADER_MARGIN_BOTTOM_PX = 12;
 
@@ -54,7 +54,8 @@ const NAV_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconMd;
 const APP_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconMd;
 const MAX_VISIBLE_APPS = 4;
 const SECONDARY_TEXT_OPACITY = TEXT_OPACITY.secondary;
-const DISABLED_CONTROL_OPACITY = Math.round(255 * TEXT_OPACITY.disabled);
+const CLUTTER_OPACITY_OPAQUE = 255;
+const DISABLED_CONTROL_OPACITY = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.disabled);
 const PANEL_PADDING_TOP_PX = 16;
 const PANEL_PADDING_BOTTOM_PX = 16;
 const PANEL_PADDING_LEFT_PX = 20;
@@ -105,6 +106,8 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         snapshot: null,
         geometry: {},
         lastAppListSignature: null,
+        appRows: [],
+        appListEmptyLabel: null,
     };
 
     const splitBox = new St.BoxLayout({
@@ -263,11 +266,10 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         }
     }
 
-    function appListSignature(snapshot) {
-        return JSON.stringify(snapshot.apps
-            .filter(app => app.key !== DESKTOP_APP_KEY)
-            .slice(0, MAX_VISIBLE_APPS)
-            .map(app => [app.key, app.seconds]));
+    // Identity only: including the seconds changed this on nearly every tick and
+    // forced a full rebuild each time.
+    function appListSignature() {
+        return JSON.stringify(visibleApps().map(app => app.key));
     }
 
     function renderDynamic() {
@@ -277,14 +279,16 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         totalTimeLabel.text = formatCompactDuration(state.snapshot.totalSeconds);
         dateLabel.text = formatShortDate(state.selectedDate);
         const isViewingToday = state.selectedDate === screenTimeEngine.getTodayDate();
-        nextButton.set_opacity(isViewingToday ? DISABLED_CONTROL_OPACITY : 255);
+        nextButton.set_opacity(isViewingToday ? DISABLED_CONTROL_OPACITY : CLUTTER_OPACITY_OPAQUE);
 
         updateYAxisLabels();
 
-        const signature = appListSignature(state.snapshot);
+        const signature = appListSignature();
         if (signature !== state.lastAppListSignature) {
             state.lastAppListSignature = signature;
             rebuildAppList();
+        } else {
+            updateAppListInPlace();
         }
         if (geometry.plotWidth > 0)
             chartCanvas.queue_repaint();
@@ -300,61 +304,99 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         yAxisLabels.forEach((label, index) => label.set_text(labels[index]));
     }
 
-    function rebuildAppList() {
-        appRowsBox.destroy_all_children();
-
-        const apps = state.snapshot.apps
+    function visibleApps() {
+        return state.snapshot.apps
             .filter(app => app.key !== DESKTOP_APP_KEY)
             .slice(0, MAX_VISIBLE_APPS);
+    }
+
+    function applyAppRowScale(entry, scale) {
+        const iconSize = Math.max(1, Math.round(APP_ICON_SIZE_PX * scale));
+        entry.iconSlot.width = iconSize;
+        entry.iconSlot.height = iconSize;
+        entry.appIcon.icon_size = iconSize;
+        entry.valueLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+    }
+
+    function buildAppRow(app, scale) {
+        const row = new St.BoxLayout({
+            orientation: Clutter.Orientation.HORIZONTAL,
+            x_align: Clutter.ActorAlign.FILL,
+            style: `spacing: ${APP_ROW_ITEM_SPACING_PX}px;`,
+        });
+
+        const iconSlot = new St.Widget({
+            layout_manager: new Clutter.BinLayout(),
+        });
+        const appIcon = new St.Icon({
+            icon_name: 'application-x-generic',
+        });
+        const appInfo = resolveDesktopAppInfo(app.key);
+        const gicon = appInfo ? appInfo.get_icon() : null;
+        if (gicon) {
+            appIcon.gicon = gicon;
+        }
+        iconSlot.add_child(appIcon);
+        row.add_child(iconSlot);
+
+        // Icon pinned left so every duration starts at the same x: "6m" and "1h 53m" align.
+        const valueLabel = new St.Label({
+            text: formatCompactDuration(app.seconds),
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        row.add_child(valueLabel);
+
+        const entry = { key: app.key, iconSlot, appIcon, valueLabel };
+        applyAppRowScale(entry, scale);
+        return { row, entry };
+    }
+
+    function rebuildAppList() {
+        appRowsBox.destroy_all_children();
+        state.appRows = [];
+        state.appListEmptyLabel = null;
+
+        const scale = state.geometry.scale || 1;
+        const apps = visibleApps();
         if (apps.length === 0) {
-            appRowsBox.add_child(new St.Label({
+            const emptyLabel = new St.Label({
                 text: 'No activity recorded',
                 x_expand: true,
                 x_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
-                    + `opacity: ${SECONDARY_TEXT_OPACITY};`,
-            }));
+            });
+            emptyLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
+                + `opacity: ${SECONDARY_TEXT_OPACITY};`;
+            appRowsBox.add_child(emptyLabel);
+            state.appListEmptyLabel = emptyLabel;
             return;
         }
 
         for (const app of apps) {
-            const scale = state.geometry.scale || 1;
-            const scalePixels = value => Math.max(1, Math.round(value * scale));
-
-            // Icon pinned left, duration immediately after it — every value
-            // starts at the same x so short ("6m") and long ("1h 53m") stay aligned.
-            const row = new St.BoxLayout({
-                orientation: Clutter.Orientation.HORIZONTAL,
-                x_align: Clutter.ActorAlign.FILL,
-                style: `spacing: ${APP_ROW_ITEM_SPACING_PX}px;`,
-            });
-
-            const iconSlot = new St.Widget({
-                layout_manager: new Clutter.BinLayout(),
-                width: scalePixels(APP_ICON_SIZE_PX),
-                height: scalePixels(APP_ICON_SIZE_PX),
-            });
-            const appIcon = new St.Icon({
-                icon_name: 'application-x-generic',
-                icon_size: scalePixels(APP_ICON_SIZE_PX),
-            });
-            const appInfo = resolveDesktopAppInfo(app.key);
-            const gicon = appInfo ? appInfo.get_icon() : null;
-            if (gicon) {
-                appIcon.gicon = gicon;
-            }
-            iconSlot.add_child(appIcon);
-            row.add_child(iconSlot);
-
-            row.add_child(new St.Label({
-                text: formatCompactDuration(app.seconds),
-                x_expand: true,
-                y_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
-                    + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`,
-            }));
-
+            const { row, entry } = buildAppRow(app, scale);
+            state.appRows.push(entry);
             appRowsBox.add_child(row);
+        }
+    }
+
+    // Rebuilding the rows on every tick destroyed and recreated all of them,
+    // re-resolving each app's desktop icon, and left the font sizes frozen at
+    // whatever scale the rows happened to be built with.
+    function updateAppListInPlace() {
+        const scale = state.geometry.scale || 1;
+        if (state.appListEmptyLabel) {
+            state.appListEmptyLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
+                + `opacity: ${SECONDARY_TEXT_OPACITY};`;
+            return;
+        }
+
+        const secondsByKey = new Map(state.snapshot.apps.map(app => [app.key, app.seconds]));
+        for (const entry of state.appRows) {
+            const seconds = secondsByKey.get(entry.key);
+            if (seconds !== undefined)
+                entry.valueLabel.set_text(formatCompactDuration(seconds));
+            applyAppRowScale(entry, scale);
         }
     }
 
@@ -451,9 +493,8 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         nextButton.style = prevButton.style;
 
         const chartWrapWidth = mainWidth - padLeft - padRight;
-        // Reserve only what the tallest header column actually occupies
-        // (date label 14 + spacing 6 + nav buttons 26), so the plot top — and
-        // therefore the max scale mark — rises to the prev/next button level.
+        // Reserve only what the tallest header column actually occupies, so the plot
+        // top — and the max scale mark — rises to the prev/next button level.
         const chartWrapHeight = currentHeight - padTop - padBottom
             - Math.round((HEADER_RESERVED_HEIGHT_PX + HEADER_MARGIN_BOTTOM_PX) * scale);
         const plotWidth = Math.max(1, chartWrapWidth - Math.round(Y_AXIS_WIDTH_PX * scale));
