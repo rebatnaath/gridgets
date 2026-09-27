@@ -1,4 +1,4 @@
-// This project uses LLMs as a helper (templates, boilerplate, auto-completion)
+// This project uses LLMs as a helper (templates, boilerplate, auto-completion, git-push, commit, readme and docs generation)
 // while the majority of the code is written and verified by a human.
 
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
