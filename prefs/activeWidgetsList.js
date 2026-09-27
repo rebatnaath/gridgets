@@ -2,6 +2,7 @@ import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
 import { getWidgets, saveWidgets, deleteCacheFile } from '../utils/widgetUtils.js';
 import { getWidgetCacheFolder } from '../utils/widgetRegistry.js';
+import { deleteLastGoodCache } from '../utils/lastGoodCache.js';
 import { buildWidgetEditPanel } from './widgetEditDialogs.js';
 import { getStoreWidgetEntry, getWidgetDetailText } from './widgetCatalog.js';
 
@@ -147,6 +148,7 @@ function createWidgetRow(window, settings, widget) {
         const cacheFolder = getWidgetCacheFolder(widget.type);
         if (cacheFolder) {
             deleteCacheFile(cacheFolder, widget.id);
+            deleteLastGoodCache(widget.type, widget.id);
         }
 
         saveWidgets(settings, remainingWidgets);

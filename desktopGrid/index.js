@@ -42,6 +42,8 @@ import { resolveWeatherLayoutVariant } from '../widgets/weather/weatherCommon.js
 const GRID_LINE_ALPHA = 0.25;
 const EDIT_OVERLAY_ALPHA = 0.3;
 
+let REBUILD_SEQ = 0;
+
 export const DesktopGrid = GObject.registerClass(
     class DesktopGrid extends St.Widget {
         _init(extensionPath, settings, metadata, targetMonitorIndex = null, interfaceSettings = null) {
@@ -365,6 +367,30 @@ export const DesktopGrid = GObject.registerClass(
          * Applies an S/M/L preset: repositions if the new footprint collides,
          * then destroys and recreates the node so fonts/layout recompute.
          */
+        /** Switches which publisher sections a top-stories widget merges. */
+        applyWidgetGenre(widgetId, genre) {
+            const { widgets } = this._resolveActiveWidgets();
+            const target = widgets.find(widget => widget.id === widgetId);
+            if (!target)
+                return;
+            target.genre = genre;
+
+            const node = this.widgetNodes.get(widgetId);
+            if (node) {
+                node.destroy();
+                this.widgetNodes.delete(widgetId);
+                this._nodeConfigs.delete(widgetId);
+            }
+            this._saveLocalWidgets(widgets);
+
+            // Recreate only this widget against the settled layout. A full
+            // _rebuildGrid() restages every widget, and the replacement can be
+            // measured before its allocation lands, which leaves the type at the
+            // wrong scale until something triggers a resize.
+            const globalSettings = readGlobalSettings(this.settings, this.interfaceSettings);
+            this._createNodeFactory(this._layout, globalSettings)(target);
+        }
+
         applySizePreset(widgetId, sizeIndex) {
             const { widgets } = this._resolveActiveWidgets();
             const target = widgets.find(widget => widget.id === widgetId);
@@ -465,6 +491,7 @@ export const DesktopGrid = GObject.registerClass(
             }
         }
         _rebuildGrid() {
+            console.log(`[gridgets] grid rebuild #${++REBUILD_SEQ}`);
             this._lastAppliedWidgetsJson = this.settings.get_string('widgets');
 
             this.widgetNodes.forEach(node => node.destroy());

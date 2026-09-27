@@ -14,6 +14,7 @@ import { getWidgetCacheFolder } from '../utils/widgetRegistry.js';
 import { getWidgetsForMonitor, getPanelHeight, getEffectiveMonitorIndex } from './helpers.js';
 import { registerWidgetCleanup } from '../shell/widgetUIUtils.js';
 import { openWidgetContextMenu } from './contextMenu.js';
+import { deleteLastGoodCache } from '../utils/lastGoodCache.js';
 import {
     BUTTON_PRIMARY,
     BUTTON_SECONDARY,
@@ -248,8 +249,10 @@ export function onWidgetDeleted(grid, widgetId) {
     const targetWidget = widgets.find(widget => widget.id === widgetId);
     if (targetWidget) {
         const cacheFolder = getWidgetCacheFolder(targetWidget.type);
-        if (cacheFolder)
+        if (cacheFolder) {
             deleteCacheFile(cacheFolder, widgetId);
+            deleteLastGoodCache(targetWidget.type, widgetId);
+        }
     }
     const remainingWidgets = widgets.filter(widget => widget.id !== widgetId);
     saveWidgets(grid.settings, remainingWidgets);

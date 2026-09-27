@@ -7,7 +7,7 @@ import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { toggleWidgetResizeHandle } from './widgetEditUtils.js';
 import { onWidgetResized, onWidgetDeleted } from './dragDrop.js';
-import { COLUMNS_COUNT, getWidgets, supportsSizePresets, SIZE_PRESET_TIERS } from '../utils/widgetUtils.js';
+import { COLUMNS_COUNT, getWidgets, supportsSizePresets, SIZE_PRESET_TIERS, DEFAULT_TOP_STORY_GENRE, TOP_STORY_GENRE_NAMES, TOP_STORY_GENRE_LABELS } from '../utils/widgetUtils.js';
 
 export function createPopupMenuAt(grid, event) {
     if (grid._contextMenuCloseIdleId) {
@@ -85,6 +85,18 @@ export function launchSettingsPanel(panelName = null) {
 
 export function openWidgetContextMenu(grid, event, node, widgetData) {
     const menu = createPopupMenuAt(grid, event);
+
+    if (widgetData.type === 'top-stories') {
+        const genreMenu = new PopupMenu.PopupSubMenuMenuItem('Genre');
+        for (const genre of TOP_STORY_GENRE_NAMES) {
+            const item = new PopupMenu.PopupMenuItem(TOP_STORY_GENRE_LABELS[genre] || genre);
+            if ((widgetData.genre || DEFAULT_TOP_STORY_GENRE) === genre)
+                item.add_style_class_name('selected');
+            item.connect('activate', () => grid.applyWidgetGenre(widgetData.id, genre));
+            genreMenu.menu.addMenuItem(item);
+        }
+        menu.addMenuItem(genreMenu);
+    }
 
     if (supportsSizePresets(widgetData)) {
         const sizeMenu = new PopupMenu.PopupSubMenuMenuItem('Size');

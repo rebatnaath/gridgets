@@ -1,7 +1,7 @@
 export const THEME_PRESETS = Object.freeze([
     { id: 'adwaita', name: 'Adwaita (System)' },
-    { id: 'adwaita-light', name: 'Adwaita Light', bg: '#fafafb', fg: '#323237', card: '#ebebed', highlight: '#dfdfe1' },
-    { id: 'adwaita-dark', name: 'Adwaita Dark', bg: '#222226', fg: '#ffffff', card: '#343437', highlight: '#4e4e51' },
+    { id: 'adwaita-light', name: 'Adwaita Light', bg: '#ebebed', fg: '#323237', card: '#fafafb', highlight: '#dfdfe1' },
+    { id: 'adwaita-dark', name: 'Adwaita Dark', bg: '#343437', fg: '#ffffff', card: '#48484b', highlight: '#6d6d6f' },
     { id: 'catppuccin-mocha', name: 'Catppuccin Mocha', bg: '#1e1e2e', fg: '#cdd6f4', card: '#30303f', highlight: '#4b4b58', accent: '#cba6f7' },
     { id: 'catppuccin-latte', name: 'Catppuccin Latte', bg: '#eff1f5', fg: '#4c4f69', card: '#e3e5e9', highlight: '#d2d4d8', accent: '#8839ef' },
     { id: 'gruvbox-dark', name: 'Gruvbox Dark', bg: '#282828', fg: '#ebdbb2', card: '#393939', highlight: '#535353', accent: '#458588' },
