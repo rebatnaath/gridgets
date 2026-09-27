@@ -58,6 +58,8 @@ widget appears at.
 
 ### New widgets
 
+- **Top Stories** - a scrolling list of headlines from many publishers, each with
+  its thumbnail. Pick a genre when you add it.
 - **Calendar Events** - a month grid with the selected day's events listed
   beside it. Double-click a day in the grid to switch to it, scroll the list for the
   rest, and click any of them to open GNOME Calendar.
