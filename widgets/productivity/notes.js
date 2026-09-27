@@ -1,7 +1,7 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetColors, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync } from '../../utils/widgetUtils.js';
+import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetColors, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, scheduleDeferredUpdate, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
@@ -57,7 +57,10 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
         y_expand: true,
     });
 
-    const borderRadius = config.appliedBorderRadius || 0;
+// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
+    // means the shared default, and || 0 squared this panel off against a rounded
+    // container. The radius has to match the container's to line the corners up.
+    const borderRadius = resolveWidgetCornerRadius(config);
     const headerBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         x_align: Clutter.ActorAlign.FILL,

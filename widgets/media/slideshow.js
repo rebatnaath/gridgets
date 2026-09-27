@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { createAnimatedImageNode } from './gif.js';
 import { listImagesInFolder, attachCaptionOverlay } from './mediaCommon.js';
-import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveExplicitFontFamily, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
+import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetCornerRadius, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
 import { WidgetActor, connectTimerCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
@@ -46,7 +46,10 @@ function createImageLayer(imagePath, borderRadius, width, height, animateGif) {
 
 export function createSlideshowNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
-    const borderRadius = widgetData.appliedBorderRadius || 0;
+    // The layers sit inside a container that is rounded by the shared default, so they
+    // have to carry the same radius. `appliedBorderRadius || 0` left them square whenever
+    // no override was stored, and the picture then covered the rounded corners.
+    const borderRadius = resolveWidgetCornerRadius(widgetData);
     const slideInterval = (widgetData.intervalSeconds || DEFAULT_SLIDE_INTERVAL_SECONDS) * MILLISECONDS_PER_SECOND;
     const folderPath = widgetData.slideshowFolder || '';
     const backgroundColor = resolveWidgetBackgroundColor(widgetData);

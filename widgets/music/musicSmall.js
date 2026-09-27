@@ -2,7 +2,7 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { createBackgroundLayer, buildControlsColumn, updateControlButtonScaling } from './controls.js';
 import { LIGHT_TEXT_ON_DARK_COVER } from './cover.js';
-import { resolveExplicitFontFamily, resolveWidgetSurfaces } from '../../utils/widgetUtils.js';
+import { resolveExplicitFontFamily, resolveWidgetSurfaces, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 
 const BASE_CONTAINER_WIDTH = 240;
@@ -22,7 +22,10 @@ export function buildSmallLayout(config, state) {
     state.backgroundLayer = backgroundLayer;
     state.container.add_child(backgroundLayer);
 
-    const cornerRadius = config.appliedBorderRadius || 0;
+// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
+    // means the shared default, and || 0 squared this scrim off against a rounded
+    // container. The radius has to match the container's to line the corners up.
+    const cornerRadius = resolveWidgetCornerRadius(config);
     const gradientOverlay = new St.Widget({
         style: buildScrimStyle(cornerRadius),
         x_expand: true,

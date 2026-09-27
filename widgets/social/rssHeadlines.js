@@ -2,11 +2,15 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
-import { cssColorToRgba, resolveExplicitFontFamily, resolveWidgetColors } from '../../utils/widgetUtils.js';
+import { cssColorToRgba, resolveExplicitFontFamily, resolveWidgetColors, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { subscribeToFeed } from '../../utils/rssEngine.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { loadLastGoodCache, saveLastGoodCache } from '../../utils/lastGoodCache.js';
+import { createOfflineNotice, noticeMessageForFetchFailure, OFFLINE_NOTICE_MESSAGES } from '../../components/offline/offlineNotice/offlineNotice.js';
+import { clampText, hostLabelFromUrl, relativeTimeFromIso } from '../../utils/feedText.js';
+import { isNetworkAvailable, subscribeToSettledConnectivity } from '../../utils/connectivity.js';
 
 const REF_WIDTH_PX = 240;
 const REF_HEIGHT_PX = 240;
@@ -23,34 +27,15 @@ const TITLE_DISPLAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
 const SNIPPET_DISPLAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
 const FOOTER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
 
+/** Bounds the stored feed so one chatty feed cannot grow the file without limit. */
+const MAX_CACHED_ARTICLES = 60;
 const ROTATE_INTERVAL_SECONDS = 5;
 const FADE_DURATION_MS = 150;
 const MIN_REFRESH_MINUTES = 5;
 const DEFAULT_REFRESH_MINUTES = 15;
 
-function clampText(text, maxChars) {
-    if (!text) return '';
-    return text.length <= maxChars ? text : `${text.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
-}
-
 function sourceNameFromUrl(feedUrl) {
-    try {
-        const host = new URL(feedUrl).hostname.replace(/^www\./, '');
-        return clampText(host, SOURCE_NAME_MAX_CHARS);
-    } catch (_urlErr) {
-        return 'Feed';
-    }
-}
-
-function relativeTimeFromIso(dateIso) {
-    const publishedMs = dateIso ? Date.parse(dateIso) : NaN;
-    if (isNaN(publishedMs)) return '';
-    const deltaMinutes = Math.max(0, Math.floor((Date.now() - publishedMs) / 60000));
-    if (deltaMinutes < 1) return 'Just now';
-    if (deltaMinutes < 60) return `${deltaMinutes}m ago`;
-    const hours = Math.floor(deltaMinutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
+    return clampText(hostLabelFromUrl(feedUrl), SOURCE_NAME_MAX_CHARS) || 'Feed';
 }
 
 export function createRssHeadlinesNode(config, width, height, xPosition, yPosition) {
@@ -61,15 +46,20 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     } = resolveWidgetColors(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-    const borderRadius = config.appliedBorderRadius || 0;
+// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
+    // means the shared default, and || 0 squared this panel off against a rounded
+    // container. The radius has to match the container's to line the corners up.
+    const borderRadius = resolveWidgetCornerRadius(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
     const hasFeed = typeof config.feedUrl === 'string' && config.feedUrl.startsWith('http');
     const refreshIntervalSeconds = Math.max(MIN_REFRESH_MINUTES, config.refreshMinutes || DEFAULT_REFRESH_MINUTES) * 60;
 
-    const state = { timerId: null, releaseFeed: null };
+    const state = { timerId: null, releaseFeed: null, releaseConnectivity: null };
     let articles = [];
     let currentIndex = 0;
+    /** Non-empty while a fetch has failed, so the notice can say why the list may be old. */
+    let fetchFailureMessage = '';
     let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
 
     const mainBox = new St.BoxLayout({
@@ -103,6 +93,10 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     contentArea.add_child(articleSnippet);
     mainBox.add_child(contentArea);
 
+    const emptyState = createOfflineNotice({ fontCss, textColor, scale });
+    emptyState.actor.hide();
+    mainBox.add_child(emptyState.actor);
+
     const footerBar = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         x_align: Clutter.ActorAlign.FILL,
@@ -128,6 +122,7 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
 
     function applyArticle() {
         if (!hasFeed) {
+            emptyState.actor.hide();
             sourceLabel.text = 'RSS Headlines';
             articleTitle.text = 'No feed configured';
             articleTitle.visible = true;
@@ -136,14 +131,33 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
             updateArticlePosition();
             return;
         }
+
+        // Content on screen always wins over the notice, so a refresh that failed keeps
+        // the headlines the user was already reading. With nothing cached and no fetch
+        // finished yet the widget stays blank rather than claiming there is no content,
+        // which is what the empty hand-off from the engine used to trigger.
         if (articles.length === 0) {
-            articleTitle.text = 'Waiting for updates…';
-            articleTitle.visible = true;
+            articleTitle.text = '';
+            articleTitle.visible = false;
             articleSnippet.text = '';
             timeLabel.text = '';
             updateArticlePosition();
+            if (fetchFailureMessage) {
+                emptyState.setMessage(fetchFailureMessage);
+                emptyState.actor.show();
+            } else {
+                emptyState.actor.hide();
+            }
             return;
         }
+
+        if (fetchFailureMessage) {
+            emptyState.setMessage(fetchFailureMessage);
+            emptyState.actor.show();
+        } else {
+            emptyState.actor.hide();
+        }
+
         const article = articles[currentIndex % articles.length];
         const articleTitleText = clampText(article.title, ARTICLE_TITLE_MAX_CHARS);
         articleTitle.text = articleTitleText;
@@ -197,22 +211,58 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     });
 
     connectTimerCleanup(container, state);
+
+    if (hasFeed) {
+        sourceLabel.text = sourceNameFromUrl(config.feedUrl);
+        state.releaseFeed = subscribeToFeed(config.feedUrl, refreshIntervalSeconds, (items, isFetchResult) => {
+            if (isActorDestroyed(container)) return;
+            // An empty list is what a failed fetch looks like from here, so it must not
+            // clobber data restored from the last-good cache. It is also what the engine
+            // hands over before its first fetch has finished, which is not a failure and
+            // must not raise the notice.
+            const incoming = Array.isArray(items) ? items : [];
+            if (incoming.length > 0) {
+                articles = incoming;
+                currentIndex = 0;
+                fetchFailureMessage = '';
+                saveLastGoodCache('rss-headlines', config.id, articles.slice(0, MAX_CACHED_ARTICLES));
+            } else if (isFetchResult) {
+                fetchFailureMessage = noticeMessageForFetchFailure(articles.length > 0, isNetworkAvailable());
+            }
+            applyArticle();
+        });
+
+        // A widget added while offline should not wait out the poll interval. The engine
+        // refetches on its own here; this just drops the notice so the list stops being
+        // labelled stale while that request is in flight.
+        state.releaseConnectivity = subscribeToSettledConnectivity(available => {
+            if (!available || isActorDestroyed(container)) return;
+            fetchFailureMessage = '';
+            applyArticle();
+        });
+
+        loadLastGoodCache('rss-headlines', config.id, payload => {
+            if (isActorDestroyed(container)) return;
+            if (articles.length > 0 || !Array.isArray(payload) || payload.length === 0) return;
+            articles = payload;
+            // The read can land after a failed fetch, in which case the "nothing to show"
+            // notice it raised is no longer true. A stale notice stays, because saved
+            // articles really are what is on screen.
+            if (fetchFailureMessage && fetchFailureMessage !== OFFLINE_NOTICE_MESSAGES.stale)
+                fetchFailureMessage = '';
+            applyArticle();
+        });
+    }
+
     registerWidgetCleanup(container, () => {
         container.disconnect(scrollSignalId);
         if (state.releaseFeed)
             state.releaseFeed();
         state.releaseFeed = null;
+        if (state.releaseConnectivity)
+            state.releaseConnectivity();
+        state.releaseConnectivity = null;
     });
-
-    if (hasFeed) {
-        sourceLabel.text = sourceNameFromUrl(config.feedUrl);
-        state.releaseFeed = subscribeToFeed(config.feedUrl, refreshIntervalSeconds, (items) => {
-            if (isActorDestroyed(container)) return;
-            articles = Array.isArray(items) ? items : [];
-            currentIndex = 0;
-            applyArticle();
-        });
-    }
 
     state.timerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, ROTATE_INTERVAL_SECONDS, () => {
         rotateArticle(1);
@@ -233,6 +283,7 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
         sourceLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
 
         contentArea.style = `padding: ${px(CONTENT_PADDING_PX)}px;`;
+        emptyState.applyScale(scale);
         articleTitle.style = `${fontCss}font-size: ${scaleFontSize(TITLE_DISPLAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
         articleSnippet.style = `${fontCss}font-size: ${scaleFontSize(SNIPPET_DISPLAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`
             + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;

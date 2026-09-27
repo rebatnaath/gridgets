@@ -1,6 +1,6 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetSurfaces } from '../../utils/widgetUtils.js';
+import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetSurfaces, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { attachButtonFeedback } from '../../shell/widgetUIUtils.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { SKIP_BACK_ICON, SKIP_FORWARD_ICON, FALLBACK_ICON } from './icons.js';
@@ -29,7 +29,10 @@ function buildTimerLabelStyle(fontCss, textColor, scale) {
 }
 
 export function createBackgroundLayer(config) {
-    const borderRadius = config.appliedBorderRadius || 0;
+// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
+    // means the shared default, and || 0 squared this panel off against a rounded
+    // container. The radius has to match the container's to line the corners up.
+    const borderRadius = resolveWidgetCornerRadius(config);
     const { card } = resolveWidgetSurfaces(config);
     return new St.Widget({
         style: `background-color: ${card}; background-size: cover; border-radius: ${borderRadius}px;`,

@@ -2,7 +2,6 @@ import St from 'gi://St';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { PACKAGE_VERSION } from 'resource:///org/gnome/shell/misc/config.js';
 import { createCaptionOverlay, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
@@ -12,31 +11,12 @@ export const ASPECT_RATIO_TOLERANCE = 0.01;
 
 export const GIF_FRAME_INTERVAL_MS = 20;
 
-/** First GNOME Shell release where St.ImageContent.set_bytes() takes a CoglContext. */
-const SET_BYTES_COGL_CONTEXT_SHELL_VERSION = 48;
-
-const RGBA_CHANNELS_COUNT = 4;
-const ALPHA_CHANNEL_OFFSET = 3;
-const PIXEL_CENTER_OFFSET = 0.5;
 const FILE_ENUM_BATCH_SIZE = 64;
 
 function isSupportedImage(filename) {
     if (!filename) return false;
     const lower = filename.toLowerCase();
     return SUPPORTED_IMAGE_EXTENSIONS.some(extension => lower.endsWith(extension));
-}
-
-/**
- * set_bytes() gained a leading CoglContext parameter in GNOME Shell 48 and the
- * extension supports 45+, so both signatures are handled here in one place.
- */
-export function setImageContentBytes(imageContent, bytes, pixelFormat, width, height, rowStride) {
-    if (Number(PACKAGE_VERSION.split('.')[0]) >= SET_BYTES_COGL_CONTEXT_SHELL_VERSION) {
-        const coglContext = global.stage.context.get_backend().get_cogl_context();
-        imageContent.set_bytes(coglContext, bytes, pixelFormat, width, height, rowStride);
-    } else {
-        imageContent.set_bytes(bytes, pixelFormat, width, height, rowStride);
-    }
 }
 
 export async function listImagesInFolder(folderPath) {
@@ -145,37 +125,4 @@ export function attachCaptionOverlay(widgetNode, widgetData, width, height, isWr
             widgetNode.disconnect(heightSignalId);
         });
     }
-}
-
-function maskCornerQuadrant(pixels, radius, rowstride, startX, startY, originX, originY, radiusSquared, width, height) {
-    for (let y = startY; y < startY + radius; y++) {
-        if (y < 0 || y >= height) continue;
-        for (let x = startX; x < startX + radius; x++) {
-            if (x < 0 || x >= width) continue;
-            const deltaX = x - originX;
-            const deltaY = y - originY;
-            if (deltaX * deltaX + deltaY * deltaY > radiusSquared) {
-                pixels[y * rowstride + x * RGBA_CHANNELS_COUNT + ALPHA_CHANNEL_OFFSET] = 0;
-            }
-        }
-    }
-}
-
-export function applyCornerMask(pixels, width, height, radius, rowstride) {
-    if (radius <= 0) return;
-    const clampedRadius = Math.min(radius, Math.floor(Math.min(width, height) / 2));
-    const radiusSquared = clampedRadius * clampedRadius;
-
-    // Top-left
-    maskCornerQuadrant(pixels, clampedRadius, rowstride, 0, 0,
-        clampedRadius - PIXEL_CENTER_OFFSET, clampedRadius - PIXEL_CENTER_OFFSET, radiusSquared, width, height);
-    // Top-right
-    maskCornerQuadrant(pixels, clampedRadius, rowstride, width - clampedRadius, 0,
-        width - clampedRadius - PIXEL_CENTER_OFFSET, clampedRadius - PIXEL_CENTER_OFFSET, radiusSquared, width, height);
-    // Bottom-left
-    maskCornerQuadrant(pixels, clampedRadius, rowstride, 0, height - clampedRadius,
-        clampedRadius - PIXEL_CENTER_OFFSET, height - clampedRadius - PIXEL_CENTER_OFFSET, radiusSquared, width, height);
-    // Bottom-right
-    maskCornerQuadrant(pixels, clampedRadius, rowstride, width - clampedRadius, height - clampedRadius,
-        width - clampedRadius - PIXEL_CENTER_OFFSET, height - clampedRadius - PIXEL_CENTER_OFFSET, radiusSquared, width, height);
 }

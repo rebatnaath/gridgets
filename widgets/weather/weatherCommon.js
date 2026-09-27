@@ -3,6 +3,8 @@ import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Soup from 'gi://Soup?version=3.0';
+import { formatSnapshotAge, loadLastGoodCache, saveLastGoodCache } from '../../utils/lastGoodCache.js';
+export { formatSnapshotAge };
 import {
     resolveWidgetBackgroundColor,
     resolveWidgetForegroundColor,
@@ -14,6 +16,7 @@ import {
 } from '../../utils/widgetUtils.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
 import { scaleFontSize, TEXT_OPACITY } from '../../utils/typography.js';
+import { createGetMessage } from '../../utils/httpClient.js';
 
 export const REFRESH_INTERVAL_SECONDS = 1800;
 
@@ -27,6 +30,11 @@ export const WEATHER_SUBTLE_OPACITY = TEXT_OPACITY.subtle;
 
 const FORECAST_MIN_GRID_WIDTH = 6;
 const SIMPLE_MIN_GRID_WIDTH = 4;
+/** Cached conditions and forecast stop being shown past this; the widget falls back to its placeholders. */
+export const WEATHER_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+const LOCATION_COORDINATE_TOLERANCE = 0.0001;
+
 export const WEATHER_LOADING_TEXT = 'Loading…';
 export const LOCATION_UNAVAILABLE_TEXT = 'Location unavailable';
 export const HIGH_LOW_LOADING_TEXT = 'H:--° L:--°';
@@ -66,12 +74,14 @@ const decoder = new TextDecoder('utf-8');
 
 const MILLISECONDS_PER_SECOND = 1000;
 const OPEN_METEO_FORECAST_DAYS = 2;
+const WEATHER_REQUEST_TIMEOUT_SECONDS = 30;
 const ISO_DATE_KEY_LENGTH = 10;
 const ISO_HOUR_KEY_LENGTH = 13;
 const LAYOUT_PADDING_PX = 12;
 
 const GEOCODE_CACHE = new Map();
 const GEOCODE_CACHE_LIMIT = 32;
+let cachedGnomeWeatherIconDirectory = null;
 
 function formatHourLabel(hourData) {
     const timestampSeconds = Number.isFinite(hourData.time_epoch)
@@ -270,8 +280,16 @@ export function createFallbackIcon() {
 }
 
 function getGnomeWeatherIconDirectory() {
+    // Resolving this walks up to eight symlinks and stats a directory, and it is asked
+    // for once per icon on every refresh, so the answer is kept for the session.
+    if (cachedGnomeWeatherIconDirectory !== null)
+        return cachedGnomeWeatherIconDirectory;
+
     const executablePath = GLib.find_program_in_path('gnome-weather');
-    if (!executablePath) return '';
+    if (!executablePath) {
+        cachedGnomeWeatherIconDirectory = '';
+        return cachedGnomeWeatherIconDirectory;
+    }
 
     let resolvedPath = executablePath;
     for (let depth = 0; depth < 8; depth++) {
@@ -292,7 +310,8 @@ function getGnomeWeatherIconDirectory() {
     }
 
     const installationDirectory = GLib.path_get_dirname(GLib.path_get_dirname(resolvedPath));
-    return `${installationDirectory}/share/icons/hicolor/scalable/status`;
+    cachedGnomeWeatherIconDirectory = `${installationDirectory}/share/icons/hicolor/scalable/status`;
+    return cachedGnomeWeatherIconDirectory;
 }
 
 function setWeatherIcon(iconActor, iconName) {
@@ -316,7 +335,14 @@ function setWeatherIcon(iconActor, iconName) {
         }
     }
 
-    iconActor.gicon = Gio.ThemedIcon.new(iconNames);
+    // Gio.ThemedIcon.new() takes a single string in this GJS, not an array, so a
+    // fallback chain has to be built by appending. Passing the array instead throws
+    // "Expected type string for argument 'iconname' but got type Array", which on any
+    // machine without gnome-weather installed would abandon the whole UI update.
+    const themedIcon = new Gio.ThemedIcon();
+    for (const themedName of iconNames)
+        themedIcon.append_name(themedName);
+    iconActor.gicon = themedIcon;
 }
 
 // Resolves the effective layout variant with the same rule the widget factory uses.
@@ -371,7 +397,17 @@ function updateHourlyForecastUi(json, uiElements, currentEpoch, extensionPath, u
     }
 }
 
-function updateTextLabels(json, uiElements, useFahrenheit) {
+function setCityLabelWithAge(cityLabel, name, ageText) {
+    const safeName = GLib.markup_escape_text(String(name || ''), -1);
+    if (!ageText) {
+        cityLabel.clutter_text.set_markup(safeName);
+        return;
+    }
+    const safeAge = GLib.markup_escape_text(ageText, -1);
+    cityLabel.clutter_text.set_markup(`${safeName} <span alpha="${Math.round(WEATHER_METADATA_OPACITY * 100)}%">\u00b7 ${safeAge}</span>`);
+}
+
+function updateTextLabels(json, uiElements, useFahrenheit, staleAgeText = '') {
     const current = json.current;
     if (!current) return;
 
@@ -383,7 +419,9 @@ function updateTextLabels(json, uiElements, useFahrenheit) {
     const currentTemp = useFahrenheit ? current.temp_f : current.temp_c;
     if (uiElements.tempLabel) uiElements.tempLabel.text = `${Math.round(currentTemp)}${unit}`;
     if (uiElements.conditionLabel && current.condition) uiElements.conditionLabel.text = current.condition.text;
-    if (json.location && json.location.name && uiElements.cityLabel) uiElements.cityLabel.text = json.location.name;
+    if (json.location && json.location.name && uiElements.cityLabel) {
+        setCityLabelWithAge(uiElements.cityLabel, json.location.name, staleAgeText);
+    }
 
     if (forecast) {
         const highTemp = useFahrenheit ? forecast.maxtemp_f : forecast.maxtemp_c;
@@ -438,7 +476,7 @@ function updateWidgetStyle(widgetNode, bgImageActor, widgetData, assets, isDynam
     }
 }
 
-function updateWeatherUi(json, context) {
+export function updateWeatherUi(json, context) {
     const { widgetData, uiElements, widgetNode, bgImageActor, isDynamicColor, isDynamicImage, extensionPath } = context;
     if (isActorDestroyed(widgetNode) || !json || !json.current) return;
 
@@ -449,7 +487,7 @@ function updateWeatherUi(json, context) {
     const assets = getWeatherAssets(extensionPath, condCode, isDay, folderName, json.current.condition ? json.current.condition.text : '');
 
     updateWidgetStyle(widgetNode, bgImageActor, widgetData, assets, isDynamicColor, isDynamicImage);
-    updateTextLabels(json, uiElements, useFahrenheit);
+    updateTextLabels(json, uiElements, useFahrenheit, context.snapshotAgeText || '');
 
     if (uiElements.conditionIcon) {
         setWeatherIcon(uiElements.conditionIcon, assets.iconName);
@@ -500,7 +538,7 @@ export function isCancelledError(error) {
 
 function fetchJsonAsync(session, url) {
     return new Promise((resolve, reject) => {
-        const message = Soup.Message.new('GET', url);
+        const message = createGetMessage(url);
         session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, null, (sessionObject, result) => {
             try {
                 // Finish the transfer before inspecting the status: on a transport failure
@@ -556,9 +594,13 @@ function buildOpenMeteoHourlyGroups(weatherJson, currentCode) {
         return hourlyGroups;
 
     hourlyData.time.forEach((timeString, timeIndex) => {
+        // Open-Meteo keeps these series parallel, but a short read would otherwise index
+        // past the end and put NaN in the temperature column.
+        const temperatureCelsius = hourlyData.temperature_2m[timeIndex];
+        if (temperatureCelsius === undefined)
+            return;
         const weatherCode = hourlyData.weathercode?.[timeIndex] ?? currentCode;
         const isDay = hourlyData.is_day?.[timeIndex] ?? weatherJson.current_weather.is_day;
-        const temperatureCelsius = hourlyData.temperature_2m[timeIndex];
         const dateKey = timeString.slice(0, ISO_DATE_KEY_LENGTH);
         const hourEntry = {
             time_epoch: Math.floor(Date.parse(timeString) / MILLISECONDS_PER_SECOND),
@@ -579,14 +621,23 @@ function buildOpenMeteoHourlyGroups(weatherJson, currentCode) {
 }
 
 function buildOpenMeteoDailyForecasts(weatherJson, hourlyGroups) {
-    return [...hourlyGroups.entries()].map(([dateKey, hourEntries], dayIndex) => {
-        let highTemperature = weatherJson.current_weather.temperature;
-        let lowTemperature = weatherJson.current_weather.temperature;
-        if (weatherJson.daily?.temperature_2m_max?.[dayIndex] !== undefined) {
+    // The daily series is indexed by its own dates rather than by position: the hourly
+    // series can start on the day before the first forecast day, which would otherwise
+    // shift every high and low onto the wrong column.
+    const dailyDates = weatherJson.daily?.time || [];
+    return [...hourlyGroups.entries()].map(([dateKey, hourEntries]) => {
+        const dayIndex = dailyDates.indexOf(dateKey);
+        const currentTemperature = weatherJson.current_weather.temperature;
+        let highTemperature = currentTemperature;
+        let lowTemperature = currentTemperature;
+        if (dayIndex >= 0 && weatherJson.daily?.temperature_2m_max?.[dayIndex] !== undefined) {
             highTemperature = weatherJson.daily.temperature_2m_max[dayIndex];
             lowTemperature = weatherJson.daily.temperature_2m_min[dayIndex];
         }
         return {
+            // reindexForecastDays drops days that have already started, and it can only
+            // do that if each entry knows which day it is.
+            date: dateKey,
             day: {
                 maxtemp_c: highTemperature,
                 maxtemp_f: celsiusToFahrenheit(highTemperature),
@@ -626,6 +677,86 @@ function buildOpenMeteoPayload(weatherJson, locationName) {
     };
 }
 
+/**
+ * A snapshot is only valid for the location it was fetched for. The widget config can
+ * change under a cached snapshot (the user picks a different city), and without this the
+ * widget would confidently display the previous city's weather.
+ */
+function snapshotMatchesWidget(snapshot, widgetData) {
+    if (!snapshot) return false;
+    const widgetHasCoords = Number.isFinite(widgetData?.lat) && Number.isFinite(widgetData?.lon);
+    if (widgetHasCoords) {
+        if (!Number.isFinite(snapshot.lat) || !Number.isFinite(snapshot.lon))
+            return false;
+        return Math.abs(snapshot.lat - widgetData.lat) <= LOCATION_COORDINATE_TOLERANCE
+            && Math.abs(snapshot.lon - widgetData.lon) <= LOCATION_COORDINATE_TOLERANCE;
+    }
+    const widgetName = String(widgetData?.location || '');
+    const snapshotName = String(snapshot.name || '');
+    if (!widgetName || !snapshotName)
+        return false;
+    return widgetName.localeCompare(snapshotName, undefined, { sensitivity: 'base' }) === 0;
+}
+
+/**
+ * forecastday[0] means "today" as of the fetch, so a snapshot restored a couple of days
+ * later would label past days as upcoming. Days that have already started are dropped and
+ * the rest shift down, which keeps the day columns meaning what the user expects.
+ */
+function reindexForecastDays(json) {
+    const days = json?.forecast?.forecastday;
+    if (!Array.isArray(days) || days.length === 0)
+        return json;
+    const fetchDate = String(json?.current?.last_updated_hour || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fetchDate))
+        return json;
+    const today = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+    const nowDate = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    if (fetchDate >= nowDate)
+        return json;
+    // Snapshots cached before entries carried a date fall back to the first hour, whose
+    // timestamp is the same local day. Without this they would all filter out and the
+    // restored widget would lose its whole forecast.
+    const dateOfEntry = entry => {
+        const explicit = String(entry?.date || '');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(explicit))
+            return explicit;
+        const firstHour = entry?.hour?.[0]?.time_str;
+        const fromHour = String(firstHour || '').slice(0, ISO_DATE_KEY_LENGTH);
+        return /^\d{4}-\d{2}-\d{2}$/.test(fromHour) ? fromHour : '';
+    };
+    const kept = days.filter(entry => {
+        const date = dateOfEntry(entry);
+        return date !== '' && date >= nowDate;
+    });
+    if (kept.length === days.length)
+        return json;
+    return { ...json, forecast: { ...json.forecast, forecastday: kept } };
+}
+
+/** Stores a successful fetch as the widget's last good weather, tagged with its location. */
+export function cacheWeatherSnapshot(widgetData, latitude, longitude, name, json) {
+    if (!widgetData?.id || !json)
+        return;
+    saveLastGoodCache('weather', widgetData.id, { lat: latitude, lon: longitude, name, json });
+}
+
+/**
+ * Offers a stored snapshot to apply. Calls back with (null, 0) when there is nothing
+ * usable, which leaves the widget showing its -- placeholders.
+ */
+export function restoreWeatherSnapshot(widgetData, apply) {
+    if (!widgetData?.id)
+        return;
+    loadLastGoodCache('weather', widgetData.id, (payload, savedAtMs) => {
+        if (!payload || !payload.json || !snapshotMatchesWidget(payload, widgetData))
+            return;
+        apply(reindexForecastDays(payload.json), savedAtMs);
+    }, WEATHER_CACHE_MAX_AGE_MS);
+}
+
+
 async function fetchOpenMeteoWeather({ latitude, longitude, name }, context) {
     const { widgetNode } = context;
     if (isActorDestroyed(widgetNode) || !widgetNode.weatherSession) return;
@@ -639,7 +770,10 @@ async function fetchOpenMeteoWeather({ latitude, longitude, name }, context) {
             + '&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto';
         const weatherJson = await fetchJsonAsync(widgetNode.weatherSession, weatherUrl);
         if (isActorDestroyed(widgetNode) || !weatherJson.current_weather) return;
-        updateWeatherUi(buildOpenMeteoPayload(weatherJson, name), context);
+        const payload = buildOpenMeteoPayload(weatherJson, name);
+        context.snapshotAgeText = '';
+        updateWeatherUi(payload, context);
+        cacheWeatherSnapshot(context.widgetData, latitude, longitude, name, payload);
     } catch (error) {
         if (isCancelledError(error)) return;
         console.error('Error fetching Open-Meteo fallback:', error);
@@ -652,7 +786,7 @@ export function fetchWeatherViaOpenMeteo(context) {
     const location = widgetData.location;
 
     if (!widgetNode.weatherSession) {
-        widgetNode.weatherSession = new Soup.Session();
+        widgetNode.weatherSession = new Soup.Session({ timeout: WEATHER_REQUEST_TIMEOUT_SECONDS });
     }
 
     const hasSavedCoordinates = Number.isFinite(widgetData.lat)

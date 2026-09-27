@@ -1,7 +1,7 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
-import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, saveJsonToFile } from '../../utils/widgetUtils.js';
+import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, saveJsonToFile, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import {
     createWidgetContainer,
@@ -45,7 +45,10 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         y_expand: true,
     });
 
-    const borderRadius = config.appliedBorderRadius || 0;
+// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
+    // means the shared default, and || 0 squared this panel off against a rounded
+    // container. The radius has to match the container's to line the corners up.
+    const borderRadius = resolveWidgetCornerRadius(config);
     const headerBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         x_align: Clutter.ActorAlign.FILL,

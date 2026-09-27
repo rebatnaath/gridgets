@@ -2,13 +2,14 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
-import Cogl from 'gi://Cogl';
-import GdkPixbuf from 'gi://GdkPixbuf';
 import Soup from 'gi://Soup?version=3.0';
 import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, DEFAULT_CHILD_CORNER_RADIUS_PX, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveChildCornerRadius, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, cssColorToRgba, saveJsonToFile, resolveAccentColor } from '../../utils/widgetUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../shell/widgetUIUtils.js';
-import { applyCornerMask, setImageContentBytes } from '../media/mediaCommon.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, traceRoundedRect, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../shell/widgetUIUtils.js';
+import { createGetMessage } from '../../utils/httpClient.js';
+import { createOfflineNotice, OFFLINE_NOTICE_MESSAGES } from '../../components/offline/offlineNotice/offlineNotice.js';
+import { isNetworkAvailable, subscribeToSettledConnectivity } from '../../utils/connectivity.js';
+import { cachedImageUri, writeCachedImageBytes } from '../../utils/lastGoodCache.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const REF_WIDTH_PX = 420;
@@ -57,16 +58,10 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     const px = (v) => Math.max(1, Math.round(v * scale));
     let lastSyncTime = null;
     let latestByDate = new Map();
+    /** file:// URI of the stored avatar, empty until one has been fetched. */
+    let avatarImageUri = '';
 
-    // Contributions and the avatar are fetched on independent cadences, so each gets
-    // its own cancellable: a new request aborts the one it supersedes.
-    const state = {
-        timerId: null,
-        editing: false,
-        cancellable: new Gio.Cancellable(),
-        contributionsCancellable: new Gio.Cancellable(),
-        avatarCancellable: new Gio.Cancellable(),
-    };
+    const state = { timerId: null, editing: false, cancellable: new Gio.Cancellable() };
     const session = new Soup.Session();
 
     const dataFilePath = GLib.build_filenamev([
@@ -87,9 +82,18 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         x_align: Clutter.ActorAlign.FILL,
     });
 
+    // A plain widget with the picture as its background: border-radius then clips the
+    // image itself, so the avatar is round without any pixel masking. Masking the pixels
+    // instead depends on the decoded size being square and on cairo honouring the alpha,
+    // and it left a rectangle when either assumption did not hold.
     const avatarWidget = new St.Widget({
         style: `background-color: ${card}; border-radius: 999px;`,
         y_align: Clutter.ActorAlign.CENTER,
+        // A child of an actor with no layout manager is placed at 0,0 whatever its
+        // alignment says, so the initials sat in the corner. BinLayout gives the label
+        // the whole box and the centre alignment then applies. Invisible while the
+        // picture loads, but it is what shows when the fetch fails.
+        layout_manager: new Clutter.BinLayout(),
     });
     const initialsLabel = new St.Label({
         text: '',
@@ -145,6 +149,24 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     });
     matrixBox.add_child(matrixBody);
 
+    // A widget added with no network has nothing to show, so the whole layout is held
+    // back and this stands in for it. Building an empty header, an empty grid and a red
+    // "Error loading" reads as a broken widget rather than an absent connection.
+    const offlineNotice = createOfflineNotice({ fontCss, textColor, scale });
+    offlineNotice.actor.hide();
+    container.add_child(offlineNotice.actor);
+
+    function showOfflineState() {
+        mainBox.hide();
+        offlineNotice.setMessage(OFFLINE_NOTICE_MESSAGES.offline);
+        offlineNotice.actor.show();
+    }
+
+    function showContentState() {
+        offlineNotice.actor.hide();
+        mainBox.show();
+    }
+
     const dayLabelsColumn = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
     });
@@ -199,9 +221,16 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     const persistUsername = () => saveJsonToFile(dataFilePath, { username });
 
     function applyLayout() {
+        offlineNotice.applyScale(scale);
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
+        // Rebuilt rather than appended to, so dropping the picture removes the
+        // background-image instead of leaving the last avatar on screen.
         avatarWidget.style = `background-color: ${card}; border-radius: 999px;`
-            + `width: ${px(AVATAR_SIZE_PX)}px; height: ${px(AVATAR_SIZE_PX)}px;`;
+            + `width: ${px(AVATAR_SIZE_PX)}px; height: ${px(AVATAR_SIZE_PX)}px;`
+            + (avatarImageUri
+                ? ` background-image: url("${avatarImageUri}");`
+                    + ' background-size: cover; background-position: center;'
+                : '');
         initialsLabel.style = `${fontCss}font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.metadata, scale, MIN_FONT_SIZE.metadata)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; color: ${textColor};`;
         usernameLabel.style = `${fontCss}font-size: ${scaleFontSize(USERNAME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
@@ -297,14 +326,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     const matrixGeometry = { size: 0, dataKey: '', cells: [] };
 
-    function traceRoundedRect(ctx, x, y, w, h, radius) {
-        ctx.newSubPath();
-        ctx.arc(x + radius, y + radius, radius, Math.PI, 1.5 * Math.PI);
-        ctx.arc(x + w - radius, y + radius, radius, 1.5 * Math.PI, 2 * Math.PI);
-        ctx.arc(x + w - radius, y + h - radius, radius, 2 * Math.PI, 2.5 * Math.PI);
-        ctx.arc(x + radius, y + h - radius, radius, 2.5 * Math.PI, 3 * Math.PI);
-        ctx.closePath();
-    }
 
     function drawMatrixCanvas(canvas) {
         const { size, cells } = matrixGeometry;
@@ -389,10 +410,13 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         statusLabel.text = text;
     }
 
-    function fetchJson(url, callback, cancellable) {
-        const message = Soup.Message.new('GET', url);
-        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, cancellable, (s, res) => {
-            if (cancellable.is_cancelled()) return;
+    function fetchJson(url, callback) {
+        const message = createGetMessage(url);
+        if (!message) {
+            callback(new Error('request could not be created'), null);
+            return;
+        }
+        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (s, res) => {
             try {
                 const bytes = s.send_and_read_finish(res);
                 if (message.get_status() !== HTTP_STATUS_OK)
@@ -407,85 +431,74 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     function loadAvatar() {
         if (!username) return;
-        const requestedUsername = username;
-        state.avatarCancellable.cancel();
-        state.avatarCancellable = new Gio.Cancellable();
-        const avatarCancellable = state.avatarCancellable;
-
-        const url = `https://github.com/${encodeURIComponent(requestedUsername)}.png?size=${AVATAR_REQUEST_SIZE_PX}`;
-        const message = Soup.Message.new('GET', url);
-        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, avatarCancellable, (s, res) => {
-            if (avatarCancellable.is_cancelled() || isActorDestroyed(container)) return;
+        const url = `https://github.com/${encodeURIComponent(username)}.png?size=${AVATAR_REQUEST_SIZE_PX}`;
+        const message = createGetMessage(url);
+        if (!message) {
+            console.error('Gridgets: github avatar request could not be created');
+            return;
+        }
+        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (s, res) => {
+            if (isActorDestroyed(container)) return;
             try {
                 const bytes = s.send_and_read_finish(res);
-                if (!bytes || bytes.get_size() === 0 || message.get_status() !== HTTP_STATUS_OK) return;
+                if (!bytes || bytes.get_size() === 0)
+                    throw new Error('empty response');
+                // GitHub's avatar endpoint redirects and answers with JPEG whatever the
+                // .png in the URL says, so the bytes are stored as they arrive and the
+                // stylesheet is left to work out the format.
+                if (message.get_status() !== HTTP_STATUS_OK)
+                    throw new Error(`status ${message.get_status()}`);
 
-                const stream = Gio.MemoryInputStream.new_from_bytes(bytes);
-                GdkPixbuf.Pixbuf.new_from_stream_async(stream, avatarCancellable, (_source, result) => {
-                    if (avatarCancellable.is_cancelled() || username !== requestedUsername) return;
+                // Keyed by username and size, so a different person gets a different file
+                // and St's CSS cache cannot serve one avatar in place of another. The style
+                // is applied only once the write has landed, because a background-image
+                // pointing at a file that is not there yet fails silently.
+                const key = `avatar-${username}-${AVATAR_REQUEST_SIZE_PX}`;
+                const uri = cachedImageUri('github', config.id, key);
+                if (!uri)
+                    throw new Error('no cache path for avatar');
+                writeCachedImageBytes('github', config.id, key, bytes, () => {
                     if (isActorDestroyed(container)) return;
-                    try {
-                        let pixbuf = GdkPixbuf.Pixbuf.new_from_stream_finish(result);
-                        if (!pixbuf.get_has_alpha())
-                            pixbuf = pixbuf.add_alpha(false, 0, 0, 0);
-
-                        // Bake a circular alpha mask into the pixels; St only
-                        // rounds its background, not image content.
-                        const pixels = pixbuf.get_pixels();
-                        applyCornerMask(pixels, pixbuf.get_width(), pixbuf.get_height(),
-                            Math.floor(pixbuf.get_width() / 2), pixbuf.get_rowstride());
-
-                        const imageContent = new St.ImageContent({
-                            preferred_width: pixbuf.get_width(),
-                            preferred_height: pixbuf.get_height(),
-                        });
-                        const pixelBytes = new GLib.Bytes(pixels);
-                        setImageContentBytes(imageContent, pixelBytes, Cogl.PixelFormat.RGBA_8888,
-                            pixbuf.get_width(), pixbuf.get_height(), pixbuf.get_rowstride());
-                        avatarWidget.set_content(imageContent);
-                        initialsLabel.hide();
-                    } catch (error) {
-                        console.debug('Gridgets: could not decode avatar:', error.message);
-                    }
+                    avatarImageUri = uri;
+                    initialsLabel.hide();
+                    applyLayout();
                 });
-            } catch (error) {
-                console.debug('Gridgets: could not download avatar:', error.message);
+            } catch (err) {
+                console.error('Gridgets: github avatar could not be fetched:', err.message);
             }
         });
     }
 
     function fetchContributions() {
         if (!username) return;
-        const requestedUsername = username;
-        state.contributionsCancellable.cancel();
-        state.contributionsCancellable = new Gio.Cancellable();
-        const contributionsCancellable = state.contributionsCancellable;
-
         updateStatus('Syncing…');
-        fetchJson(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(requestedUsername)}`,
-            (err, data) => {
-                if (contributionsCancellable.is_cancelled() || username !== requestedUsername) return;
-                if (isActorDestroyed(container)) return;
-                if (err || !data || !Array.isArray(data.contributions)) {
-                    updateStatus('Error loading');
+        fetchJson(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(username)}`, (err, data) => {
+            if (isActorDestroyed(container)) return;
+            if (err || !data || !Array.isArray(data.contributions)) {
+                if (!isNetworkAvailable()) {
+                    showOfflineState();
                     return;
                 }
+                updateStatus('Error loading');
+                return;
+            }
 
-                const byDate = new Map();
-                let latestYear = null;
-                const yearKeys = Object.keys(data.total || {});
-                if (yearKeys.length > 0)
-                    latestYear = yearKeys[yearKeys.length - 1];
+            const byDate = new Map();
+            let latestYear = null;
+            const yearKeys = Object.keys(data.total || {});
+            if (yearKeys.length > 0)
+                latestYear = yearKeys[yearKeys.length - 1];
 
-                data.contributions.forEach(day => byDate.set(day.date, day.count || 0));
+            data.contributions.forEach(day => byDate.set(day.date, day.count || 0));
 
-                badgeLabel.text = `${(latestYear ? data.total[latestYear] : 0).toLocaleString()} contributions`;
-                lastSyncTime = GLib.DateTime.new_now_local();
-                updateStatus(`Synced ${lastSyncTime.format('%H:%M')}`);
+            badgeLabel.text = `${(latestYear ? data.total[latestYear] : 0).toLocaleString()} contributions`;
+            lastSyncTime = GLib.DateTime.new_now_local();
+            updateStatus(`Synced ${lastSyncTime.format('%H:%M')}`);
 
-                latestByDate = byDate;
-                renderMatrix(byDate);
-            }, contributionsCancellable);
+            latestByDate = byDate;
+            showContentState();
+            renderMatrix(byDate);
+        });
     }
 
     const startEdit = () => {
@@ -513,7 +526,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         username = submitted;
         config.username = username;
         persistUsername();
-        avatarWidget.content = null;
+        avatarImageUri = '';
         initialsLabel.show();
         updateHeader();
         fetchContributions();
@@ -553,8 +566,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     registerWidgetCleanup(container, () => {
         state.cancellable.cancel();
-        state.contributionsCancellable.cancel();
-        state.avatarCancellable.cancel();
         if (state.timerId) {
             GLib.Source.remove(state.timerId);
             state.timerId = null;
@@ -567,12 +578,25 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     applyLayout();
     updateHeader();
+    if (username && !isNetworkAvailable())
+        showOfflineState();
+
+    // A widget parked on the offline notice has nothing to retry on its own, so it waits
+    // for the network to come back and then asks again. The notice stays up until the
+    // fetch actually succeeds, rather than being swapped for an empty grid first.
+    const releaseConnectivity = subscribeToSettledConnectivity(available => {
+        if (!available || isActorDestroyed(container) || !username) return;
+        fetchContributions();
+        loadAvatar();
+    });
 
     attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (_ratio, w, h) => {
         if (isActorDestroyed(container)) return;
         scale = Math.min(w / REF_WIDTH_PX, h / REF_HEIGHT_PX);
         applyLayout();
     });
+
+    registerWidgetCleanup(container, () => releaseConnectivity());
 
     loadJsonFromFileAsync(dataFilePath, (savedData, loadError) => {
         if (isActorDestroyed(container)) return;

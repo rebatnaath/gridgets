@@ -13,7 +13,7 @@ import {
     resolveChildCornerRadius,
     DEFAULT_CHILD_CORNER_RADIUS_PX,
     DESKTOP_APP_KEY,
-    resolveAccentColor } from '../../utils/widgetUtils.js';
+    resolveAccentColor, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { MONTH_NAMES_ABBREVIATED as MONTH_NAMES, createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { screenTimeEngine } from '../../utils/screenTimeEngine.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
@@ -96,7 +96,10 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     const backgroundColor = resolveWidgetBackgroundColor(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-    const borderRadius = config.appliedBorderRadius || 0;
+// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
+    // means the shared default, and || 0 squared this panel off against a rounded
+    // container. The radius has to match the container's to line the corners up.
+    const borderRadius = resolveWidgetCornerRadius(config);
     const accentHex = resolveAccentColor(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
     connectShortClick(container, () => launchApplication('gnome-control-center wellbeing'));

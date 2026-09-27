@@ -7,13 +7,17 @@ import {
     createBackgroundImageActor,
     createMainLayout,
     fetchWeatherViaOpenMeteo,
+    updateWeatherUi,
+    formatSnapshotAge,
     releaseWeatherSession,
     resolveWeatherLayoutVariant,
+    restoreWeatherSnapshot,
 } from './weatherCommon.js';
 import { buildForecastLayout, attachForecastScaler } from './weatherForecast.js';
 import { buildSimpleLayout, attachSimpleScaler } from './weatherSimple.js';
 import { buildStandardLayout, attachStandardScaler } from './weatherStandard.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { subscribeToSettledConnectivity } from '../../utils/connectivity.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 
 export { createSunScheduleNode } from './solarSchedule.js';
@@ -221,12 +225,17 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
         fetchWeatherViaOpenMeteo(context);
     };
 
+    restoreWeatherSnapshot(widgetData, (json, savedAtMs) => {
+        if (isActorDestroyed(widgetNode)) return;
+        context.snapshotAgeText = formatSnapshotAge(savedAtMs);
+        updateWeatherUi(json, context);
+    });
+
     triggerWeatherFetch();
 
     const state = {
         timerId: null,
         unlockTimeoutId: 0,
-        networkTimeoutId: 0,
     };
     state.timerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, REFRESH_INTERVAL_SECONDS, () => {
         if (isActorDestroyed(widgetNode)) return GLib.SOURCE_REMOVE;
@@ -251,19 +260,12 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
         screenShieldSignalId = Main.screenShield.connect('unlock', onUnlock);
     }
 
-    const netMonitor = Gio.NetworkMonitor.get_default();
-    let netAvailableId = 0;
-    netAvailableId = netMonitor.connect('network-changed', (_monitor, available) => {
-        if (available && !isActorDestroyed(widgetNode)) {
-            if (state.networkTimeoutId)
-                GLib.Source.remove(state.networkTimeoutId);
-            state.networkTimeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 3, () => {
-                state.networkTimeoutId = 0;
-                if (!isActorDestroyed(widgetNode))
-                    triggerWeatherFetch();
-                return GLib.SOURCE_REMOVE;
-            });
-        }
+    // The settled variant is used because triggerWeatherFetch has already run above;
+    // without it the immediate call would start a second request every time a widget
+    // appears on the desktop.
+    const releaseConnectivity = subscribeToSettledConnectivity(available => {
+        if (available && !isActorDestroyed(widgetNode))
+            triggerWeatherFetch();
     });
 
     connectTimerCleanup(widgetNode, state);
@@ -273,10 +275,6 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
             GLib.Source.remove(state.unlockTimeoutId);
             state.unlockTimeoutId = 0;
         }
-        if (state.networkTimeoutId) {
-            GLib.Source.remove(state.networkTimeoutId);
-            state.networkTimeoutId = 0;
-        }
         for (const signalId of [...(bgImageActor.backgroundSignalIds || []), ...(layout.backgroundSignalIds || [])]) {
             widgetNode.disconnect(signalId);
         }
@@ -284,10 +282,7 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
             Main.screenShield.disconnect(screenShieldSignalId);
             screenShieldSignalId = 0;
         }
-        if (netAvailableId) {
-            netMonitor.disconnect(netAvailableId);
-            netAvailableId = 0;
-        }
+        releaseConnectivity();
     });
 
     return widgetNode;

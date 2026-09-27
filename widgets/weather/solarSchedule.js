@@ -4,6 +4,8 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Cairo from 'gi://cairo';
 import Soup from 'gi://Soup?version=3.0';
+import { loadLastGoodCache, saveLastGoodCache } from '../../utils/lastGoodCache.js';
+import { createGetMessage } from '../../utils/httpClient.js';
 import {
     CAIRO_OPERATOR_CLEAR,
     CAIRO_OPERATOR_OVER,
@@ -47,6 +49,8 @@ const SUNSET_ICON_NAME = 'daytime-sunset-symbolic';
 
 const UI_TICK_INTERVAL_MS = 30000;
 const SCHEDULE_REFRESH_SECONDS = 6 * 3600;
+const SUN_SCHEDULE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const LOCATION_TOLERANCE = 0.0001;
 const HTTP_STATUS_OK = 200;
 const decoder = new TextDecoder();
 
@@ -130,6 +134,19 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
     const session = new Soup.Session();
 
     const hasLocation = Number.isFinite(config.latitude) && Number.isFinite(config.longitude);
+
+    if (hasLocation && config.id) {
+        loadLastGoodCache('sun-schedule', config.id, (payload) => {
+            if (isActorDestroyed(container) || !payload) return;
+            if (Math.abs(payload.lat - config.latitude) > LOCATION_TOLERANCE
+                || Math.abs(payload.lon - config.longitude) > LOCATION_TOLERANCE)
+                return;
+            offsetShiftMinutes = payload.offsetShiftMinutes;
+            sunriseEvent = payload.sunriseEvent;
+            sunsetEvent = payload.sunsetEvent;
+            renderDynamic();
+        }, SUN_SCHEDULE_CACHE_MAX_AGE_MS);
+    }
 
     const mainBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -312,7 +329,11 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
         if (!hasLocation || isActorDestroyed(container)) return;
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${config.latitude}`
             + `&longitude=${config.longitude}&daily=sunrise,sunset&timezone=auto&forecast_days=3&previous_day=1`;
-        const message = Soup.Message.new('GET', url);
+        const message = createGetMessage(url);
+        if (!message) {
+            console.error('Gridgets: solar schedule request could not be created');
+            return;
+        }
         session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (sourceObject, result) => {
             if (isActorDestroyed(container)) return;
             try {
@@ -390,12 +411,20 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
                     if (m !== null) sunsetEvent = {dateStr: todayStr, minutes: m};
                 }
 
+                saveLastGoodCache('sun-schedule', config.id, {
+                    lat: config.latitude,
+                    lon: config.longitude,
+                    offsetShiftMinutes,
+                    sunriseEvent,
+                    sunsetEvent,
+                });
+
                 renderDynamic();
             } catch (error) {
                 if (isCancelledError(error))
                     return;
                 // The previous schedule stays on screen, so a failure is not worth logging.
-                console.debug('Gridgets: could not refresh solar schedule:', error.message);
+                console.error('Gridgets: could not refresh solar schedule:', error.message);
             }
         });
     }

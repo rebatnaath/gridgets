@@ -1,19 +1,81 @@
 import St from 'gi://St';
-import Cogl from 'gi://Cogl';
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import Gdk from 'gi://Gdk?version=4.0';
 import GdkPixbuf from 'gi://GdkPixbuf';
-import { buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
-import { WidgetActor, connectTimerCleanup, registerWidgetCleanup, scheduleDeferredUpdate } from '../../shell/widgetUIUtils.js';
-import { ASPECT_RATIO_TOLERANCE, GIF_FRAME_INTERVAL_MS, applyCornerMask, attachCaptionOverlay, setImageContentBytes } from './mediaCommon.js';
+import { buildBaseWidgetStyle, resolveWidgetCornerRadius, CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER } from '../../utils/widgetUtils.js';
+import { WidgetActor, connectTimerCleanup, registerWidgetCleanup, scheduleDeferredUpdate, traceRoundedRect } from '../../shell/widgetUIUtils.js';
+import { ASPECT_RATIO_TOLERANCE, GIF_FRAME_INTERVAL_MS, attachCaptionOverlay } from './mediaCommon.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
 
 const RESIZE_REPAINT_THROTTLE_MS = 16;
 
 const MAX_CONSECUTIVE_FRAME_FAILURES = 10;
 
+/**
+ * A drawing area that paints the current frame, clipped to the widget's corner radius.
+ *
+ * This is the only place in the shell process that needs Gdk, and it is here rather than
+ * in shell/widgetUIUtils.js on purpose. Everything else that shows a picture hands a file
+ * to a stylesheet (`background-image`), which needs nothing from Gdk; an animation cannot,
+ * because a file per frame at GIF_FRAME_INTERVAL_MS is not viable. Gdk is still on the
+ * "do not import in GNOME Shell" list, so this is a deliberate exception for animation
+ * only - see .ideas-and-sketchpad/skills/gnome-guidelines/review-guidelines.md.
+ *
+ * The rounding is a cairo clip rather than a mask baked into the pixels. The mask had to
+ * know the display size to scale the radius, but the first frame is painted before Clutter
+ * has allocated the widget, so that size was 0, the radius came out 0 and the picture was
+ * left square; and it mutated the iterator's own pixbuf in place, so every later frame was
+ * masked again on top of the last. Clipping here is computed from the size actually being
+ * painted, and the frames are only ever read.
+ */
+function createFramePainter(cornerRadius) {
+    const area = new St.DrawingArea({
+        x_align: Clutter.ActorAlign.FILL,
+        y_align: Clutter.ActorAlign.FILL,
+    });
+    let pixbuf = null;
+
+    area.connect('repaint', () => {
+        if (isActorDestroyed(area)) return;
+        const ctx = area.get_context();
+        const [boxWidth, boxHeight] = area.get_surface_size();
+        ctx.setOperator(CAIRO_OPERATOR_CLEAR);
+        ctx.paint();
+        ctx.setOperator(CAIRO_OPERATOR_OVER);
+
+        if (pixbuf && boxWidth > 0 && boxHeight > 0) {
+            ctx.save();
+            if (cornerRadius > 0) {
+                traceRoundedRect(ctx, 0, 0, boxWidth, boxHeight, cornerRadius);
+                ctx.clip();
+            }
+            const sourceWidth = pixbuf.get_width();
+            const sourceHeight = pixbuf.get_height();
+            ctx.scale(boxWidth / sourceWidth, boxHeight / sourceHeight);
+            Gdk.cairo_set_source_pixbuf(ctx, pixbuf, 0, 0);
+            ctx.paint();
+            ctx.restore();
+        }
+        ctx.$dispose();
+    });
+    watchActorLifecycle(area);
+
+    return {
+        actor: area,
+        setFrame(nextPixbuf) {
+            pixbuf = nextPixbuf;
+            area.queue_repaint();
+        },
+    };
+}
+
 export function createAnimatedImageNode(widgetData, width, height, xPosition, yPosition, animateGif = true) {
-    const borderRadius = widgetData.appliedBorderRadius || 0;
+    // resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override means
+    // the 15px default, and || 0 quietly squared off every animated image. This radius is
+    // what rounds the drawn frames, since a drawing area has no stylesheet of its own.
+    const borderRadius = resolveWidgetCornerRadius(widgetData);
     const baseStyle = buildBaseWidgetStyle(widgetData);
 
     const widgetNode = new WidgetActor({
@@ -44,7 +106,10 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
         }
 
         const iter = animation.get_iter(null);
-        const imageActor = new St.Widget();
+        // The frame is cropped to the container's aspect ratio below, so filling the box
+        // is what keeps it undistorted.
+        const framePainter = createFramePainter(borderRadius);
+        const imageActor = framePainter.actor;
         // The caption overlay is added while the load is still in flight, so index 0
         // keeps the frames behind it.
         widgetNode.insert_child_at_index(imageActor, 0);
@@ -88,28 +153,7 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
                 renderPixbuf = renderPixbuf.add_alpha(false, 0, 0, 0);
             }
 
-            const format = Cogl.PixelFormat.RGBA_8888;
-            const pixels = renderPixbuf.get_pixels();
-
-            let textureRadius = 0;
-            if (containerWidth > 0) {
-                const scaleX = renderPixbuf.get_width() / containerWidth;
-                textureRadius = Math.max(0, Math.round(borderRadius * scaleX));
-            }
-
-            if (textureRadius > 0) {
-                applyCornerMask(pixels, renderPixbuf.get_width(), renderPixbuf.get_height(), textureRadius, renderPixbuf.get_rowstride());
-            }
-
-            const frameImage = new St.ImageContent({
-                preferred_width: renderPixbuf.get_width(),
-                preferred_height: renderPixbuf.get_height(),
-            });
-            const bytes = pixels instanceof GLib.Bytes ? pixels : new GLib.Bytes(pixels);
-
-            setImageContentBytes(frameImage, bytes, format, renderPixbuf.get_width(), renderPixbuf.get_height(), renderPixbuf.get_rowstride());
-
-            imageActor.set_content(frameImage);
+            framePainter.setFrame(renderPixbuf);
         };
 
         updateImage(iter.get_pixbuf());

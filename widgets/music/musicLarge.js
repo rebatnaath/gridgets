@@ -1,6 +1,6 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { resolveExplicitFontFamily, resolveWidgetSurfaces } from '../../utils/widgetUtils.js';
+import { resolveExplicitFontFamily, resolveWidgetSurfaces, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { buildControlsColumn, updateControlButtonScaling } from './controls.js';
 import { resolveMusicPanelColors, resolveArtworkLayerStyle } from './cover.js';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
@@ -18,7 +18,10 @@ const BASE_ALBUM_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
 const LABEL_MARGIN_BOTTOM_PX = 4;
 
 export function buildLargeLayout(config, state, width) {
-    const cornerRadius = config.appliedBorderRadius || 0;
+// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
+    // means the shared default, and || 0 squared this panel off against a rounded
+    // container. The radius has to match the container's to line the corners up.
+    const cornerRadius = resolveWidgetCornerRadius(config);
     const scale = config.layoutScale || 1;
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
