@@ -61,8 +61,7 @@ correctly.
    gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
    ```
 3. Restart GNOME Shell:
-   * **Wayland:** Log out and log back in.
-   * **X11:** Press `Alt` + `F2`, type `r`, and press `Enter`.
+   Log out and log back in.
 4. Enable the extension:
    ```bash
    gnome-extensions enable gridgets@rebatnaath.github.com
@@ -170,6 +169,22 @@ Open the **Extensions** app (or Extension Manager) and click the gear icon next 
 ## Compatibility
 
 Supported GNOME Shell versions: `45`, `46`, `47`, `48`, `49`, `50`.
+
+### Desktop Icons NG
+
+Gridgets and [Desktop Icons NG](https://gitlab.com/smedius/desktop-icons-ng) can be
+enabled at the same time and both keep working, but they draw into the same part
+of the screen, so there are a few things to be aware of.
+
+- **Desktop Icons NG takes over the desktop right-click menu.** Right-clicking
+  the empty desktop opens its menu instead of Gridgets'. 
+- **Icons are drawn over the widgets.** Gridgets draws into the layer above the
+  wallpaper and below every window, and the Desktop Icons NG icon layer ends up
+  above that, so an icon that overlaps a widget covers it.
+- **Nothing moves out of the way for you.** Gridgets does keep its own widgets
+  from overlapping each other, but it only knows about its own widgets and has no
+  way to know where the desktop icons are, so it will not step around them. Drag
+  the icons to the areas your widgets do not cover, or move the widgets.
 
 ## Changelog
 
