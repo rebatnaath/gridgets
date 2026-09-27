@@ -56,6 +56,7 @@ correctly.
 ### Option A: From GitHub Releases
 
 1. Download the latest `.zip` file from the [Releases](https://github.com/rebatnaath/gridgets/releases) page.
+   This is the latest tagged release, so it is the stable build.
 2. Install it:
    ```bash
    gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
@@ -84,6 +85,7 @@ correctly.
    mkdir -p ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    cp -r . ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    ```
+   You get the latest code rather than a tagged release, so it may have bugs a release does not.
 3. Compile the settings schema. `gschemas.compiled` is a build artifact and is
    not committed, so a fresh clone has only the `.gschema.xml`. Without this
    step the extension loads but every setting silently falls back to its default:
@@ -112,6 +114,7 @@ correctly.
      --extra-source=prefs \
      --force
    ```
+   You get the latest code rather than a tagged release, so it may have bugs a release does not.
 2. Install:
    ```bash
    gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
