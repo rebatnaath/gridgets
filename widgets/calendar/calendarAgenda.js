@@ -43,6 +43,7 @@ export function createCalendarAgendaNode(config, width, height, xPosition, yPosi
     // cannot run until monthGrid is assigned.
     let monthGrid;
     const settingsWatcher = watchCalendarSettings(config.settings, () => {
+        monthGrid.refreshWeekdays();
         monthGrid.fillDays();
     });
 

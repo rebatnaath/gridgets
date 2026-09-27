@@ -26,6 +26,7 @@ export function createCalendarGridNode(config, width, height, xPosition, yPositi
     // Assigned below; the settings callback cannot fire before that.
     let monthGrid;
     const settingsWatcher = watchCalendarSettings(config.settings, () => {
+        monthGrid.refreshWeekdays();
         monthGrid.fillDays();
     });
 

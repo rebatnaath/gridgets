@@ -77,6 +77,7 @@ export function createMonthGrid({
 }) {
     const state = {
         scale: 1,
+        colWidth: 0,
         displayDate: GLib.DateTime.new_now_local(),
         eventDates: new Set(),
         selectedDateKey: null,
@@ -282,6 +283,30 @@ export function createMonthGrid({
         }
     }
 
+    /**
+     * The initials follow the settings and the sizes follow the layout, and the two
+     * change independently, so this is not folded into applyLayout: a settings change has
+     * to be able to restyle the row without a resize to prompt it.
+     */
+    function styleWeekdayRow() {
+        const accentHex = resolveAccentColor(config);
+        const fontSize = scaleFontSize(typeScale.weekdaySize, state.scale, typeScale.weekdayMinSize);
+        state.weekdaySlots.forEach((label, index) => {
+            const dayName = CALENDAR_WEEKDAY_NAMES[(calendarState.firstDay + index) % 7].toLowerCase();
+            const isAccentDay = calendarState.accentWeekends
+                && calendarState.weekendDays.has(dayName);
+            label.text = dayName.slice(0, 1).toUpperCase();
+            label.style = `${fontCss}font-size: ${fontSize}px; `
+                + `color: ${isAccentDay ? accentHex : textColor};`
+                + ` opacity: ${isAccentDay ? 1 : typeScale.weekdayOpacity}; font-weight: ${typeScale.weekdayWeight};`;
+        });
+
+        // The weekday labels are centred in their pinned columns, so the same offset
+        // is mirrored onto the header, measured after their styles to get fresh metrics.
+        const [, firstWeekdayWidth] = state.weekdaySlots[0].get_preferred_width(-1);
+        headerLabel.translation_x = Math.max(0, Math.floor((state.colWidth - firstWeekdayWidth) / 2));
+    }
+
     /** @param currentScale Passed in so the caller need not reach into this state. */
     function applyLayout(currentWidth, currentScale) {
         state.scale = currentScale;
@@ -293,6 +318,7 @@ export function createMonthGrid({
         // Pinned so every row shares identical geometry; left to itself each row's
         // BoxLayout sizes from its own content and the columns drift out of alignment.
         const colWidth = Math.max(1, Math.floor((currentWidth - (pad * 2)) / 7));
+        state.colWidth = colWidth;
         state.weekdayCells.forEach(slot => {
             slot.x_expand = false;
             slot.width = colWidth;
@@ -307,15 +333,7 @@ export function createMonthGrid({
         headerBox.style = `spacing: ${Math.round(HEADER_BOX_SPACING_PX * currentScale)}px;`
             + `margin-bottom: ${Math.round(HEADER_ROW_GAP_PX * currentScale)}px;`;
 
-        state.weekdaySlots.forEach((label, index) => {
-            const dayName = CALENDAR_WEEKDAY_NAMES[(calendarState.firstDay + index) % 7].toLowerCase();
-            const isAccentDay = calendarState.accentWeekends
-                && calendarState.weekendDays.has(dayName);
-            label.text = dayName.slice(0, 1).toUpperCase();
-            label.style = `${fontCss}font-size: ${scaleFontSize(typeScale.weekdaySize, currentScale, typeScale.weekdayMinSize)}px; `
-                + `color: ${isAccentDay ? accentHex : textColor};`
-                + ` opacity: ${isAccentDay ? 1 : typeScale.weekdayOpacity}; font-weight: ${typeScale.weekdayWeight};`;
-        });
+        styleWeekdayRow();
 
         const dotSize = Math.max(2, Math.round(3 * currentScale));
         state.eventDotSlots.forEach(dot => {
@@ -323,11 +341,6 @@ export function createMonthGrid({
                 + `height: ${dotSize}px;`
                 + `border-radius: 999px; background-color: ${accentHex};`;
         });
-
-        // The weekday labels are centred in their pinned columns, so the same offset
-        // is mirrored onto the header, measured after their styles to get fresh metrics.
-        const [, firstWeekdayWidth] = state.weekdaySlots[0].get_preferred_width(-1);
-        headerLabel.translation_x = Math.max(0, Math.floor((colWidth - firstWeekdayWidth) / 2));
 
         daysGrid.style = `spacing: ${Math.round(ROW_GAP_PX * currentScale)}px;`;
 
@@ -349,6 +362,7 @@ export function createMonthGrid({
             return state.displayDate;
         },
         fillDays,
+        refreshWeekdays: styleWeekdayRow,
         applyLayout,
         refreshForNewDay() {
             const now = GLib.DateTime.new_now_local();
