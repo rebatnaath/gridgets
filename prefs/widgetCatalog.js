@@ -176,6 +176,12 @@ export const STORE_WIDGETS = Object.freeze({
         thumbnail: 'rss/rss-headlines.svg',
         fallbackIconName: 'application-rss+xml-symbolic',
     },
+    topStoriesWidget: {
+        title: 'Top Stories',
+        description: 'A scrolling list of headlines from many publishers, each with its thumbnail.',
+        gridSize: '12x10',
+        fallbackIconName: 'application-rss+xml-symbolic',
+    },
     moodWidget: {
         title: 'Mood Logger',
         description: 'Log how you feel each day and watch the past four weeks fill with color.',
@@ -269,6 +275,8 @@ function getStoreWidgetKey(widget) {
             return 'githubWidget';
         case 'rss-headlines':
             return 'rssHeadlinesWidget';
+        case 'top-stories':
+            return 'topStoriesWidget';
         case 'mood':
             return 'moodWidget';
         case 'sun-schedule':
@@ -307,6 +315,8 @@ export function getWidgetDetailText(widget) {
             return `File: ${getPathBaseName(widget.imagePath, 'Unknown')}`;
         case 'rss-headlines':
             return `Feed: ${widget.feedUrl || 'Not configured'}`;
+        case 'top-stories':
+            return widget.feedUrl ? `Feed: ${widget.feedUrl}` : 'Feeds: several sources, merged';
         case 'pomodoro-focus':
             return `Focus: ${widget.workMinutes || 25} min sessions`;
         case 'sun-schedule':

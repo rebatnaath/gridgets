@@ -1,6 +1,9 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Soup from 'gi://Soup';
+import { subscribeToSettledConnectivity } from './connectivity.js';
+import { hostLabelFromUrl } from './feedText.js';
+import { createGetMessage } from './httpClient.js';
 
 const HTTP_STATUS_NOT_MODIFIED = 304;
 const MAX_FEED_ITEMS = 50;
@@ -59,22 +62,79 @@ function extractItemLink(block) {
     return anyHrefMatch ? decodeXmlEntities(anyHrefMatch[1]) : '';
 }
 
-/** Normalizes a single RSS or Atom entry into { id, title, link, summary, date }. */
+/** Returns the first capture of `pattern` inside `block`, decoded, or '' when absent. */
+function extractAttribute(block, pattern) {
+    const match = block.match(pattern);
+    return match ? decodeXmlEntities(match[1]).trim() : '';
+}
+
+/**
+ * Picks the image a feed publishes for an item. Feeds disagree on where it lives, so
+ * the namespaces are tried in order of how often they carry one, and the item's own
+ * markup is the last resort because cleaning the text has already thrown the tags away.
+ */
+function extractItemImage(block, rawSummary) {
+    const mediaRss = extractAttribute(block, /<media:thumbnail\b[^>]*\burl=["']([^"']+)["']/i);
+    if (mediaRss) return absoluteUrl(mediaRss);
+
+    const mediaContent = extractAttribute(block,
+        /<media:content\b(?=[^>]*\burl=["']([^"']+)["'])(?=[^>]*(?:\btype=["']image\/|\bmedium=["']image["']))[^>]*>/i);
+    if (mediaContent) return absoluteUrl(mediaContent);
+
+    const enclosure = extractAttribute(block, /<enclosure\b(?=[^>]*\btype=["']image\/)[^>]*\burl=["']([^"']+)["']/i);
+    if (enclosure) return absoluteUrl(enclosure);
+
+    const rssImage = extractTagText(block, 'image');
+    if (rssImage) {
+        const nested = extractTagText(rssImage, 'url') || rssImage;
+        if (/^https?:\/\//i.test(nested)) return nested;
+    }
+
+    return extractAttribute(rawSummary, /<img\b[^>]*\bsrc=["']([^"']+)["']/i);
+}
+
+/** Feed image URLs are often relative; without a base they cannot be fetched. */
+function absoluteUrl(candidate) {
+    return /^https?:\/\//i.test(candidate) ? candidate : '';
+}
+
+/** Publisher name for an item, which aggregator feeds carry in <source>. */
+function extractItemSource(block) {
+    const source = cleanFeedText(extractTagText(block, 'source'));
+    if (source) return source;
+    const sourceUrl = extractAttribute(block, /<source\b[^>]*\burl=["']([^"']+)["']/i);
+    return sourceUrl ? hostLabelFromUrl(sourceUrl) : '';
+}
+
+/**
+ * Aggregator feeds repeat the publisher as a title suffix ("Headline - The Times").
+ * Left in, a card that also shows the source reads it twice.
+ */
+function stripSourceSuffix(title, source) {
+    if (!source) return title;
+    const suffix = ` - ${source}`;
+    return title.endsWith(suffix) ? title.slice(0, -suffix.length).trim() : title;
+}
+
+/** Normalizes a single RSS or Atom entry. */
 function parseEntry(block) {
-    const title = cleanFeedText(extractTagText(block, 'title'));
+    const source = extractItemSource(block);
+    const rawSummary = extractTagText(block, 'description') || extractTagText(block, 'summary') || extractTagText(block, 'content');
+    const rawTitle = cleanFeedText(extractTagText(block, 'title'));
     const link = extractItemLink(block);
     const guid = cleanFeedText(extractTagText(block, 'guid'));
     const atomId = cleanFeedText(extractTagText(block, 'id'));
     const dateRfc = cleanFeedText(extractTagText(block, 'pubDate'));
     const dateIso = cleanFeedText(extractTagText(block, 'updated')) || cleanFeedText(extractTagText(block, 'published'));
-    const summaryRaw = extractTagText(block, 'description') || extractTagText(block, 'summary') || extractTagText(block, 'content');
 
     return {
-        id: guid || atomId || link || title,
-        title,
+        id: guid || atomId || link || rawTitle,
+        title: stripSourceSuffix(rawTitle, source),
         link,
-        summary: cleanFeedText(summaryRaw).slice(0, MAX_SUMMARY_LENGTH),
+        summary: cleanFeedText(rawSummary).slice(0, MAX_SUMMARY_LENGTH),
         dateIso: normalizeDateString(dateIso || dateRfc),
+        source,
+        image: extractItemImage(block, rawSummary),
     };
 }
 
@@ -122,20 +182,31 @@ class RssFeedEngine {
         this.etag = null;
         this.lastModified = null;
         this.lastFetchFailed = false;
+        this.releaseConnectivity = null;
 
         this._runFetch = this._runFetch.bind(this);
     }
 
-    /** Registers a subscriber; polling runs at the fastest requested interval. */
+    /**
+     * Registers a subscriber; polling runs at the fastest requested interval.
+     *
+     * The callback is invoked with (items, isFetchResult). `isFetchResult` is false only
+     * for the synchronous hand-off of whatever is already cached, which on a first ever
+     * load is nothing at all. A widget that treats that empty list as a failed fetch
+     * flashes its offline notice before the first request has even completed, so the
+     * distinction has to be part of the callback rather than something a caller infers
+     * from an empty array.
+     */
     subscribe(intervalSeconds, callback) {
         this.subscribers.set(callback, intervalSeconds);
         const fastestInterval = Math.min(...this.subscribers.values());
         // Cached items are delivered to every new subscriber, including the first.
         // Otherwise a widget recreated for a feed that is already cached shows
         // nothing until a fetch happens to succeed.
-        callback(this.lastItems);
+        callback(this.lastItems, false);
         if (this.subscribers.size === 1) {
             this._startTimer(fastestInterval);
+            this._watchConnectivity();
             this._runFetch();
             return () => this.unsubscribe(callback);
         }
@@ -155,7 +226,22 @@ class RssFeedEngine {
         this.destroy();
     }
 
+    _watchConnectivity() {
+        // One subscription per feed covers every widget on it, so a widget added
+        // while offline refetches as soon as the network returns instead of
+        // waiting out the whole poll interval. The settled variant is used because
+        // subscribe() has already issued the first fetch by the time this runs.
+        this.releaseConnectivity = subscribeToSettledConnectivity(available => {
+            if (available && this.subscribers.size > 0)
+                this._runFetch();
+        });
+    }
+
     destroy() {
+        if (this.releaseConnectivity) {
+            this.releaseConnectivity();
+            this.releaseConnectivity = null;
+        }
         if (this.timerId) {
             GLib.Source.remove(this.timerId);
             this.timerId = null;
@@ -165,6 +251,7 @@ class RssFeedEngine {
             this.cancellable = null;
         }
         this.session.abort();
+        this.session = null;
     }
 
     _startTimer(intervalSeconds) {
@@ -184,7 +271,7 @@ class RssFeedEngine {
         }
         this.cancellable = new Gio.Cancellable();
 
-        const message = Soup.Message.new('GET', this.feedUrl);
+        const message = createGetMessage(this.feedUrl);
         if (!message) {
             this._notifySubscribers(this.lastItems);
             return;
@@ -241,10 +328,11 @@ class RssFeedEngine {
         console.error(messageText);
     }
 
+    /** Every one of these runs after a fetch has completed or definitively failed. */
     _notifySubscribers(items) {
         const callbacks = [...this.subscribers.keys()];
         for (const callback of callbacks) {
-            callback(items);
+            callback(items, true);
         }
     }
 }

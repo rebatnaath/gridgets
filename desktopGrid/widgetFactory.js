@@ -3,7 +3,7 @@ import { createWeatherNode, createSunScheduleNode } from '../widgets/weather/ind
 import { createMusicNode } from '../widgets/music/index.js';
 import { createNotesNode, createClipboardNode, createTodoNode } from '../widgets/productivity/index.js';
 import { createCalendarNode, createCalendarGridNode, createCalendarAgendaNode } from '../widgets/calendar/index.js';
-import { createQuotesNode, createGithubNode, createRssHeadlinesNode } from '../widgets/social/index.js';
+import { createQuotesNode, createGithubNode, createRssHeadlinesNode, createTopStoriesNode } from '../widgets/social/index.js';
 import {
     createCpuRamNode,
     createNetworkSpeedNode,
@@ -48,6 +48,7 @@ const WIDGET_CREATORS = {
     'github': (data, w, h, x, y) => createGithubNode(data, w, h, x, y),
     'sun-schedule': (data, w, h, x, y) => createSunScheduleNode(data, w, h, x, y),
     'rss-headlines': (data, w, h, x, y) => createRssHeadlinesNode(data, w, h, x, y),
+    'top-stories': (data, w, h, x, y) => createTopStoriesNode(data, w, h, x, y),
     'mood': (data, w, h, x, y) => createMoodNode(data, w, h, x, y),
     'slideshow': (data, w, h, x, y) => createSlideshowNode(data, w, h, x, y),
     'image': (data, w, h, x, y) => {

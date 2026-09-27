@@ -146,11 +146,12 @@ export function readGlobalSettings(settings, interfaceSettings = null) {
 
     const currentTheme = settings.get_string('theme');
     const themePreset = findThemePreset(currentTheme);
+    let schemeSurfaces = null;
     if (currentTheme === 'adwaita' && interfaceSettings) {
-        const schemeColors = resolveSystemSchemeColors(interfaceSettings.get_string('color-scheme'));
-        if (schemeColors) {
-            globalBgColor = schemeColors.bg;
-            globalFgColor = schemeColors.fg;
+        schemeSurfaces = resolveSystemSchemeColors(interfaceSettings.get_string('color-scheme'));
+        if (schemeSurfaces) {
+            globalBgColor = schemeSurfaces.bg;
+            globalFgColor = schemeSurfaces.fg;
         }
     } else if (themePreset?.bg && themePreset?.fg) {
         globalBgColor = themePreset.bg;
@@ -174,10 +175,10 @@ export function readGlobalSettings(settings, interfaceSettings = null) {
     const highlightSetting = settings.get_string('global-highlight-color');
     const globalCardColor = currentTheme === 'custom'
         ? cardSetting
-        : (themePreset?.card || '');
+        : (schemeSurfaces?.card || themePreset?.card || '');
     const globalHighlightColor = currentTheme === 'custom'
         ? highlightSetting
-        : (themePreset?.highlight || '');
+        : (schemeSurfaces?.highlight || themePreset?.highlight || '');
 
     return {
         globalBgColor,
@@ -202,12 +203,12 @@ export function resolveSystemSchemeColors(colorScheme) {
     switch (colorScheme) {
         case 'prefer-dark': {
             const darkTheme = findThemePreset('adwaita-dark');
-            return { bg: darkTheme.bg, fg: darkTheme.fg };
+            return { bg: darkTheme.bg, fg: darkTheme.fg, card: darkTheme.card, highlight: darkTheme.highlight };
         }
         case 'prefer-light':
         case 'default': {
             const lightTheme = findThemePreset('adwaita-light');
-            return { bg: lightTheme.bg, fg: lightTheme.fg };
+            return { bg: lightTheme.bg, fg: lightTheme.fg, card: lightTheme.card, highlight: lightTheme.highlight };
         }
         default:
             return null;
@@ -529,7 +530,7 @@ export function deleteCacheFile(subFolder, widgetId) {
             try {
                 f.delete_finish(res);
             } catch (e) {
-                console.debug('Gridgets: cache file delete failed (non-critical):', e.message);
+                console.error('Gridgets: cache file delete failed (non-critical):', e.message);
             }
         });
     }
@@ -593,6 +594,11 @@ import {
     SIZE_PRESET_TIERS,
     FREE_FLOW_SIZE_TYPES,
     WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
+    DEFAULT_TOP_STORY_GENRE,
+    TOP_STORY_GENRE_NAMES,
+    getTopStoryFeeds,
+    TOP_STORY_GENRE_LABELS,
+    getTopStoryGenreLabel,
     isWideMusicLayout,
     supportsSizePresets,
     resolveWidgetSizePreset,
@@ -602,6 +608,11 @@ export {
     SIZE_PRESET_TIERS,
     FREE_FLOW_SIZE_TYPES,
     WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
+    DEFAULT_TOP_STORY_GENRE,
+    TOP_STORY_GENRE_NAMES,
+    getTopStoryFeeds,
+    TOP_STORY_GENRE_LABELS,
+    getTopStoryGenreLabel,
     isWideMusicLayout,
     supportsSizePresets,
     resolveWidgetSizePreset,

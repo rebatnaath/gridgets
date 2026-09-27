@@ -3,6 +3,7 @@ import {
     nextWidgetId,
     normalizeAppLauncherApps,
     WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
+    DEFAULT_TOP_STORY_GENRE,
 } from '../utils/widgetUtils.js';
 
 export const DEFAULT_RSS_REFRESH_MINUTES = 15;
@@ -106,6 +107,10 @@ export function addRssHeadlinesWidget(settings, feedUrl = '', width = 3, height 
         feedUrl,
         refreshMinutes: DEFAULT_RSS_REFRESH_MINUTES,
     }, width, height);
+}
+
+export function addTopStoriesWidget(settings, genre = DEFAULT_TOP_STORY_GENRE, width = 4, height = 6) {
+    addWidget(settings, { id: nextWidgetId(settings, 'top-stories'), type: 'top-stories', genre }, width, height);
 }
 
 export function addMoodWidget(settings, width = 6, height = 3) {

@@ -1,5 +1,4 @@
 import Gtk from 'gi://Gtk';
-import Pango from 'gi://Pango';
 import { openImageFileDialog, openFolderFileDialog } from './fileDialogs.js';
 import {
     addImageWidget,
@@ -10,6 +9,7 @@ import {
     addRssHeadlinesWidget,
     addSunScheduleWidget,
     addAppLauncherWidget,
+    addTopStoriesWidget,
 } from './widgetAdders.js';
 import { createAppSelectionControls } from './appSelection.js';
 import { createGnomeClocksLocationPicker } from './gnomeClocksLocations.js';
@@ -17,6 +17,7 @@ import { createGnomeWeatherLocationPicker } from './gnomeWeatherLocations.js';
 import { buildCaptionRows } from './captionControls.js';
 import { STORE_WIDGETS, parseStoreGridSize } from './widgetCatalog.js';
 import { MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
+import { DEFAULT_TOP_STORY_GENRE, TOP_STORY_GENRE_NAMES, TOP_STORY_GENRE_LABELS } from '../utils/widgetUtils.js';
 
 export { MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
 
@@ -101,6 +102,49 @@ export function openAddImageDialog(parentWindow, settings) {
                 const { width, height } = parseStoreGridSize(STORE_WIDGETS.imageGif.gridSize);
                 addImageWidget(settings, imagePath, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), width, height);
             }
+        }
+        dialogWindow.destroy();
+    });
+
+    dialog.present();
+}
+
+export function openAddTopStoriesDialog(parentWindow, settings) {
+    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Top Stories Widget');
+
+    const genreLabel = new Gtk.Label({ label: 'Genre:', xalign: 0 });
+    const genreList = new Gtk.StringList();
+    for (const genre of TOP_STORY_GENRE_NAMES)
+        genreList.append(TOP_STORY_GENRE_LABELS[genre] || genre);
+
+    // Gtk.DropDown rather than Adw.ComboRow: the theme picker uses ComboRow because it
+    // lives on an Adw page, but ComboRow is a GtkListBoxRow and trips
+    // gtk_list_box_row_grab_focus when hosted in this plain Gtk.Dialog. Selection is
+    // index-based, like the theme row, so no id column is involved.
+    const genreRow = new Gtk.DropDown({ hexpand: true });
+    genreRow.set_model(genreList);
+    const defaultIndex = TOP_STORY_GENRE_NAMES.indexOf(DEFAULT_TOP_STORY_GENRE);
+    if (genreList.get_n_items() > 0)
+        genreRow.set_selected(defaultIndex === -1 ? 0 : defaultIndex);
+    grid.attach(genreLabel, 0, 0, 1, 1);
+    grid.attach(genreRow, 1, 0, 1, 1);
+
+    const hint = new Gtk.Label({
+        label: 'Switch any time from the widget\u2019s right-click menu.',
+        xalign: 0,
+        max_width_chars: 40,
+    });
+    hint.get_style_context().add_class('dim-label');
+    grid.attach(hint, 0, 1, 2, 1);
+
+    dialog.connect('response', (dialogWindow, responseId) => {
+        if (responseId === Gtk.ResponseType.OK) {
+            const index = genreRow.get_selected();
+            const genre = index >= 0 && index < TOP_STORY_GENRE_NAMES.length
+                ? TOP_STORY_GENRE_NAMES[index]
+                : DEFAULT_TOP_STORY_GENRE;
+            const { width, height } = parseStoreGridSize(STORE_WIDGETS.topStoriesWidget.gridSize);
+            addTopStoriesWidget(settings, genre, width, height);
         }
         dialogWindow.destroy();
     });
@@ -234,8 +278,6 @@ function openAddRssUrlDialog(parentWindow, settings, title, hintText, addWidget)
         xalign: 0,
         hexpand: true,
         css_classes: ['dim-label'],
-        wrap: true,
-        wrap_mode: Pango.WrapMode.WORD,
         max_width_chars: 44,
     });
     grid.attach(hintLabel, 0, 1, 2, 1);

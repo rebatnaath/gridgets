@@ -117,6 +117,21 @@ export function connectDoubleClick(actor, callback) {
     return () => {};
 }
 
+/**
+ * Opens a URI with the desktop's default handler. `launchApplication` cannot do this:
+ * create_from_commandline looks up an executable on PATH, so it finds nothing for a URL.
+ */
+export function openExternalUri(uri) {
+    try {
+        // The shell keeps keyboard focus, so the browser needs a launch context of its
+        // own or it opens behind the desktop.
+        const context = global.create_app_launch_context(0, -1);
+        return Gio.AppInfo.launch_default_for_uri(uri, context);
+    } catch (_error) {
+        return false;
+    }
+}
+
 export function launchApplication(command) {
     try {
         const appInfo = Gio.AppInfo.create_from_commandline(command, null, Gio.AppInfoCreateFlags.NONE);

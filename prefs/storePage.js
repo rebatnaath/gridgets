@@ -29,6 +29,7 @@ import {
     openAddGithubDialog,
     openAddRssHeadlinesDialog,
     openAddSunScheduleDialog,
+    openAddTopStoriesDialog,
 } from './widgetAddDialogs.js';
 
 import { STORE_WIDGETS } from './widgetCatalog.js';
@@ -221,6 +222,7 @@ export function buildStorePage(window, settings, extensionPath) {
     addStoreCategory(page, 'Personal', [
         buildStoreCard(extensionPath, STORE_WIDGETS.githubWidget, () => openAddGithubDialog(window, settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.rssHeadlinesWidget, () => openAddRssHeadlinesDialog(window, settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.topStoriesWidget, () => openAddTopStoriesDialog(window, settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.quotesWidget, () => addQuotesWidget(settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.moodWidget, () => addMoodWidget(settings)),
     ]);

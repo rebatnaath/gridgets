@@ -67,8 +67,16 @@ export const WidgetActor = GObject.registerClass(
             if (this._cleanupCallbacks) {
                 const callbacks = this._cleanupCallbacks;
                 this._cleanupCallbacks = null;
-                for (const cleanup of callbacks)
-                    cleanup();
+                // Each cleanup is independent: one throwing must not strand the
+                // timers and cancellables registered after it, which would keep
+                // firing against already-destroyed actors.
+                for (const cleanup of callbacks) {
+                    try {
+                        cleanup();
+                    } catch (error) {
+                        console.error('Gridgets: widget cleanup failed:', error);
+                    }
+                }
             }
             super.destroy();
         }
@@ -227,7 +235,10 @@ export function drawCircularArc(context, width, height, progress, colorHex, line
     context.stroke();
 
     if (progress > 0) {
-        const { r, g, b } = parseCssColor(colorHex);
+        // Same fallback as the track: a colour the parser rejects must not throw out of a
+        // draw handler, which would leave the arc unpainted with no diagnostic.
+        const arcColor = parseCssColor(colorHex) || trackColor;
+        const { r, g, b } = arcColor;
 
         context.setSourceRGBA(r, g, b, 1.0);
         context.setLineWidth(lineWidth);
@@ -320,6 +331,23 @@ export function attachButtonFeedback(button) {
     });
 }
 
+/**
+ * Traces a rounded rectangle into the current cairo path. Pair with ctx.clip() to round
+ * something a stylesheet cannot round - a drawing area has no background, so its contents
+ * are clipped by cairo rather than by border-radius. The radius is clamped to half the
+ * shorter side, since arcs larger than that overlap and turn into a lozenge.
+ */
+export function traceRoundedRect(ctx, x, y, width, height, radius) {
+    const limit = Math.min(width, height) / 2;
+    const corner = Math.max(0, Math.min(radius, limit));
+    ctx.newSubPath();
+    ctx.arc(x + corner, y + corner, corner, Math.PI, 1.5 * Math.PI);
+    ctx.arc(x + width - corner, y + corner, corner, 1.5 * Math.PI, 2 * Math.PI);
+    ctx.arc(x + width - corner, y + height - corner, corner, 2 * Math.PI, 2.5 * Math.PI);
+    ctx.arc(x + corner, y + height - corner, corner, 2.5 * Math.PI, 3 * Math.PI);
+    ctx.closePath();
+}
+
 export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCallback) {
     const update = () => {
         // During teardown or before the first allocation Clutter can report a
@@ -342,16 +370,24 @@ export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCa
 
     const widthId = widgetNode.connect('notify::width', update);
     const heightId = widgetNode.connect('notify::height', update);
-    widgetNode.connect('destroy', () => {
-        widgetNode.disconnect(widthId);
-        widgetNode.disconnect(heightId);
+
+    // The first pass is deferred to an idle so the widget has been allocated by then.
+    // The source is held and torn down through registerCleanup rather than left to fire
+    // once against a destroyed actor.
+    let firstPassSourceId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        firstPassSourceId = 0;
+        if (!isActorDestroyed(widgetNode))
+            update();
+        return GLib.SOURCE_REMOVE;
     });
 
-    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-        if (!isActorDestroyed(widgetNode)) {
-            update();
+    registerWidgetCleanup(widgetNode, () => {
+        if (firstPassSourceId) {
+            GLib.Source.remove(firstPassSourceId);
+            firstPassSourceId = 0;
         }
-        return GLib.SOURCE_REMOVE;
+        widgetNode.disconnect(widthId);
+        widgetNode.disconnect(heightId);
     });
 
     return update;
