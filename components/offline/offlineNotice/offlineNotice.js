@@ -9,7 +9,6 @@ import {
     scaleFontSize,
 } from '../../../utils/typography.js';
 
-/** The states a network-backed widget can report to the user. */
 export const OFFLINE_NOTICE_MESSAGES = Object.freeze({
     offline: 'Offline',
     empty: 'No content to show',
@@ -17,14 +16,11 @@ export const OFFLINE_NOTICE_MESSAGES = Object.freeze({
 });
 
 /**
- * The one rule every network-backed widget follows when a fetch does not produce
- * content: never discard what is already on screen, and say which of the three
- * situations the user is in. `stale` wins over `offline` on purpose, because content
- * that is visible but could not be refreshed is not the same problem as no network.
- *
- * `isNetworkAvailable` is the value from isNetworkAvailable(), so it is true when the
- * network is fine. A fetch that failed while the network is up is an empty feed or a
- * refused request, which is a different thing to tell the user than a dead connection.
+ * The one rule every network-backed widget follows when a fetch produces no content:
+ * never discard what is already on screen, and say which situation the user is in.
+ * `stale` wins over `offline` because visible-but-unrefreshable is not the same problem
+ * as no network. `isNetworkAvailable` is true when the network is fine, so a failure
+ * while it is up means an empty feed or a refused request, not a dead connection.
  */
 export function noticeMessageForFetchFailure(hasContent, isNetworkAvailable) {
     if (hasContent)
@@ -32,24 +28,17 @@ export function noticeMessageForFetchFailure(hasContent, isNetworkAvailable) {
     return isNetworkAvailable ? OFFLINE_NOTICE_MESSAGES.empty : OFFLINE_NOTICE_MESSAGES.offline;
 }
 
-/**
- * A single name, not a chain: Gio.ThemedIcon.new rejects an array in this GJS
- * ("Expected type string for argument 'iconname' but got type Array"), and a plain
- * icon_name already gets the -symbolic fallback from the theme plus GIO's own
- * unsymbolic variant.
- */
+/** A single name, not a chain: Gio.ThemedIcon.new rejects an array in this GJS, and a
+ *  plain icon_name already gets the -symbolic fallback from the theme. */
 const OFFLINE_ICON_NAME = 'network-wireless-offline-symbolic';
 
 const BASE_TEXT_SIZE_PX = TYPOGRAPHY_SIZE.label;
 const BASE_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconLg;
 const ICON_TEXT_GAP_PX = 6;
 
-/**
- * The empty/offline state shared by every widget that needs the network: a dimmed icon
- * over one line of text, centred in whatever space the caller gives it. Callers keep the
- * actor hidden until they have nothing to show, and must call applyScale from their own
- * responsive scaler.
- */
+/** A dimmed icon over one line of text, centred in whatever space the caller gives it.
+ *  Callers keep the actor hidden until they have nothing to show, and must call
+ *  applyScale from their own responsive scaler. */
 export function createOfflineNotice({ fontCss = '', textColor = '', scale = 1 } = {}) {
     const icon = new St.Icon({
         icon_name: OFFLINE_ICON_NAME,

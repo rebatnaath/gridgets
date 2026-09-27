@@ -1,13 +1,11 @@
-/** Text helpers shared by the feed-backed widgets. */
-
 export function clampText(text, maxChars) {
     if (!text) return '';
     return text.length <= maxChars ? text : `${text.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
 }
 
 /**
- * "5m ago" for prose, "5m" for a dense row. `compact` also shortens the
- * sub-minute case to "now", which reads better beside a number.
+ * "5m ago" for prose, "5m" for a dense row; `compact` shortens the sub-minute
+ * case to "now", which reads better beside a number.
  */
 export function relativeTimeFromIso(dateIso, { compact = false } = {}) {
     const publishedMs = dateIso ? Date.parse(dateIso) : NaN;

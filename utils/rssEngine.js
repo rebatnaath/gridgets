@@ -15,7 +15,6 @@ const feedCache = new Map();
 
 /** Minimal RSS 2.0 / Atom extractor — tag-level parsing avoids a full DOM parser. */
 
-/** Decodes the XML entities feeds commonly emit inside text nodes. */
 function decodeXmlEntities(text) {
     return text
         .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
@@ -27,7 +26,6 @@ function decodeXmlEntities(text) {
         .replace(/&amp;/g, '&');
 }
 
-/** Strips CDATA wrappers and any embedded HTML tags from feed text. */
 function cleanFeedText(rawText) {
     if (!rawText) return '';
     const withoutCdata = rawText.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
@@ -36,17 +34,13 @@ function cleanFeedText(rawText) {
     return decoded.replace(/<!--([\s\S]*?)-->|<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Returns the inner text of the first `<tag>` occurrence inside `block`. */
 function extractTagText(block, tagName) {
     const pattern = new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\/${tagName}>`, 'i');
     const match = block.match(pattern);
     return match ? match[1].trim() : '';
 }
 
-/**
- * Resolves an item's link across RSS (<link>text</link>) and Atom
- * (<link rel="alternate" href="..." />) conventions.
- */
+/** Resolves an item's link across RSS (<link>text</link>) and Atom (href) forms. */
 function extractItemLink(block) {
     const rssLink = extractTagText(block, 'link');
     if (rssLink && /^https?:\/\//i.test(cleanFeedText(rssLink))) {
@@ -62,16 +56,15 @@ function extractItemLink(block) {
     return anyHrefMatch ? decodeXmlEntities(anyHrefMatch[1]) : '';
 }
 
-/** Returns the first capture of `pattern` inside `block`, decoded, or '' when absent. */
 function extractAttribute(block, pattern) {
     const match = block.match(pattern);
     return match ? decodeXmlEntities(match[1]).trim() : '';
 }
 
 /**
- * Picks the image a feed publishes for an item. Feeds disagree on where it lives, so
- * the namespaces are tried in order of how often they carry one, and the item's own
- * markup is the last resort because cleaning the text has already thrown the tags away.
+ * Feeds disagree on where an item's image lives, so the namespaces are tried in order of
+ * how often they carry one. The item's own markup is the last resort because cleaning
+ * the text has already thrown the tags away.
  */
 function extractItemImage(block, rawSummary) {
     const mediaRss = extractAttribute(block, /<media:thumbnail\b[^>]*\burl=["']([^"']+)["']/i);
@@ -98,7 +91,6 @@ function absoluteUrl(candidate) {
     return /^https?:\/\//i.test(candidate) ? candidate : '';
 }
 
-/** Publisher name for an item, which aggregator feeds carry in <source>. */
 function extractItemSource(block) {
     const source = cleanFeedText(extractTagText(block, 'source'));
     if (source) return source;
@@ -116,7 +108,6 @@ function stripSourceSuffix(title, source) {
     return title.endsWith(suffix) ? title.slice(0, -suffix.length).trim() : title;
 }
 
-/** Normalizes a single RSS or Atom entry. */
 function parseEntry(block) {
     const source = extractItemSource(block);
     const rawSummary = extractTagText(block, 'description') || extractTagText(block, 'summary') || extractTagText(block, 'content');
@@ -138,14 +129,13 @@ function parseEntry(block) {
     };
 }
 
-/** Converts RFC-822 or ISO-8601 feed dates to ISO-8601; unparseable dates become ''. */
 function normalizeDateString(rawDate) {
     if (!rawDate) return '';
     const parsedMs = Date.parse(rawDate);
     return isNaN(parsedMs) ? '' : new Date(parsedMs).toISOString();
 }
 
-/** Parses a full feed document into { title, items: [...] }; returns null when nothing usable is found. */
+/** Parses a full feed document, or null when nothing usable is found. */
 function parseFeed(xmlText) {
     if (!xmlText) return null;
 
@@ -188,8 +178,6 @@ class RssFeedEngine {
     }
 
     /**
-     * Registers a subscriber; polling runs at the fastest requested interval.
-     *
      * The callback is invoked with (items, isFetchResult). `isFetchResult` is false only
      * for the synchronous hand-off of whatever is already cached, which on a first ever
      * load is nothing at all. A widget that treats that empty list as a failed fetch
@@ -337,7 +325,6 @@ class RssFeedEngine {
     }
 }
 
-/** Active engines keyed by feed URL; released when the last subscriber unsubscribes. */
 const activeEngines = new Map();
 
 /** Clears all cached engines; called from the extension's disable(). */

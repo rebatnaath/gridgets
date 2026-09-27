@@ -6,7 +6,6 @@ import { getWidgetCacheFolder } from './widgetRegistry.js';
 /** Bumped when a caller's payload shape changes, so old files are ignored rather than misread. */
 const CACHE_VERSION = 1;
 
-/** Bursts of successful fetches collapse into a single write. */
 const SAVE_DEBOUNCE_MS = 4000;
 
 /** Backstop against a runaway payload; real feeds sit far below this. */
@@ -24,9 +23,8 @@ const IMAGE_DIR_NAME = 'images';
 
 /**
  * Thumbnails are cached as the bytes the CDN returned, so one file serves every widget
- * scale. Anything larger is skipped rather than stored: a handful of oversized hero images
- * would otherwise dominate the budget. Re-encoding to a scaled PNG is the way to tighten
- * this further if the real-world total proves too high.
+ * scale. Anything larger is skipped, since a handful of oversized hero images would
+ * otherwise dominate the budget.
  */
 const MAX_CACHED_IMAGE_BYTES = 256 * 1024;
 
@@ -164,9 +162,8 @@ function imageFilePath(widgetType, widgetId, imageUrl) {
 }
 
 /**
- * Reads a stored thumbnail so a widget restored from its snapshot can paint images with
- * no network at all. Calls back with null when the image was never stored or the read
- * failed, which is the same signal fetchImageBytes uses for "no image".
+ * Calls back with null when the image was never stored or the read failed, which is the
+ * same signal fetchImageBytes uses for "no image".
  */
 export function readCachedImageBytes(widgetType, widgetId, imageUrl, callback) {
     const filePath = imageFilePath(widgetType, widgetId, imageUrl);
@@ -192,21 +189,18 @@ export function readCachedImageBytes(widgetType, widgetId, imageUrl, callback) {
 }
 
 /**
- * The `file://` URI a given key maps to, for callers that want to hand the picture to a
- * stylesheet rather than decode it themselves. Empty when the key or the widget is
- * unusable. Pairs with writeCachedImageBytes, so the path is derived once and in one
- * place, and the URI is stable across restarts - which matters because St caches CSS by
- * URL and would otherwise keep showing the first image ever written under that name.
+ * The `file://` URI a given key maps to, for callers handing the picture to a stylesheet
+ * rather than decoding it. Empty when the key or the widget is unusable. The URI is stable
+ * across restarts, which matters because St caches CSS by URL and would otherwise keep
+ * showing the first image ever written under that name.
  */
 export function cachedImageUri(widgetType, widgetId, imageKey) {
     const filePath = imageFilePath(widgetType, widgetId, imageKey);
     return filePath ? GLib.filename_to_uri(filePath, null) : '';
 }
 
-/**
- * Stores a thumbnail against the widget about to display it. `onWritten` runs once the
- * bytes are on disk: a stylesheet pointed at the path earlier shows nothing, silently.
- */
+/** `onWritten` runs once the bytes are on disk: a stylesheet pointed at the path
+ *  earlier shows nothing, silently. */
 export function writeCachedImageBytes(widgetType, widgetId, imageUrl, bytes, onWritten = null) {
     const filePath = imageFilePath(widgetType, widgetId, imageUrl);
     if (!filePath || !bytes || bytes.get_size() === 0)
@@ -270,7 +264,6 @@ export function pruneCachedImages(widgetType, widgetId, keepImageUrls) {
         deleteFileQuietly(path);
 }
 
-/** "just now" / "12m ago" / "3h ago" / "2d ago", for the freshness stamp. */
 export function formatSnapshotAge(savedAtMs) {
     if (!savedAtMs)
         return '';
@@ -357,7 +350,7 @@ function deleteFileQuietly(filePath) {
     });
 }
 
-/** Drops pending debounced writes so a disable does not leave timers behind. */
+/** Drops pending debounced writes so a disable leaves no timers behind. */
 export function clearLastGoodCaches() {
     for (const state of writeStates.values()) {
         if (state.timerId)

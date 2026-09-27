@@ -27,24 +27,27 @@ const REF_HEIGHT_PX = 305;
 
 const HEADER_PADDING_V_PX = 9;
 const LIST_PADDING_PX = 8;
-// Split from the vertical padding so the gap between stories can tighten on its own.
 const CARD_PADDING_X_PX = 9;
 const CARD_PADDING_Y_PX = 5;
 const CARD_SPACING_PX = 4;
 const CARD_RADIUS_PX = 10;
-// Shared by the header and the stories so their text cannot drift out of alignment.
 const CONTENT_INSET_PX = LIST_PADDING_PX + CARD_PADDING_X_PX;
 const THUMBNAIL_SIZE_PX = 46;
 const THUMBNAIL_RADIUS_PX = 7;
 
 const CARD_TITLE_MAX_LINES = 2;
+/**
+ * Two lines of the 281px title column at 13px medium. Clutter.Text has no line-count
+ * clamp, so the text is bounded here; the budget holds at any scale because the column
+ * and the font size scale together.
+ */
+const CARD_TITLE_MAX_CHARS = 80;
 const META_SPACING_PX = 4;
 const TITLE_COLUMN_SPACING_PX = 2;
 /** Same measurement the calendar day column uses: 13px of text occupies 18px. */
 const TITLE_LINE_HEIGHT_RATIO = 1.43;
 const CARD_TEXT_SPACING_PX = 8;
 const MAX_CARDS = 14;
-/** Bounds each stored feed so eight of them cannot grow the file without limit. */
 const MAX_CACHED_ITEMS_PER_FEED = 20;
 const SOURCE_NAME_MAX_CHARS = 26;
 const CLUTTER_OPACITY_OPAQUE = 255;
@@ -85,7 +88,6 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         cards: [],
         articles: [],
         lookedUpUrls: new Set(),
-        imageBytesCache: new Map(),
         /** Image URL per article link, keyed so the pruner keeps the files actually in use. */
         entryImageUrls: new Map(),
         prunedImageSignature: null,
@@ -166,7 +168,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
             titleLabel.clutter_text.line_wrap = true;
             titleLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
             // Labels inherit END ellipsize from the shell theme, and END pins the text
-            // to one line, so without this the wrap and line_max below do nothing.
+            // to one line, so without this the wrap below does nothing.
             titleLabel.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
 
             // BinLayout so each child fills the tile and its centre alignment applies;
@@ -258,7 +260,6 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         entry.titleLabel.style = `${fontCss}font-size: ${titleFontPx}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; color: ${textColor};`
             + ` min-height: ${Math.round(titleFontPx * TITLE_LINE_HEIGHT_RATIO * CARD_TITLE_MAX_LINES)}px;`;
-        entry.titleLabel.clutter_text.line_max = CARD_TITLE_MAX_LINES;
         entry.sourceLabel.style = metaStyle;
         entry.timeLabel.style = metaStyle;
         // ClutterActor.opacity is a ubyte, not the 0-1 the stylesheet form takes, so the
@@ -277,8 +278,6 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
     }
 
     function clearThumbnail(entry, thumbnailPx) {
-        // Rebuilt without the background-image, so the old picture is dropped rather than
-        // left showing under the letter.
         entry.imageUri = '';
         entry.thumbnailImage.style = thumbnailStyle('', thumbnailPx);
         entry.thumbnailImage.hide();
@@ -307,14 +306,14 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
 
         readCachedImageBytes('top-stories', config.id, imageUrl, diskBytes => {
             if (isActorDestroyed(container) || entry.articleLink !== articleLink) return;
+            // The bytes are never used: the thumbnail paints from the file:// URI, so a
+            // disk hit only has to prove the file is there.
             if (diskBytes) {
-                state.imageBytesCache.set(articleLink, diskBytes);
                 paint();
                 return;
             }
             fetchImageBytes(imageUrl, state.imageCancellable, bytes => {
                 if (!bytes || isActorDestroyed(container) || entry.articleLink !== articleLink) return;
-                state.imageBytesCache.set(articleLink, bytes);
                 // Painted from the callback: a stylesheet pointing at the file before the
                 // write lands shows nothing, and says nothing about why.
                 writeCachedImageBytes('top-stories', config.id, imageUrl, bytes, paint);
@@ -383,7 +382,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
                 // rather than refetched.
                 styleThumbnail(entry, entry.imageUri, thumbnailPx);
             }
-            entry.titleLabel.text = article.title;
+            entry.titleLabel.text = clampText(article.title, CARD_TITLE_MAX_CHARS);
             entry.sourceLabel.text = clampText(article.source, SOURCE_NAME_MAX_CHARS);
             entry.timeLabel.text = relativeTimeFromIso(article.dateIso, { compact: true });
         }
@@ -393,14 +392,8 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         forgetArticlesOffScreen(shown);
         pruneVisibleThumbnails(shown);
 
-        if (state.articles.length > 0) {
-            if (state.fetchFailureMessage) {
-                emptyState.setMessage(state.fetchFailureMessage);
-                emptyState.actor.show();
-            } else {
-                emptyState.actor.hide();
-            }
-        } else if (state.fetchFailureMessage) {
+        // Only ever set when there is nothing to read, so content on screen wins.
+        if (state.fetchFailureMessage) {
             emptyState.setMessage(state.fetchFailureMessage);
             emptyState.actor.show();
         } else {
@@ -409,16 +402,15 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
     }
 
     /**
-     * Drops per-article state for anything not on a card. The image cache holds raw CDN
-     * bytes, so keeping every story the feeds ever produced would cost tens of megabytes
-     * over a long session. Anything still in flight re-adds itself and is collected on the
-     * next pass.
+     * Drops per-article state for anything not on a card, so the footprint is set by what
+     * is on screen rather than by everything the feeds ever produced. Anything still in
+     * flight re-adds itself and is collected on the next pass.
      */
     function forgetArticlesOffScreen(shown) {
         const shownLinks = new Set();
         for (let i = 0; i < shown; i++)
             shownLinks.add(state.articles[i].link);
-        for (const collection of [state.imageBytesCache, state.entryImageUrls, state.lookedUpUrls]) {
+        for (const collection of [state.entryImageUrls, state.lookedUpUrls]) {
             for (const link of [...collection.keys()]) {
                 if (!shownLinks.has(link))
                     collection.delete(link);
@@ -466,11 +458,9 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
     }
 
     /**
-     * Deals the list out one publisher at a time. On date alone the largest feed takes
-     * the whole visible area - BBC Sport publishes far more than the others, so the top
-     * of the list was four of the same source. Round-robin over per-publisher queues
-     * keeps each one's own newest-first order while the first stories come from
-     * different outlets.
+     * Round-robin over per-publisher queues. On date alone the largest feed takes the
+     * whole visible area - BBC Sport publishes far more than the others, so the top of
+     * the list was four of the same source.
      */
     function interleaveBySource(articles) {
         const queues = new Map();
@@ -509,7 +499,6 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         return isNaN(parsed) ? 0 : parsed;
     }
 
-    /** Newest first across every feed, each item carrying the publisher it came from. */
     function mergeFeeds() {
         const merged = [];
         const seen = new Set();
@@ -533,7 +522,6 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
             state.releaseConnectivity();
         state.releaseConnectivity = null;
         state.imageCancellable.cancel();
-        state.imageBytesCache.clear();
         state.entryImageUrls.clear();
     });
 

@@ -16,10 +16,9 @@ const WIDEN_CHUNK_BYTES = 4096;
 const CACHE_SAVE_DELAY_MS = 4000;
 
 /**
- * Aggregator feeds such as Google News publish no image at all, so the only place left
- * to find one is the story page. That page is a wrapper rather than a redirect, and its
- * open-graph image is a thumbnail the aggregator already hosts, which is why a lookup
- * never has to reach the publisher.
+ * Aggregator feeds such as Google News publish no image at all, so the only place left to
+ * find one is the story page - a wrapper whose open-graph image the aggregator already
+ * hosts, which is why a lookup never has to reach the publisher.
  */
 const OG_IMAGE_PATTERN = /<meta\b[^>]*\bproperty=["']og:image["'][^>]*>/i;
 const CONTENT_ATTRIBUTE_PATTERN = /content=["']([^"']+)["']/i;
@@ -27,9 +26,8 @@ const HTTP_URL_PATTERN = /^https?:\/\//i;
 
 /**
  * A safety net, not an optimisation. An ordinary publisher puts og:image in <head> and
- * the read stops there, but an aggregator wrapper carries a few hundred kilobytes of
- * script and emits its whole og block last, so the cap has to clear the whole document
- * for those. Measured against Google News: 582KB with the tag at 577KB.
+ * the read stops there, but an aggregator wrapper emits its whole og block last.
+ * Measured against Google News: 582KB with the tag at 577KB.
  */
 const MAX_PAGE_BYTES = 768 * 1024;
 
@@ -52,9 +50,8 @@ function cacheFilePath() {
 
 /**
  * The stored answers are read asynchronously, so a lookup issued before the read lands
- * would miss the cache and refetch a page whose image URL is already on disk. Lookups
- * therefore wait here, and a read that fails still releases them rather than leaving the
- * whole session without a cache.
+ * would miss the cache and refetch a page whose image URL is already on disk. A read
+ * that fails still releases the waiters.
  */
 function whenCacheLoaded(callback) {
     loadCache();
@@ -163,10 +160,9 @@ function startLookup(articleUrl, cancellable) {
 }
 
 /**
- * Bytes are widened one to one rather than UTF-8 decoded: GJS's TextDecoder has no stream
- * mode, and the tag being looked for is ASCII, so a multi-byte character cannot affect the
- * match either way. The chunk is converted in one call rather than byte by byte, which
- * matters because a page can be hundreds of kilobytes.
+ * Bytes are widened one to one rather than UTF-8 decoded: the tag being looked for is
+ * ASCII, so a multi-byte character cannot affect the match either way. Converted in one
+ * call rather than byte by byte, which matters on a page of hundreds of kilobytes.
  */
 function widenBytes(bytes) {
     const data = bytes.get_data();
@@ -257,9 +253,8 @@ function rememberResolvedUrl(articleUrl, imageUrl) {
 }
 
 /**
- * Resolves the image URL for an article, calling back with '' when there is none. A
- * cached answer arrives on the same tick once the stored cache has loaded, so a widget
- * rebuilt from cache never waits on the network.
+ * Calls back with '' when there is none. A cached answer arrives on the same tick once
+ * the stored cache has loaded, so a widget rebuilt from cache never waits on the network.
  */
 export function resolveArticleImageUrl(articleUrl, cancellable, callback) {
     if (!HTTP_URL_PATTERN.test(articleUrl)) {
@@ -284,7 +279,6 @@ export function resolveArticleImageUrl(articleUrl, cancellable, callback) {
     });
 }
 
-/** Downloads the bytes for an already-resolved image URL, or null when it fails. */
 export function fetchImageBytes(imageUrl, cancellable, callback) {
     const message = createGetMessage(imageUrl);
     if (!message) {
@@ -309,7 +303,7 @@ export function fetchImageBytes(imageUrl, cancellable, callback) {
     });
 }
 
-/** Frees the cached answers and the queues behind them; called from disable(). */
+/** Frees the cached answers and the queues behind them. Called from disable(). */
 export function clearArticleImageCache() {
     inFlightLookups.clear();
     lookupQueue = [];
