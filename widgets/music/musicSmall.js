@@ -1,5 +1,4 @@
-import St from 'gi://St';
-import Clutter from 'gi://Clutter';
+import { createScrim } from '../../components/scrim/scrim.js';
 import { createBackgroundLayer, buildControlsColumn, updateControlButtonScaling } from './controls.js';
 import { LIGHT_TEXT_ON_DARK_COVER } from './cover.js';
 import { resolveExplicitFontFamily, resolveWidgetSurfaces, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
@@ -11,28 +10,16 @@ const BASE_CONTAINER_HEIGHT = 140;
 const BASE_CONTAINER_MARGIN_PX = 12;
 const MIN_CONTAINER_MARGIN_PX = 4;
 
-const SCRIM_GRADIENT_STYLE = 'background-gradient-direction: vertical; '
-    + 'background-gradient-start: rgba(0, 0, 0, 0); '
-    + 'background-gradient-end: rgba(0, 0, 0, 0.75);';
-
-const buildScrimStyle = borderRadius => `${SCRIM_GRADIENT_STYLE} border-radius: ${borderRadius}px;`;
-
 export function buildSmallLayout(config, state) {
     const backgroundLayer = createBackgroundLayer(config);
     state.backgroundLayer = backgroundLayer;
     state.container.add_child(backgroundLayer);
 
 // resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
-    // means the shared default, and || 0 squared this scrim off against a rounded
+    // means the shared default, and || 0 squared this panel off against a rounded
     // container. The radius has to match the container's to line the corners up.
     const cornerRadius = resolveWidgetCornerRadius(config);
-    const gradientOverlay = new St.Widget({
-        style: buildScrimStyle(cornerRadius),
-        x_expand: true,
-        y_expand: true,
-        x_align: Clutter.ActorAlign.FILL,
-        y_align: Clutter.ActorAlign.FILL,
-    });
+    const gradientOverlay = createScrim({ enabled: true, borderRadius: cornerRadius });
     state.container.add_child(gradientOverlay);
 
     state.titleLabel = null;
@@ -56,8 +43,6 @@ export function buildSmallLayout(config, state) {
         if (state.controlsColumn) {
             state.controlsColumn.style = `margin: ${containerMargin}px;`;
         }
-
-        gradientOverlay.style = buildScrimStyle(cornerRadius);
     });
 }
 

@@ -2,7 +2,7 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { createAnimatedImageNode } from './gif.js';
-import { listImagesInFolder, attachCaptionOverlay } from './mediaCommon.js';
+import { listImagesInFolder, attachCaptionOverlay, imageDateCaption, backgroundImageStyle } from './mediaCommon.js';
 import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetCornerRadius, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
 import { WidgetActor, connectTimerCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
@@ -15,40 +15,40 @@ const MILLISECONDS_PER_SECOND = 1000;
 const CROSSFADE_DURATION_MS = 800;
 const CLUTTER_OPACITY_OPAQUE = 255;
 const CLUTTER_OPACITY_TRANSPARENT = 0;
+
+// A single space, not a word: the first picture may have no readable date, and the
+// overlay still has to exist so the next slide's date has somewhere to go.
+const PLACEHOLDER_CAPTION = ' ';
+
+/** A full-bleed rounded layer, whichever way the picture has to be drawn. */
 function createImageLayer(imagePath, borderRadius, width, height, animateGif) {
-    if (imagePath.toLowerCase().endsWith('.gif')) {
-        const gifWidget = createAnimatedImageNode({
-            imagePath,
-            appliedBorderRadius: borderRadius
-        }, width, height, 0, 0, animateGif);
-
-        gifWidget.x_expand = true;
-        gifWidget.y_expand = true;
-        gifWidget.x_align = Clutter.ActorAlign.FILL;
-        gifWidget.y_align = Clutter.ActorAlign.FILL;
-        gifWidget.opacity = CLUTTER_OPACITY_OPAQUE;
-        return gifWidget;
-    }
-
-    return new St.Widget({
-        style: `
-            background-image: url("file://${imagePath}");
-            background-size: cover;
-            border-radius: ${borderRadius}px;
-        `,
+    const fill = {
         x_expand: true,
         y_expand: true,
         x_align: Clutter.ActorAlign.FILL,
         y_align: Clutter.ActorAlign.FILL,
         opacity: CLUTTER_OPACITY_OPAQUE,
+    };
+
+    if (imagePath.toLowerCase().endsWith('.gif')) {
+        const gifWidget = createAnimatedImageNode({
+            imagePath,
+            appliedBorderRadius: borderRadius
+        }, width, height, 0, 0, animateGif);
+        Object.assign(gifWidget, fill);
+        return gifWidget;
+    }
+
+    return new St.Widget({
+        ...fill,
+        style: backgroundImageStyle(imagePath, `border-radius: ${borderRadius}px;`),
     });
 }
 
 export function createSlideshowNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
-    // The layers sit inside a container that is rounded by the shared default, so they
-    // have to carry the same radius. `appliedBorderRadius || 0` left them square whenever
-    // no override was stored, and the picture then covered the rounded corners.
+    // The layers sit inside a container rounded by the shared default, so they carry
+    // the same radius or the picture covers the rounded corners.
     const borderRadius = resolveWidgetCornerRadius(widgetData);
     const slideInterval = (widgetData.intervalSeconds || DEFAULT_SLIDE_INTERVAL_SECONDS) * MILLISECONDS_PER_SECOND;
     const folderPath = widgetData.slideshowFolder || '';
@@ -112,6 +112,12 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
         container.add_child(imageContainer);
 
         const shouldAnimateGif = widgetData.animateGif !== undefined ? widgetData.animateGif : (widgetData.globalAnimateGif !== false);
+        const usesDateCaption = widgetData.useDateCaption === true;
+        const firstDate = usesDateCaption ? imageDateCaption(images[0]) : '';
+        const captionForFirstSlide = usesDateCaption && firstDate === ''
+            ? PLACEHOLDER_CAPTION
+            : (firstDate || widgetData.caption || '');
+        const captionHandle = attachCaptionOverlay(container, widgetData, width, height, false, images[0], captionForFirstSlide);
 
         let currentIndex = 0;
         let currentLayer = watchActorLifecycle(createImageLayer(images[0], borderRadius, width, height, shouldAnimateGif));
@@ -122,6 +128,11 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
 
             currentIndex = (currentIndex + 1) % images.length;
             const nextImage = images[currentIndex];
+
+            // A picture with no readable date leaves the text empty rather than keeping
+            // the previous slide's, which would be a lie about the picture on screen.
+            if (usesDateCaption)
+                captionHandle?.setCaption(imageDateCaption(nextImage));
 
             const incomingLayer = watchActorLifecycle(createImageLayer(nextImage, borderRadius, width, height, shouldAnimateGif));
             incomingLayer.set_opacity(CLUTTER_OPACITY_TRANSPARENT);
@@ -155,7 +166,6 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
         });
 
         connectTimerCleanup(container, state);
-        attachCaptionOverlay(container, widgetData, width, height);
     });
 
     return container;

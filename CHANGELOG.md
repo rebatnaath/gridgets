@@ -82,6 +82,11 @@ widget appears at.
   resize them, instead of staying as they were when created.
 - Media captions got a "use the global setting" switch, and the loading text now
   scales with the widget.
+- Image and slideshow captions can sit on a dark fade, so they stay readable over
+  a light picture. It is off by default, under Caption Scrim in the global
+  settings.
+- Image and slideshow captions can show the picture's date instead of a caption
+  you type yourself, under Use Image Date.
 
 ### Fixes
 

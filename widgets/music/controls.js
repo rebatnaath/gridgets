@@ -81,7 +81,7 @@ function connectControlButton(button, action) {
     button.connect('button-press-event', (_actor, event) => {
         if (event.get_button() !== BUTTON_PRIMARY) return Clutter.EVENT_PROPAGATE;
         Promise.resolve(action()).catch(error => {
-            console.debug('Gridgets: control action failed:', error);
+            console.error('Gridgets: control action failed:', error);
         });
         return Clutter.EVENT_STOP;
     });

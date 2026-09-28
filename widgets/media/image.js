@@ -1,11 +1,11 @@
 import Clutter from 'gi://Clutter';
 import { buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
 import { WidgetActor } from '../../shell/widgetUIUtils.js';
-import { attachCaptionOverlay } from './mediaCommon.js';
+import { attachCaptionOverlay, backgroundImageStyle } from './mediaCommon.js';
 
 export function createStaticImageNode(widgetData, width, height, xPosition, yPosition) {
     const baseStyle = buildBaseWidgetStyle(widgetData);
-    const widgetStyle = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
+    const widgetStyle = backgroundImageStyle(widgetData.imagePath, baseStyle);
 
     const widgetNode = new WidgetActor({
         style: widgetStyle,
@@ -18,7 +18,7 @@ export function createStaticImageNode(widgetData, width, height, xPosition, yPos
     });
 
     widgetNode.set_clip_to_allocation(true);
-    attachCaptionOverlay(widgetNode, widgetData, width, height);
+    attachCaptionOverlay(widgetNode, widgetData, width, height, false, widgetData.imagePath);
 
     return widgetNode;
 }

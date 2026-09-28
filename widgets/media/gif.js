@@ -6,7 +6,8 @@ import Gdk from 'gi://Gdk?version=4.0';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import { buildBaseWidgetStyle, resolveWidgetCornerRadius, CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER } from '../../utils/widgetUtils.js';
 import { WidgetActor, connectTimerCleanup, registerWidgetCleanup, scheduleDeferredUpdate, traceRoundedRect } from '../../shell/widgetUIUtils.js';
-import { ASPECT_RATIO_TOLERANCE, GIF_FRAME_INTERVAL_MS, attachCaptionOverlay } from './mediaCommon.js';
+import { ASPECT_RATIO_TOLERANCE, GIF_FRAME_INTERVAL_MS, attachCaptionOverlay, backgroundImageStyle } from './mediaCommon.js';
+import { addSettleAfterResize } from '../../utils/resizeSettle.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
 
 const RESIZE_REPAINT_THROTTLE_MS = 16;
@@ -85,6 +86,7 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
         width: width,
         height: height,
         reactive: true,
+        layout_manager: new Clutter.BinLayout(),
     });
 
     widgetNode.set_clip_to_allocation(true);
@@ -96,7 +98,7 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
     registerWidgetCleanup(widgetNode, () => loadCancellable.cancel());
 
     const applyStaticFallback = () => {
-        widgetNode.style = `background-image: url("file://${widgetData.imagePath}"); background-size: cover; ${baseStyle}`;
+        widgetNode.style = backgroundImageStyle(widgetData.imagePath, baseStyle);
     };
 
     const startAnimation = (animation) => {
@@ -192,13 +194,24 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
             scheduleNextFrame(validInitialDelay);
         }
 
+        // A resize drag calls set_size on every motion event, and repainting here would
+        // re-crop and re-rasterise a frame through cairo each time. That is the one
+        // resize path that cannot be cheap, and it is why the animated widget juddered
+        // while a static one did not: a growing widget is more pixels to redraw. Held
+        // still during the drag, then applied once to the settled size.
+        const repaintForCurrentSize = () => {
+            if (isActorDestroyed(widgetNode))
+                return;
+            scheduleDeferredUpdate(state, RESIZE_REPAINT_THROTTLE_MS, () => updateImage(iter.get_pixbuf()));
+        };
+        addSettleAfterResize(widgetNode, repaintForCurrentSize);
         widgetNode.connect('notify::width', () => {
-            if (!isActorDestroyed(widgetNode))
-                scheduleDeferredUpdate(state, RESIZE_REPAINT_THROTTLE_MS, () => updateImage(iter.get_pixbuf()));
+            if (!widgetNode.isResizing)
+                repaintForCurrentSize();
         });
         widgetNode.connect('notify::height', () => {
-            if (!isActorDestroyed(widgetNode))
-                scheduleDeferredUpdate(state, RESIZE_REPAINT_THROTTLE_MS, () => updateImage(iter.get_pixbuf()));
+            if (!widgetNode.isResizing)
+                repaintForCurrentSize();
         });
 
         connectTimerCleanup(widgetNode, state);
@@ -236,7 +249,6 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
         applyStaticFallback();
     });
 
-    attachCaptionOverlay(widgetNode, widgetData, width, height, true);
+    attachCaptionOverlay(widgetNode, widgetData, width, height, true, widgetData.imagePath);
     return widgetNode;
 }
-
