@@ -1,5 +1,6 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {
     resolveWidgetForegroundColor,
@@ -63,6 +64,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             y_expand: true,
         });
         const updateEmptyLabel = scale => {
+            if (isActorDestroyed(container)) return;
             const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.body, scale, MIN_FONT_SIZE.body);
             emptyLabel.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
         };
@@ -99,19 +101,21 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
 
     const cells = [];
 
-    const launchApp = (appInfo, app, displayName) => {
+    const launchApp = cell => {
         if (isActorDestroyed(container)) return;
 
-        if (appInfo) {
-            try {
-                appInfo.launch([], null);
-                return;
-            } catch (e) {
-                console.debug(`Failed to launch ${app.id}:`, e);
-            }
+        // Shell.App.activate() is what AppDisplay.AppIcon uses: it launches the app
+        // when it is stopped and raises its existing window when it is running.
+        // GDesktopAppInfo.launch() would spawn a second instance instead, and a null
+        // launch context means no startup notification.
+        const app = Shell.AppSystem.get_default().lookup_app(cell.appId);
+        if (app) {
+            app.activate();
+            return;
         }
 
-        Main.notify('App Launcher', `Could not launch ${displayName}`);
+        console.error(`Gridgets: could not launch ${cell.appId}`);
+        Main.notify('App Launcher', `Could not launch ${cell.displayName}`);
     };
 
     const updateCell = (cell, padding, iconSize, tileRadius) => {
@@ -119,6 +123,10 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
         cell.tileRadius = tileRadius;
         cell.button.set_style(buildTileStyle(cell.hovered ? tileHoverBg : tileBaseBg, padding, tileRadius));
         cell.icon.set_icon_size(iconSize);
+    };
+
+    const refreshCellHover = cell => {
+        cell.button.set_style(buildTileStyle(cell.hovered ? tileHoverBg : tileBaseBg, cell.padding, cell.tileRadius));
     };
 
     for (let rowIndex = 0; rowIndex < rows; rowIndex++) {
@@ -138,7 +146,6 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
 
             const app = apps[appIndex];
             const appInfo = resolveDesktopAppInfo(app.id);
-            const displayName = app.name;
 
             const button = new St.Button({
                 reactive: true,
@@ -173,6 +180,8 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             rowBox.add_child(button);
 
             const cell = {
+                appId: app.id,
+                displayName: app.name,
                 appInfo,
                 icon: appIcon,
                 button,
@@ -185,12 +194,12 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
 
             button.connect('enter-event', () => {
                 cell.hovered = true;
-                button.set_style(buildTileStyle(tileHoverBg, cell.padding, cell.tileRadius));
+                refreshCellHover(cell);
                 return Clutter.EVENT_PROPAGATE;
             });
             button.connect('leave-event', () => {
                 cell.hovered = false;
-                button.set_style(buildTileStyle(tileBaseBg, cell.padding, cell.tileRadius));
+                refreshCellHover(cell);
                 return Clutter.EVENT_PROPAGATE;
             });
 
@@ -212,7 +221,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
                     && Math.abs(releaseY - cell.pressY) < DRAG_THRESHOLD_PIXELS;
 
                 if (isClickNotDrag) {
-                    launchApp(cell.appInfo, app, displayName);
+                    launchApp(cell);
                 }
                 return Clutter.EVENT_STOP;
             });
