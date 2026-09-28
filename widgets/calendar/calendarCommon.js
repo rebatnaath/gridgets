@@ -6,6 +6,9 @@ import { CALENDAR_WEEKDAY_NAMES } from '../../utils/widgetUtils.js';
 // small because the agenda's day column needs the height for events.
 export const GRID_REF_PADDING_PX = 8;
 
+/** How often each calendar widget checks whether the day rolled over. */
+export const DATE_POLL_INTERVAL_MS = 60000;
+
 export const MONTH_NAMES = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',

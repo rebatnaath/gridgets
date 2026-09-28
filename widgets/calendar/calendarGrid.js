@@ -3,13 +3,11 @@ import { resolveWidgetForegroundColor, resolveExplicitFontFamily } from '../../u
 import { createWidgetContainer, attachResponsiveScaler, connectTimerCleanup, registerWidgetCleanup, startPollingTimer } from '../../shell/widgetUIUtils.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
-import { watchCalendarSettings, watchCalendarEvents, eventDatesInMonth, watchDayRollover } from './calendarCommon.js';
+import { watchCalendarSettings, watchCalendarEvents, eventDatesInMonth, watchDayRollover, DATE_POLL_INTERVAL_MS } from './calendarCommon.js';
 import { createMonthGrid, COMPACT_TYPE_SCALE } from './monthGridPanel.js';
 import { clampWidgetScale } from '../../utils/typography.js';
 
 const REF_SIZE_PX = 170;
-
-const DATE_POLL_INTERVAL_MS = 60000;
 
 export function createCalendarGridNode(config, width, height, xPosition, yPosition) {
     const textColor = resolveWidgetForegroundColor(config);
@@ -37,7 +35,6 @@ export function createCalendarGridNode(config, width, height, xPosition, yPositi
         textColor,
         fontCss,
         typeScale: COMPACT_TYPE_SCALE,
-        onMonthChanged: () => {},
     });
 
     const eventWatcher = watchCalendarEvents({

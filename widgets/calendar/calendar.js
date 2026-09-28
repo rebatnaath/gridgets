@@ -4,9 +4,9 @@ import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveChildCornerRadius, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { createWidgetContainer, connectTimerCleanup, startPollingTimer, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
+import { MONTH_NAMES, DATE_POLL_INTERVAL_MS } from './calendarCommon.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 
-const DATE_POLL_INTERVAL_MS = 60_000;
 const BASE_SCALE_SIZE = 200;
 const TOP_BAR_RADIUS_PX = 12;
 const DAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.title;
@@ -17,16 +17,7 @@ const SECONDARY_TEXT_OPACITY = TEXT_OPACITY.subtle;
 const SECONDARY_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.semibold;
 const MONTH_MARGIN_BOTTOM_PX = 8;
 
-function getToday() {
-    const now = GLib.DateTime.new_now_local();
-    return { year: now.get_year(), month: now.get_month(), day: now.get_day_of_month() };
-}
-
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTH_NAMES = [
-    '', 'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-];
 
 export function createCalendarNode(config, width, height, xPosition, yPosition) {
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
@@ -66,7 +57,6 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     const contentPanel = new St.Widget({
         x_expand: true,
         y_expand: true,
-        style: `background-color: ${card}; border-radius: 0 0 ${resolveChildCornerRadius(TOP_BAR_RADIUS_PX, scale)}px ${resolveChildCornerRadius(TOP_BAR_RADIUS_PX, scale)}px;`,
         layout_manager: new Clutter.BinLayout(),
     });
 
@@ -98,6 +88,11 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
 
     function applyScale(newScale) {
         scale = newScale;
+        const bottomRadius = resolveChildCornerRadius(TOP_BAR_RADIUS_PX, scale);
+        // Restscaled with the rest: the panel is a sibling of the labels, not a child
+        // of anything that would carry the scale for it.
+        contentPanel.style = `background-color: ${card};`
+            + `border-radius: 0 0 ${bottomRadius}px ${bottomRadius}px;`;
         dayLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT}; opacity: ${SECONDARY_TEXT_OPACITY};`;
         dateNumber.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DATE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; font-weight: ${TYPOGRAPHY_WEIGHT.black};`;
         monthLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(MONTH_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${MONTH_FONT_WEIGHT}; `
@@ -105,14 +100,13 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
     }
 
     function render() {
-        const today = getToday();
         const now = GLib.DateTime.new_now_local();
         const dayOfWeek = now.get_day_of_week();
         const dayIndex = dayOfWeek === 7 ? 0 : dayOfWeek;
 
         dayLabel.set_text(DAY_NAMES[dayIndex]);
-        dateNumber.set_text(String(today.day));
-        monthLabel.set_text(MONTH_NAMES[today.month]);
+        dateNumber.set_text(String(now.get_day_of_month()));
+        monthLabel.set_text(MONTH_NAMES[now.get_month() - 1]);
     }
 
     const state = { timerId: null };

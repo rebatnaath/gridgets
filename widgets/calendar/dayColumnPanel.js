@@ -9,7 +9,7 @@ import {
 import { GRID_REF_PADDING_PX } from './calendarCommon.js';
 import { COMPACT_TYPE_SCALE } from './monthGridPanel.js';
 import { connectShortClick } from '../../utils/widgetInteractions.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 
 // Spacing between the boxes stacked in the column. Kept small so the weekday and the
 // date read as one heading, and so the list gets the height.
@@ -86,9 +86,10 @@ export function createDayColumn({
         eventStyle: null,
         // Real measured heights, once the widget is staged and they can be read. They
         // follow the font scale, so the scale they were taken at is kept alongside.
+        // A null heightsScale means nothing has been measured yet.
         heights: null,
-        heightsScale: 0,
-        eventRowCap: 3,
+        heightsScale: null,
+        eventRowCap: FALLBACK_VISIBLE_ROWS,
         scrollOffset: 0,
         scrollTarget: 0,
         scrollTimerId: null,

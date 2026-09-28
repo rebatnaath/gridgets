@@ -6,7 +6,7 @@ import { resolveWidgetForegroundColor, resolveExplicitFontFamily, COLUMNS_COUNT 
 import { createWidgetContainer, attachResponsiveScaler, connectTimerCleanup, registerWidgetCleanup, startPollingTimer } from '../../shell/widgetUIUtils.js';
 import { launchApplication } from '../../utils/widgetInteractions.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
-import { watchCalendarSettings, watchCalendarEvents, eventDatesInMonth, watchDayRollover, toDateKey } from './calendarCommon.js';
+import { watchCalendarSettings, watchCalendarEvents, eventDatesInMonth, watchDayRollover, toDateKey, DATE_POLL_INTERVAL_MS } from './calendarCommon.js';
 import { createMonthGrid, AGENDA_TYPE_SCALE } from './monthGridPanel.js';
 import { createDayColumn } from './dayColumnPanel.js';
 import { clampWidgetScale } from '../../utils/typography.js';
@@ -21,8 +21,6 @@ const GRID_COLUMN_BIAS = 1;
 
 // Sized to clear the widest weekday name, which shares the month title's font size.
 const MIN_DAY_PANEL_PX = 120;
-
-const DATE_POLL_INTERVAL_MS = 60000;
 
 export function createCalendarAgendaNode(config, width, height, xPosition, yPosition) {
     const textColor = resolveWidgetForegroundColor(config);

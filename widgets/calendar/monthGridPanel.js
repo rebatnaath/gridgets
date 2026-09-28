@@ -71,7 +71,7 @@ export function createMonthGrid({
     calendarState,
     textColor,
     fontCss,
-    onMonthChanged,
+    onMonthChanged = null,
     onSelectedDate = null,
     typeScale = COMPACT_TYPE_SCALE,
 }) {
@@ -368,7 +368,7 @@ export function createMonthGrid({
             const now = GLib.DateTime.new_now_local();
             state.displayDate = now;
             fillDays();
-            onMonthChanged(state.displayDate);
+            onMonthChanged?.(state.displayDate);
         },
     };
 }
