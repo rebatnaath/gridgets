@@ -124,7 +124,7 @@ function listDayFiles() {
     } catch (error) {
         // getGridgetsDataDir creates the directory, so a failure here is a real
         // read error rather than a missing folder.
-        console.debug('Gridgets: could not read screen-time data:', error.message);
+        console.error('Gridgets: could not read screen-time data:', error.message);
     }
     files.sort().reverse();
     return files;

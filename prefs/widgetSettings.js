@@ -460,7 +460,7 @@ export function buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandl
 
     const captionControls = buildCaptionControls(grid, rowIdx, widget, settings, 'My Slideshow');
     rowIdx = captionControls.rowIdx;
-    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn } = captionControls;
+    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, useDateCaptionSwitch } = captionControls;
 
     saveHandlers.push((target) => {
         target.intervalSeconds = Math.round(intervalSpin.get_value());
@@ -468,6 +468,7 @@ export function buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandl
         target.showCaption = showCaptionSwitch.get_active();
         target.captionFollowGlobal = followGlobalSwitch.get_active();
         target.fgColor = fgColorBtn.get_rgba().to_string();
+        target.useDateCaption = useDateCaptionSwitch.get_active();
     });
 
     return rowIdx;
@@ -511,7 +512,7 @@ export function buildImageSettings(grid, rowIdx, widget, settings, saveHandlers,
 
     const captionControls = buildCaptionControls(grid, rowIdx, widget, settings, 'My Image');
     rowIdx = captionControls.rowIdx;
-    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn } = captionControls;
+    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, useDateCaptionSwitch } = captionControls;
 
     saveHandlers.push((target) => {
         target.imagePath = imagePathEntry.get_text().trim();
@@ -519,6 +520,7 @@ export function buildImageSettings(grid, rowIdx, widget, settings, saveHandlers,
         target.showCaption = showCaptionSwitch.get_active();
         target.captionFollowGlobal = followGlobalSwitch.get_active();
         target.fgColor = fgColorBtn.get_rgba().to_string();
+        target.useDateCaption = useDateCaptionSwitch.get_active();
     });
 
     return rowIdx;

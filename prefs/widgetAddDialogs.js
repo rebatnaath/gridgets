@@ -93,14 +93,14 @@ export function openAddImageDialog(parentWindow, settings) {
     grid.attach(imagePathLabel, 0, 0, 1, 1);
     grid.attach(imagePathBox, 1, 0, 1, 1);
 
-    const { captionEntry, showCaptionSwitch } = buildCaptionRows(grid, 1, 'My Image');
+    const { captionEntry, showCaptionSwitch, useDateCaptionSwitch } = buildCaptionRows(grid, 1, 'My Image');
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
             const imagePath = imagePathEntry.get_text().trim();
             if (imagePath) {
                 const { width, height } = parseStoreGridSize(STORE_WIDGETS.imageGif.gridSize);
-                addImageWidget(settings, imagePath, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), width, height);
+                addImageWidget(settings, imagePath, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), width, height, useDateCaptionSwitch.get_active());
             }
         }
         dialogWindow.destroy();
@@ -179,14 +179,14 @@ export function openAddSlideshowDialog(parentWindow, settings) {
     grid.attach(intervalLabel, 0, 1, 1, 1);
     grid.attach(intervalSpin, 1, 1, 1, 1);
 
-    const { captionEntry, showCaptionSwitch } = buildCaptionRows(grid, 2, 'My Slideshow');
+    const { captionEntry, showCaptionSwitch, useDateCaptionSwitch } = buildCaptionRows(grid, 2, 'My Slideshow');
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
             const folderPath = folderEntry.get_text().trim();
             if (folderPath) {
                 const { width, height } = parseStoreGridSize(STORE_WIDGETS.imageSlideshow.gridSize);
-                addSlideshowWidget(settings, folderPath, intervalSpin.get_value_as_int(), width, height, captionEntry.get_text().trim(), showCaptionSwitch.get_active());
+                addSlideshowWidget(settings, folderPath, intervalSpin.get_value_as_int(), width, height, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), useDateCaptionSwitch.get_active());
             }
         }
         dialogWindow.destroy();

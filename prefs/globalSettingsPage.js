@@ -69,6 +69,12 @@ function buildImageGroup(settings) {
         settings,
         'slideshow-show-caption'
     ).row);
+    group.add(createSwitchRow(
+        'Caption Scrim',
+        'Fade a dark gradient behind image and slideshow captions so they stay readable over a light picture.',
+        settings,
+        'image-caption-scrim'
+    ).row);
     return group;
 }
 

@@ -160,6 +160,7 @@ export const DesktopGrid = GObject.registerClass(
             connectSetting('image-animate-gif', () => this._rebuildGrid());
             connectSetting('image-show-caption', () => this._rebuildGrid());
             connectSetting('slideshow-show-caption', () => this._rebuildGrid());
+            connectSetting('image-caption-scrim', () => this._rebuildGrid());
             connectSetting('weather-use-fahrenheit', () => this._rebuildGrid());
             connectSetting('time-format-24h', () => this._rebuildGrid());
             connectSetting('weather-dynamic-color', () => this._rebuildGrid());
@@ -253,6 +254,7 @@ export const DesktopGrid = GObject.registerClass(
                 globalAnimateGif: globalSettings.globalAnimateGif,
                 globalImageShowCaption: globalSettings.globalImageShowCaption,
                 globalSlideshowShowCaption: globalSettings.globalSlideshowShowCaption,
+                globalCaptionScrim: globalSettings.globalCaptionScrim,
                 globalUseFahrenheit: globalSettings.globalUseFahrenheit,
                 globalWeatherDynamicColor: globalSettings.globalWeatherDynamicColor,
                 globalWeatherDynamicImage: globalSettings.globalWeatherDynamicImage,

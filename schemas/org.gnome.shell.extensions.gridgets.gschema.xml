@@ -91,6 +91,11 @@
       <summary>Show Slideshow Caption</summary>
       <description>If true, show captions on slideshow widgets.</description>
     </key>
+    <key name="image-caption-scrim" type="b">
+      <default>false</default>
+      <summary>Caption Scrim</summary>
+      <description>If true, fade a dark gradient behind image and slideshow captions so they stay readable over a light picture.</description>
+    </key>
     <key name="global-monitor" type="s">
       <default>'primary'</default>
       <summary>Global Target Monitor</summary>

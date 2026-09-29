@@ -4,6 +4,7 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
 import { watchActorLifecycle, isActorDestroyed } from '../utils/actorLifecycle.js';
+import { createScrim } from '../components/scrim/scrim.js';
 
 /** Abbreviated month names shared by calendar and contribution-grid widgets. */
 export const MONTH_NAMES_ABBREVIATED = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -11,6 +12,7 @@ import {
     buildBaseWidgetStyle,
     resolveWidgetBackgroundColor,
     resolveWidgetForegroundColor,
+    resolveWidgetCornerRadius,
     resolveExplicitFontFamily,
     parseCssColor,
     CAIRO_OPERATOR_CLEAR,
@@ -18,15 +20,20 @@ import {
     CAIRO_LINE_CAP_ROUND,
 } from '../utils/widgetUtils.js';
 import {
-    TYPOGRAPHY_SIZE,
     TYPOGRAPHY_WEIGHT,
     TEXT_OPACITY,
-    MIN_FONT_SIZE,
     clampWidgetScale,
     scaleFontSize,
 } from '../utils/typography.js';
 
-const CAPTION_PADDING_PIXELS = 12;
+const CAPTION_PADDING_PIXELS = 14;
+const CAPTION_BOTTOM_PADDING_PIXELS = 12;
+const CAPTION_SIDE_PADDING_PIXELS = 10;
+// scaleFontSize clamps to 1px by default, which collapsed this inset on small widgets.
+const MIN_CAPTION_SIDE_PADDING_PX = 8;
+// The caption's size at a 320px-wide widget, scaled from there by its width.
+const CAPTION_FONT_SIZE_PX = 14;
+const MIN_CAPTION_FONT_SIZE_PX = 7;
 const ARC_MARGIN_PIXELS = 4;
 const MIN_CIRCULAR_ARC_LINE_WIDTH = 4;
 const DEFAULT_LINE_WIDTH_RATIO = 0.1;
@@ -180,32 +187,57 @@ export function createCaptionOverlay(config, caption) {
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const textColor = resolveWidgetForegroundColor(config);
 
-    const contentBox = watchActorLifecycle(new St.BoxLayout({
-        orientation: Clutter.Orientation.VERTICAL,
+    // Not a layout, which would give the scrim its own row, and not an St.Bin, which
+    // holds one child and would drop the scrim when the label is added.
+    const contentBox = watchActorLifecycle(new St.Widget({
+        x_expand: true,
+        y_expand: true,
+        x_align: Clutter.ActorAlign.FILL,
+        y_align: Clutter.ActorAlign.FILL,
+        // Children are never allocated without one.
+        layout_manager: new Clutter.BinLayout(),
+    }));
+
+    const captionFontSize = scale =>
+        scaleFontSize(CAPTION_FONT_SIZE_PX, scale, MIN_CAPTION_FONT_SIZE_PX);
+
+    // Added before the label so the text paints on top of it.
+    const scrim = createScrim({
+        enabled: config.globalCaptionScrim === true,
+        borderRadius: resolveWidgetCornerRadius(config),
+    });
+    if (scrim)
+        contentBox.add_child(scrim);
+
+    const titleLabel = new St.Label({
+        text: caption,
+        // y_expand is required: ClutterBinLayout centres a child that does not expand and
+        // ignores its y_align.
         x_expand: true,
         y_expand: true,
         x_align: Clutter.ActorAlign.FILL,
         y_align: Clutter.ActorAlign.END,
-    }));
-
-    const titleLabel = new St.Label({
-        text: caption,
-        x_align: Clutter.ActorAlign.CENTER,
     });
     titleLabel.clutter_text.line_wrap = true;
     titleLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+    contentBox.add_child(titleLabel);
 
     const updateScale = scale => {
-        const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.metadata, scale, MIN_FONT_SIZE.metadata);
-        const padding = scaleFontSize(CAPTION_PADDING_PIXELS, scale);
-        contentBox.style = `padding: ${padding}px;`;
+        const fontSize = captionFontSize(scale);
+        // On the label, not contentBox, whose layout would inset the scrim as well. The
+        // sides scale with a floor; the top and bottom stay fixed.
+        const sidePadding = scaleFontSize(CAPTION_SIDE_PADDING_PIXELS, scale, MIN_CAPTION_SIDE_PADDING_PX);
         titleLabel.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`
-            + `font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; text-align: center;`;
+            + `padding: ${CAPTION_PADDING_PIXELS}px ${sidePadding}px ${CAPTION_BOTTOM_PADDING_PIXELS}px ${sidePadding}px;`
+            + `font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; text-align: left;`;
     };
 
     updateScale(1);
     contentBox.updateCaptionScale = updateScale;
-    contentBox.add_child(titleLabel);
+    // Set by a slideshow on each slide, rather than by rebuilding the overlay.
+    contentBox.setCaptionText = text => {
+        titleLabel.text = text;
+    };
     return contentBox;
 }
 
@@ -350,6 +382,11 @@ export function traceRoundedRect(ctx, x, y, width, height, radius) {
 
 export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCallback) {
     const update = () => {
+        // A resize drag calls set_size on every motion event, and restyling here
+        // repaints dozens of times a second, which reads as judder under the pointer.
+        // Held still until the drag ends; the final size arrives as another notify.
+        if (widgetNode.isResizing)
+            return;
         // During teardown or before the first allocation Clutter can report a
         // non-finite size. Feeding that to a layout callback produces NaN
         // geometry and an INT32_MIN allocation, so bail out instead.

@@ -19,7 +19,17 @@ export function buildCaptionRows(grid, startRow, placeholderText) {
     grid.attach(showCaptionSwitch, 1, rowIdx, 1, 1);
     rowIdx++;
 
-    return { captionEntry, showCaptionSwitch, rowIdx };
+    // The entry is greyed out rather than cleared, so switching back restores the text.
+    const useDateCaptionLabel = new Gtk.Label({ label: 'Use Image Date:', xalign: 0, hexpand: true });
+    const useDateCaptionSwitch = new Gtk.Switch({ active: false, halign: Gtk.Align.START, valign: Gtk.Align.CENTER });
+    const updateCaptionEntrySensitivity = () => captionEntry.set_sensitive(!useDateCaptionSwitch.get_active());
+    useDateCaptionSwitch.connect('notify::active', updateCaptionEntrySensitivity);
+    updateCaptionEntrySensitivity();
+    grid.attach(useDateCaptionLabel, 0, rowIdx, 1, 1);
+    grid.attach(useDateCaptionSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
+
+    return { captionEntry, showCaptionSwitch, useDateCaptionSwitch, rowIdx };
 }
 
 export function buildCaptionControls(grid, rowIdx, widget, settings, defaultCaption) {
@@ -66,5 +76,18 @@ export function buildCaptionControls(grid, rowIdx, widget, settings, defaultCapt
     grid.attach(fgColorBtn, 1, rowIdx, 1, 1);
     rowIdx++;
 
-    return { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, rowIdx };
+    const useDateCaptionLabel = new Gtk.Label({ label: 'Use Image Date:', xalign: 0, hexpand: true });
+    const useDateCaptionSwitch = new Gtk.Switch({
+        halign: Gtk.Align.END,
+        valign: Gtk.Align.CENTER,
+    });
+    useDateCaptionSwitch.set_active(widget.useDateCaption === true);
+    const updateCaptionEntrySensitivity = () => captionEntry.set_sensitive(!useDateCaptionSwitch.get_active());
+    useDateCaptionSwitch.connect('notify::active', updateCaptionEntrySensitivity);
+    updateCaptionEntrySensitivity();
+    grid.attach(useDateCaptionLabel, 0, rowIdx, 1, 1);
+    grid.attach(useDateCaptionSwitch, 1, rowIdx, 1, 1);
+    rowIdx++;
+
+    return { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, useDateCaptionSwitch, rowIdx };
 }

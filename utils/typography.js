@@ -60,11 +60,24 @@ export const MIN_FONT_SIZE = Object.freeze({
 export const MIN_WIDGET_SCALE = 0.5;
 export const MAX_WIDGET_SCALE = 1.5;
 
-/** Clamps a raw widget scale into the supported range. */
+/**
+ * Clamps a raw widget scale into the supported range, falling back to 1 for a scale
+ * that is not a finite number.
+ *
+ * A bare Math.min(Math.max(scale, min), max) returns NaN for NaN and Infinity for
+ * Infinity, and callers feed the result straight into CSS lengths, where St silently
+ * drops a "NaNpx" and Clutter then warns about a NaN allocation. Any widget measuring
+ * a zero reference size produces exactly that.
+ */
 export function clampWidgetScale(scale) {
+    if (!Number.isFinite(scale))
+        return 1;
     return Math.min(Math.max(scale, MIN_WIDGET_SCALE), MAX_WIDGET_SCALE);
 }
 
 export function scaleFontSize(baseSize, scale, minimum = 1) {
+    // Last line of defence: a non-finite product here would reach St as a length.
+    if (!Number.isFinite(baseSize * scale))
+        return minimum;
     return Math.max(minimum, Math.round(baseSize * scale));
 }
