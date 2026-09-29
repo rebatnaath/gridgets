@@ -3,12 +3,15 @@ import Clutter from 'gi://Clutter';
 import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetSurfaces, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { attachButtonFeedback } from '../../shell/widgetUIUtils.js';
 import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
-import { SKIP_BACK_ICON, SKIP_FORWARD_ICON, FALLBACK_ICON } from './icons.js';
 import { skipToNext, skipToPrevious, togglePlayPause } from './mpris.js';
 import { notifyPlayPauseAllInstances } from './playbackState.js';
 import { MIN_FONT_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, scaleFontSize } from '../../utils/typography.js';
 
 const BORDER_RADIUS_PILL = 99;
+
+const SKIP_BACK_ICON = 'media-skip-backward-symbolic';
+const SKIP_FORWARD_ICON = 'media-skip-forward-symbolic';
+const FALLBACK_ICON = 'audio-x-generic-symbolic';
 
 const BASE_SEEK_ICON_SIZE = 18;
 const BASE_PLAY_ICON_SIZE = 24;
@@ -29,9 +32,6 @@ function buildTimerLabelStyle(fontCss, textColor, scale) {
 }
 
 export function createBackgroundLayer(config) {
-// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
-    // means the shared default, and || 0 squared this panel off against a rounded
-    // container. The radius has to match the container's to line the corners up.
     const borderRadius = resolveWidgetCornerRadius(config);
     const { card } = resolveWidgetSurfaces(config);
     return new St.Widget({
@@ -87,43 +87,35 @@ function connectControlButton(button, action) {
     });
 }
 
+// Shared by the build and the rescale, which had drifted apart when each computed its
+// own margin.
+const scaledButtonMargin = (scale, isLargeLayout) => scaleFontSize(
+    isLargeLayout ? BASE_BUTTON_MARGIN_LARGE : BASE_BUTTON_MARGIN_SMALL, scale);
+
 export function updateControlButtonScaling(state, scale, fontFamily, textColor, trackColor) {
-    const seekSize = Math.max(1, Math.round(BASE_SEEK_ICON_SIZE * scale));
-    const playSize = Math.max(1, Math.round(BASE_PLAY_ICON_SIZE * scale));
-    const baseMargin = state.config.isLargeLayout === true
-        ? BASE_BUTTON_MARGIN_LARGE
-        : BASE_BUTTON_MARGIN_SMALL;
-    const buttonMargin = Math.max(1, Math.round(baseMargin * scale));
+    const seekSize = scaleFontSize(BASE_SEEK_ICON_SIZE, scale);
+    const playSize = scaleFontSize(BASE_PLAY_ICON_SIZE, scale);
+    const buttonMargin = scaledButtonMargin(scale, state.config.isLargeLayout === true);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
 
     const timerStyle = buildTimerLabelStyle(fontCss, textColor, scale);
     const buttonStyle = (margin) => `margin: 0px ${margin}px; border-radius: ${BORDER_RADIUS_PILL}px;`;
     const iconStyle = `color: ${textColor};`;
-    if (state.seekBackBtn) {
-        state.seekBackBtn.style = buttonStyle(buttonMargin);
-        if (state.seekBackBtn.iconRef) {
-            state.seekBackBtn.iconRef.set_icon_size(seekSize);
-            state.seekBackBtn.iconRef.style = iconStyle;
+    const applyButton = (button, iconSize) => {
+        if (!button) return;
+        button.style = buttonStyle(buttonMargin);
+        if (button.iconRef) {
+            button.iconRef.set_icon_size(iconSize);
+            button.iconRef.style = iconStyle;
         }
-    }
-    if (state.playPauseBtn) {
-        state.playPauseBtn.style = buttonStyle(buttonMargin);
-        if (state.playPauseBtn.iconRef) {
-            state.playPauseBtn.iconRef.set_icon_size(playSize);
-            state.playPauseBtn.iconRef.style = iconStyle;
-        }
-    }
-    if (state.seekForwardBtn) {
-        state.seekForwardBtn.style = buttonStyle(buttonMargin);
-        if (state.seekForwardBtn.iconRef) {
-            state.seekForwardBtn.iconRef.set_icon_size(seekSize);
-            state.seekForwardBtn.iconRef.style = iconStyle;
-        }
-    }
+    };
+    applyButton(state.seekBackBtn, seekSize);
+    applyButton(state.playPauseBtn, playSize);
+    applyButton(state.seekForwardBtn, seekSize);
     if (state.timerLabelLeft) state.timerLabelLeft.style = timerStyle;
     if (state.timerLabelRight) state.timerLabelRight.style = timerStyle;
 
-    const barH = Math.max(1, Math.round(BASE_PROGRESS_BAR_HEIGHT * scale));
+    const barH = scaleFontSize(BASE_PROGRESS_BAR_HEIGHT, scale);
     if (state.progressBg) {
         state.progressBg.style = `background-color: ${trackColor}; border-radius: ${Math.floor(barH / 2)}px;`;
         state.progressBg.set_height(barH);
@@ -133,10 +125,10 @@ export function updateControlButtonScaling(state, scale, fontFamily, textColor, 
         state.progressFill.set_height(barH);
     }
     if (state.progressSpacer) {
-        state.progressSpacer.set_height(Math.max(1, Math.round(BASE_PROGRESS_SPACER_HEIGHT * scale)));
+        state.progressSpacer.set_height(scaleFontSize(BASE_PROGRESS_SPACER_HEIGHT, scale));
     }
     if (state.timerRow) {
-        state.timerRow.style = `margin-top: ${Math.max(1, Math.round(BASE_TIMER_MARGIN_TOP * scale))}px;`;
+        state.timerRow.style = `margin-top: ${scaleFontSize(BASE_TIMER_MARGIN_TOP, scale)}px;`;
     }
 }
 
@@ -170,13 +162,9 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
         y_align: Clutter.ActorAlign.CENTER,
     });
 
-    const seekIconSize = Math.max(1, Math.round(BASE_SEEK_ICON_SIZE * scale));
-    const playIconSize = Math.max(1, Math.round(BASE_PLAY_ICON_SIZE * scale));
-    // The spread layout needs small edge margins; the large centred cluster keeps
-    // the wide gaps between buttons.
-    const buttonMargin = isLargeLayout
-        ? Math.floor(BASE_BUTTON_MARGIN_LARGE * scale)
-        : Math.max(1, Math.round(BASE_BUTTON_MARGIN_SMALL * scale));
+    const seekIconSize = scaleFontSize(BASE_SEEK_ICON_SIZE, scale);
+    const playIconSize = scaleFontSize(BASE_PLAY_ICON_SIZE, scale);
+    const buttonMargin = scaledButtonMargin(scale, isLargeLayout);
 
     const seekBackBtn = createIconButton(
         SKIP_BACK_ICON,
@@ -208,7 +196,7 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
         buttonRow.add_child(seekForwardBtn);
     }
 
-    const progressBarHeight = Math.max(1, Math.round(BASE_PROGRESS_BAR_HEIGHT * scale));
+    const progressBarHeight = scaleFontSize(BASE_PROGRESS_BAR_HEIGHT, scale);
     const progressBg = new St.Widget({
         style: `background-color: ${highlight}; border-radius: ${Math.floor(progressBarHeight / 2)}px;`,
         x_expand: true,

@@ -15,9 +15,6 @@ export function buildSmallLayout(config, state) {
     state.backgroundLayer = backgroundLayer;
     state.container.add_child(backgroundLayer);
 
-// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
-    // means the shared default, and || 0 squared this panel off against a rounded
-    // container. The radius has to match the container's to line the corners up.
     const cornerRadius = resolveWidgetCornerRadius(config);
     const gradientOverlay = createScrim({ enabled: true, borderRadius: cornerRadius });
     state.container.add_child(gradientOverlay);

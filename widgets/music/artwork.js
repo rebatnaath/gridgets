@@ -23,7 +23,6 @@ const activeArtworkDownloads = new Map();
 const failedArtworkDownloadAttempts = new Map();
 
 const MUSIC_ART_CACHE_DIR = `${GLib.get_user_cache_dir()}/gridgets/music-art`;
-const FILE_ENUM_BATCH_SIZE = 20;
 
 export async function extractDominantColor(filePath, state) {
     if (dominantColorCache.has(filePath)) return dominantColorCache.get(filePath);
@@ -32,7 +31,8 @@ export async function extractDominantColor(filePath, state) {
     try {
         const pixbuf = await loadScaledPixbuf(filePath, state.artworkCancellable);
         color = computeDominantColorFromPixbuf(pixbuf);
-    } catch (_error) {
+    } catch (error) {
+        console.error(`Gridgets: cannot read artwork for its dominant colour: ${filePath}`, error.message);
         return null;
     }
     if (color) {
@@ -128,13 +128,43 @@ function rememberArtworkFile(artUrl, filePath) {
     artworkFileCache.set(artUrl, filePath);
 }
 
-function getArtworkCachePath(artUrl) {
-    const urlHash = GLib.compute_checksum_for_string(GLib.ChecksumType.SHA1, artUrl, -1);
+/** A file's modified time as a string, or '' when it cannot be read. */
+function fileModifiedStamp(path) {
+    try {
+        const info = Gio.File.new_for_path(path)
+            .query_info(Gio.FILE_ATTRIBUTE_TIME_MODIFIED, Gio.FileQueryInfoFlags.NONE, null);
+        return info ? info.get_attribute_uint64(Gio.FILE_ATTRIBUTE_TIME_MODIFIED).toString() : '';
+    } catch (_error) {
+        return '';
+    }
+}
+
+/** True only for a file that exists and has bytes in it; a zero-length copy is no artwork. */
+function hasArtworkBytes(path) {
+    try {
+        const info = Gio.File.new_for_path(path)
+            .query_info(Gio.FILE_ATTRIBUTE_STANDARD_SIZE, Gio.FileQueryInfoFlags.NONE, null);
+        return info !== null && info.get_size() > 0;
+    } catch (_error) {
+        return false;
+    }
+}
+
+function getArtworkCachePath(artUrl, sourcePath = null) {
+    // A player can reuse one path for every track, so the URL alone would keep resolving
+    // to the first track's copy. The source's modified time changes, so it goes in the key.
+    const key = sourcePath === null
+        ? artUrl
+        : `${artUrl}|${fileModifiedStamp(sourcePath)}`;
+    const urlHash = GLib.compute_checksum_for_string(GLib.ChecksumType.SHA1, key, -1);
     return GLib.build_filenamev([MUSIC_ART_CACHE_DIR, urlHash]);
 }
 
+// Generous because a player fetches the cover before writing the file. Timing out costs
+// nothing: the current artwork stays and the next poll tries again.
+const FILE_ENUM_BATCH_SIZE = 20;
 const ARTWORK_RETRY_INTERVAL_MS = 500;
-const ARTWORK_RETRY_MAX_ATTEMPTS = 6;
+const ARTWORK_RETRY_MAX_ATTEMPTS = 20;
 
 function fileExists(file) {
     return new Promise(resolve => {
@@ -155,9 +185,65 @@ function fileExists(file) {
     });
 }
 
-function findLatestModifiedPng(parentDir) {
+/**
+ * Copies a player's art file into the cache and calls back once it is there.
+ *
+ * St loads a background lazily, so a stylesheet pointing at a file the player still owns
+ * can lose the picture between the check and the paint.
+ */
+function copyArtworkIntoCache(sourcePath, artUrl, state, callback) {
+    const destinationPath = getArtworkCachePath(artUrl, sourcePath);
+    const destination = Gio.File.new_for_path(destinationPath);
+    if (destination.query_exists(null)) {
+        rememberArtworkFile(artUrl, destinationPath);
+        callback(destinationPath);
+        return;
+    }
+
+    const pending = artworkDownloadQueue.get(artUrl);
+    if (pending) {
+        pending.push({ state, callback });
+        return;
+    }
+    artworkDownloadQueue.set(artUrl, [{ state, callback }]);
+
+    ensureDirectoryTree(Gio.File.new_for_path(MUSIC_ART_CACHE_DIR)).then(ready => {
+        if (!ready) {
+            console.error(`Gridgets: cannot create the artwork cache directory: ${MUSIC_ART_CACHE_DIR}`);
+            flushArtworkQueue(artUrl, null);
+            return;
+        }
+        Gio.File.new_for_path(sourcePath).copy_async(
+            destination,
+            Gio.FileCopyFlags.OVERWRITE,
+            GLib.PRIORITY_DEFAULT,
+            state.artworkCancellable,
+            null,
+            (source, result) => {
+                try {
+                    source.copy_finish(result);
+                    rememberArtworkFile(artUrl, destinationPath);
+                    flushArtworkQueue(artUrl, destinationPath);
+                } catch (error) {
+                    if (state.artworkCancellable.is_cancelled())
+                        return;
+                    console.error(`Gridgets: cannot cache artwork from ${sourcePath}:`, error.message);
+                    flushArtworkQueue(artUrl, null);
+                }
+            }
+        );
+    });
+}
+
+/**
+ * The most recently modified picture in a directory, or null when there is none.
+ *
+ * A player that deletes the path it advertised without sending a new one leaves its
+ * folder as the only place the current artwork is still named.
+ */
+function newestArtworkIn(directory) {
     return new Promise(resolve => {
-        parentDir.enumerate_children_async(
+        directory.enumerate_children_async(
             'standard::name,time::modified',
             Gio.FileQueryInfoFlags.NONE,
             GLib.PRIORITY_DEFAULT,
@@ -171,37 +257,37 @@ function findLatestModifiedPng(parentDir) {
                     return;
                 }
 
-                const selectLatest = (latestPng, latestTime) => {
+                let newest = null;
+                let newestTime = -1;
+                const readBatch = () => {
                     enumerator.next_files_async(FILE_ENUM_BATCH_SIZE, GLib.PRIORITY_DEFAULT, null, (enumSource, nextResult) => {
                         let infos = null;
                         try {
                             infos = enumSource.next_files_finish(nextResult);
                         } catch (_error) {
                             enumerator.close(null);
-                            resolve(latestPng);
+                            resolve(newest);
                             return;
                         }
                         if (infos.length === 0) {
                             enumerator.close(null);
-                            resolve(latestPng);
+                            resolve(newest);
                             return;
                         }
-                        let bestPng = latestPng;
-                        let bestTime = latestTime;
                         for (const info of infos) {
                             const name = info.get_name();
-                            if (!name.endsWith('.png')) continue;
+                            if (!/\.(png|jpe?g|webp)$/i.test(name))
+                                continue;
                             const mtime = info.get_attribute_uint64('time::modified');
-                            if (mtime > bestTime) {
-                                bestTime = mtime;
-                                bestPng = parentDir.get_child(name).get_path();
+                            if (mtime > newestTime) {
+                                newestTime = mtime;
+                                newest = directory.get_child(name).get_path();
                             }
                         }
-                        selectLatest(bestPng, bestTime);
+                        readBatch();
                     });
                 };
-
-                selectLatest(null, 0);
+                readBatch();
             }
         );
     });
@@ -267,17 +353,56 @@ function waitForArtworkRetry(state) {
     });
 }
 
+/** A path the player already has, copied into our cache so it cannot be taken away. */
+async function usePlayerFile(artUrl, source, state, callback) {
+    const cachePath = getArtworkCachePath(artUrl, source);
+    if (hasArtworkBytes(cachePath)) {
+        rememberArtworkFile(artUrl, cachePath);
+        callback(cachePath);
+        return;
+    }
+    copyArtworkIntoCache(source, artUrl, state, callback);
+}
+
 /**
- * Remote URLs are downloaded into the user cache first, because an St CSS background
- * cannot load one. A missing local file is retried on timers held in
- * state.artworkRetryWaits so they can be cleared on widget destruction.
+ * A file:// path, which a player owns and may replace or delete under us.
  */
-export async function ensureLocalArtwork(artUrl, state, callback) {
-    if (!artUrl) {
-        callback(null);
+async function resolvePlayerFile(artUrl, state, callback) {
+    const localFile = artUrl.startsWith('file://') ? Gio.File.new_for_uri(artUrl) : Gio.File.new_for_path(artUrl);
+    const localPath = artUrl.startsWith('file://') ? localFile.get_path() : artUrl;
+
+    if (await fileExists(localFile)) {
+        await usePlayerFile(artUrl, localPath, state, callback);
         return;
     }
 
+    // The advertised path can already be gone: Firefox deletes it on a track change
+    // and never sends a new one, so the folder is where the artwork now lives.
+    const directory = localFile.get_parent();
+    for (let attempt = 0; attempt < ARTWORK_RETRY_MAX_ATTEMPTS; attempt++) {
+        const newest = directory && await fileExists(directory)
+            ? await newestArtworkIn(directory)
+            : null;
+        if (newest) {
+            if (newest !== localPath && state.lastLoggedReplacement !== newest) {
+                state.lastLoggedReplacement = newest;
+                console.error(`Gridgets: ${localPath} is gone, using the player's current artwork: ${newest}`);
+            }
+            await usePlayerFile(artUrl, newest, state, callback);
+            return;
+        }
+        const waitSettled = await waitForArtworkRetry(state);
+        if (!waitSettled || isActorDestroyed(state.container))
+            return;
+    }
+    console.error(`Gridgets: no artwork found for ${localPath}, keeping the current one`);
+}
+
+/**
+ * A remote URL, downloaded into the user cache first because an St CSS background cannot
+ * load one. Concurrent requests for the same URL share a single transfer.
+ */
+async function resolveRemoteArtwork(artUrl, state, callback) {
     if (artworkFileCache.has(artUrl)) {
         const cachedPath = artworkFileCache.get(artUrl);
         if (await fileExists(Gio.File.new_for_path(cachedPath))) {
@@ -285,41 +410,6 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
             return;
         }
         artworkFileCache.delete(artUrl);
-    }
-
-    if (!artUrl.startsWith('http://') && !artUrl.startsWith('https://')) {
-        const localFile = artUrl.startsWith('file://') ? Gio.File.new_for_uri(artUrl) : Gio.File.new_for_path(artUrl);
-        if (await fileExists(localFile)) {
-            const localPath = artUrl.startsWith('file://') ? localFile.get_path() : artUrl;
-            rememberArtworkFile(artUrl, localPath);
-            callback(localPath);
-            return;
-        }
-
-        const parentDir = localFile.get_parent();
-        if (parentDir && await fileExists(parentDir)) {
-            const latestPng = await findLatestModifiedPng(parentDir);
-            if (latestPng) {
-                rememberArtworkFile(artUrl, latestPng);
-                callback(latestPng);
-                return;
-            }
-        }
-
-        let attempts = 0;
-        while (attempts < ARTWORK_RETRY_MAX_ATTEMPTS) {
-            const waitSettled = await waitForArtworkRetry(state);
-            if (!waitSettled || isActorDestroyed(state.container)) return;
-            attempts++;
-            if (await fileExists(localFile)) {
-                const localPath = artUrl.startsWith('file://') ? localFile.get_path() : artUrl;
-                rememberArtworkFile(artUrl, localPath);
-                callback(localPath);
-                return;
-            }
-        }
-        callback(null);
-        return;
     }
 
     const filePath = getArtworkCachePath(artUrl);
@@ -331,6 +421,7 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
     }
 
     if ((failedArtworkDownloadAttempts.get(artUrl) || 0) >= ARTWORK_RETRY_MAX_ATTEMPTS) {
+        console.error(`Gridgets: giving up on artwork after ${ARTWORK_RETRY_MAX_ATTEMPTS} failed downloads: ${artUrl}`);
         callback(null);
         return;
     }
@@ -343,6 +434,7 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
     artworkDownloadQueue.set(artUrl, [{ state, callback }]);
 
     if (!(await ensureDirectoryTree(Gio.File.new_for_path(MUSIC_ART_CACHE_DIR)))) {
+        console.error(`Gridgets: cannot create the artwork cache directory: ${MUSIC_ART_CACHE_DIR}`);
         failedArtworkDownloadAttempts.set(artUrl, (failedArtworkDownloadAttempts.get(artUrl) || 0) + 1);
         flushArtworkQueue(artUrl, null);
         return;
@@ -365,13 +457,35 @@ export async function ensureLocalArtwork(artUrl, state, callback) {
                 rememberArtworkFile(artUrl, filePath);
                 flushArtworkQueue(artUrl, filePath);
             } catch (e) {
-                if (!downloadCancellable.is_cancelled()) {
-                    failedArtworkDownloadAttempts.set(artUrl, (failedArtworkDownloadAttempts.get(artUrl) || 0) + 1);
+                if (downloadCancellable.is_cancelled()) {
+                    console.error(`Gridgets: artwork download cancelled for ${artUrl}`);
+                } else {
+                    const attempt = (failedArtworkDownloadAttempts.get(artUrl) || 0) + 1;
+                    failedArtworkDownloadAttempts.set(artUrl, attempt);
+                    console.error(`Gridgets: artwork download failed (${attempt}/${ARTWORK_RETRY_MAX_ATTEMPTS}) for ${artUrl}:`, e.message);
                 }
                 flushArtworkQueue(artUrl, null);
             }
         }
     );
+}
+
+/**
+ * Resolves an art URL to a path on disk, or calls back null when there is none.
+ *
+ * A file the player owns is looked for where the player keeps it; a remote one is
+ * downloaded into the cache. A missing file is retried on timers held in
+ * state.artworkRetryWaits, so they can all be cleared on widget destruction.
+ */
+export async function ensureLocalArtwork(artUrl, state, callback) {
+    if (!artUrl) {
+        callback(null);
+        return;
+    }
+    if (artUrl.startsWith('http://') || artUrl.startsWith('https://'))
+        await resolveRemoteArtwork(artUrl, state, callback);
+    else
+        await resolvePlayerFile(artUrl, state, callback);
 }
 
 /** Clears module-level runtime caches and cancels in-flight downloads; called from the extension's disable(). */

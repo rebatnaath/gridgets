@@ -186,7 +186,8 @@ async function callPlayerMethod(playerName, method) {
     } catch (error) {
         // A player that does not implement a control (Firefox has no Next)
         // answers "not available now"; that is a normal reply, not a fault.
-        console.debug(`Gridgets: ${method} unavailable on ${playerName}:`, error.message);
+        // console.error, not console.debug, which GLib drops by default.
+        console.error(`Gridgets: ${method} unavailable on ${playerName}:`, error.message);
     }
 }
 

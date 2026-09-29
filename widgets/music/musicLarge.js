@@ -12,15 +12,16 @@ const BASE_CONTAINER_HEIGHT = 240;
 
 const BASE_PADDING = 24;
 const BASE_TITLE_FONT_SIZE = TYPOGRAPHY_SIZE.title;
-const BASE_ARTIST_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
-const BASE_ALBUM_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
+const BASE_SECONDARY_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
 
 const LABEL_MARGIN_BOTTOM_PX = 4;
+const CONTROLS_MARGIN_HORIZONTAL_PX = 12;
+const CONTROLS_MARGIN_TOP_PX = 18;
+const CONTROLS_MARGIN_BOTTOM_PX = 4;
+
+const scaledLabelMargin = scale => scaleFontSize(LABEL_MARGIN_BOTTOM_PX, scale);
 
 export function buildLargeLayout(config, state, width) {
-// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
-    // means the shared default, and || 0 squared this panel off against a rounded
-    // container. The radius has to match the container's to line the corners up.
     const cornerRadius = resolveWidgetCornerRadius(config);
     const scale = config.layoutScale || 1;
     const fontFamily = resolveExplicitFontFamily(config);
@@ -63,19 +64,19 @@ export function buildLargeLayout(config, state, width) {
         text: 'Not Playing',
         x_align: Clutter.ActorAlign.CENTER,
         style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_TITLE_FONT_SIZE, scale, MIN_FONT_SIZE.title)}px; `
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; margin-bottom: ${Math.floor(LABEL_MARGIN_BOTTOM_PX * scale)}px;`,
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; margin-bottom: ${scaledLabelMargin(scale)}px;`,
     });
     const artistLabel = new St.Label({
         text: 'Unknown Artist',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${scaleFontSize(BASE_ARTIST_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle)}px; `
-            + `margin-bottom: ${Math.floor(LABEL_MARGIN_BOTTOM_PX * scale)}px;`,
+        style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${scaleFontSize(BASE_SECONDARY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle)}px; `
+            + `margin-bottom: ${scaledLabelMargin(scale)}px;`,
     });
     const albumLabel = new St.Label({
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.metadata}; font-size: ${scaleFontSize(BASE_ALBUM_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle)}px; `
-            + `margin-bottom: ${Math.floor(LABEL_MARGIN_BOTTOM_PX * scale)}px;`,
+        style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.metadata}; font-size: ${scaleFontSize(BASE_SECONDARY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle)}px; `
+            + `margin-bottom: ${scaledLabelMargin(scale)}px;`,
     });
 
     state.titleLabel = titleLabel;
@@ -103,9 +104,9 @@ export function buildLargeLayout(config, state, width) {
         infoPanel.set_width(newHalfWidth);
 
         const titleSize = scaleFontSize(BASE_TITLE_FONT_SIZE, scalerRatio, MIN_FONT_SIZE.title);
-        const artistSize = scaleFontSize(BASE_ARTIST_FONT_SIZE, scalerRatio, MIN_FONT_SIZE.subtitle);
-        const albumSize = scaleFontSize(BASE_ALBUM_FONT_SIZE, scalerRatio, MIN_FONT_SIZE.subtitle);
-        const padding = Math.max(1, Math.floor(BASE_PADDING * scalerRatio));
+        const artistSize = scaleFontSize(BASE_SECONDARY_FONT_SIZE, scalerRatio, MIN_FONT_SIZE.subtitle);
+        const albumSize = scaleFontSize(BASE_SECONDARY_FONT_SIZE, scalerRatio, MIN_FONT_SIZE.subtitle);
+        const padding = scaleFontSize(BASE_PADDING, scalerRatio);
 
         splitContainer.style = `background-color: ${colors.panelColor}; border-radius: ${cornerRadius}px;`;
         infoPanel.style = `padding: ${padding}px;`;
@@ -113,18 +114,18 @@ export function buildLargeLayout(config, state, width) {
             + ` background-color: ${colors.panelColor};`
             + ` border-radius: ${cornerRadius}px 0 0 ${cornerRadius}px;`;
         titleLabel.style = `${fontCss}color: ${colors.textColor}; font-size: ${titleSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; `
-            + `margin-bottom: ${Math.max(1, Math.floor(LABEL_MARGIN_BOTTOM_PX * scalerRatio))}px;`;
+            + `margin-bottom: ${scaledLabelMargin(scalerRatio)}px;`;
         artistLabel.style = `${fontCss}color: ${colors.textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${artistSize}px; `
-            + `margin-bottom: ${Math.max(1, Math.floor(LABEL_MARGIN_BOTTOM_PX * scalerRatio))}px;`;
+            + `margin-bottom: ${scaledLabelMargin(scalerRatio)}px;`;
         albumLabel.style = `${fontCss}color: ${colors.textColor}; opacity: ${TEXT_OPACITY.metadata}; font-size: ${albumSize}px; `
-            + `margin-bottom: ${Math.max(1, Math.floor(LABEL_MARGIN_BOTTOM_PX * scalerRatio))}px;`;
+            + `margin-bottom: ${scaledLabelMargin(scalerRatio)}px;`;
 
         updateControlButtonScaling(state, scalerRatio, fontFamily, colors.textColor, highlight);
 
         if (state.controlsColumn) {
-            const controlMarginH = Math.max(1, Math.floor(12 * scalerRatio));
-            const controlMarginTop = Math.max(1, Math.floor(18 * scalerRatio));
-            const controlMarginBottom = Math.max(1, Math.floor(4 * scalerRatio));
+            const controlMarginH = scaleFontSize(CONTROLS_MARGIN_HORIZONTAL_PX, scalerRatio);
+            const controlMarginTop = scaleFontSize(CONTROLS_MARGIN_TOP_PX, scalerRatio);
+            const controlMarginBottom = scaleFontSize(CONTROLS_MARGIN_BOTTOM_PX, scalerRatio);
             state.controlsColumn.style = `margin: ${controlMarginTop}px ${controlMarginH}px ${controlMarginBottom}px ${controlMarginH}px;`;
         }
     };

@@ -1,6 +1,5 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import { PLAY_ICON, PAUSE_ICON } from './icons.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import {
     unpackVariantValue,
@@ -12,14 +11,19 @@ import {
 } from './mpris.js';
 import { setAlbumColor, resolveArtworkLayerStyle, applyArtworkToBackground } from './cover.js';
 
+const PLAY_ICON = 'media-playback-start-symbolic';
+const PAUSE_ICON = 'media-playback-pause-symbolic';
+
 const RECENT_SEEK_WINDOW_MICROSECONDS = 1500000;
 const SPURIOUS_ZERO_THRESHOLD_MICROSECONDS = 3000000;
 const POSITION_JUMP_RESYNC_THRESHOLD_MICROSECONDS = 3000000;
 
-// A newly reported track must stay "Playing" for this long before the widget
-// adopts it. A YouTube hover preview holds a real media session for as long as the
-// pointer rests on it, so switching instantly would hijack the widget.
-const TRACK_ADOPT_DELAY_MICROSECONDS = 5000000;
+// A newly reported track must stay "Playing" for this long before the widget adopts it.
+// A YouTube hover preview holds a real media session for as long as the pointer rests on
+// it, so switching instantly would hijack the widget. Long enough to outlast a stray
+// hover, short enough not to hold up a real change: everything below this point is
+// skipped until it passes, the title and the artwork together.
+const TRACK_ADOPT_DELAY_MICROSECONDS = 1200000;
 
 let seekedSignalId = 0;
 const activeMusicWidgetInstances = new Set();
@@ -122,7 +126,13 @@ export function applyPlayerState(properties, state) {
     if (track.artUrl) {
         state.lastArtUrl = track.artUrl;
     } else if (isNewTrack) {
-        state.lastArtUrl = null;
+        // A player reports no art URL for a track it has not fetched a cover for yet, and
+        // some never send a second update. Clearing it here blanked the widget for good,
+        // so the last one is kept until a new one turns up.
+        if (state.lastLoggedMissingArt !== trackKey) {
+            state.lastLoggedMissingArt = trackKey;
+            console.error(`Gridgets: new track "${track.title}" has no art URL yet, keeping the last one: ${state.lastArtUrl}`);
+        }
     }
 
     const positionMicro = unpackVariantValue(properties['Position']);

@@ -1,4 +1,4 @@
-import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, parseCssColor } from '../../utils/widgetUtils.js';
+import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, parseCssColor, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { extractDominantColor, ensureLocalArtwork } from './artwork.js';
 
@@ -27,7 +27,7 @@ export function setAlbumColor(state, color) {
 }
 
 export function resolveArtworkLayerStyle(state) {
-    const borderRadius = state.config.appliedBorderRadius !== undefined ? `${state.config.appliedBorderRadius}px` : '0px';
+    const borderRadius = `${resolveWidgetCornerRadius(state.config)}px`;
     const radius = state.config.isLargeLayout
         ? `${borderRadius} 0 0 ${borderRadius}`
         : borderRadius;
@@ -37,7 +37,7 @@ export function resolveArtworkLayerStyle(state) {
 }
 
 export function applyArtworkToBackground(backgroundLayer, artUrl, config, state) {
-    const styleSignature = `${config.appliedBorderRadius !== undefined ? config.appliedBorderRadius : '0px'}|${resolveWidgetBackgroundColor(config)}|${artUrl || ''}`;
+    const styleSignature = `${resolveWidgetCornerRadius(config)}|${resolveWidgetBackgroundColor(config)}|${artUrl || ''}`;
 
     const applyStyle = (localPath) => {
         if (!state.container || isActorDestroyed(state.container)) return;
