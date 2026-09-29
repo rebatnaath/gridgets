@@ -168,6 +168,7 @@ export function readGlobalSettings(settings, interfaceSettings = null) {
         globalAnimateGif: settings.get_boolean('image-animate-gif'),
         globalImageShowCaption: settings.get_boolean('image-show-caption'),
         globalSlideshowShowCaption: settings.get_boolean('slideshow-show-caption'),
+        globalCaptionScrim: settings.get_boolean('image-caption-scrim'),
         globalUseFahrenheit: settings.get_boolean('weather-use-fahrenheit'),
         globalWeatherDynamicColor: settings.get_boolean('weather-dynamic-color'),
         globalWeatherDynamicImage: settings.get_boolean('weather-dynamic-image'),
@@ -534,6 +535,12 @@ export function resolveWidgetBackgroundColor(config) {
     );
 }
 
+/**
+ * The corner radius for a widget. Always use this rather than reading
+ * `appliedBorderRadius` directly: `|| 0` would turn an absent override into a square
+ * panel, where the shared default is meant to apply, and a layer built on it would sit
+ * square inside a rounded container.
+ */
 export function resolveWidgetCornerRadius(config) {
     return config?.appliedBorderRadius ?? DEFAULT_CORNER_RADIUS_PX;
 }

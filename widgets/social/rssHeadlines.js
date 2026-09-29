@@ -46,9 +46,6 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     } = resolveWidgetColors(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
-    // means the shared default, and || 0 squared this panel off against a rounded
-    // container. The radius has to match the container's to line the corners up.
     const borderRadius = resolveWidgetCornerRadius(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 

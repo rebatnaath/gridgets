@@ -57,9 +57,6 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
         y_expand: true,
     });
 
-// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
-    // means the shared default, and || 0 squared this panel off against a rounded
-    // container. The radius has to match the container's to line the corners up.
     const borderRadius = resolveWidgetCornerRadius(config);
     const headerBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
