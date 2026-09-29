@@ -96,9 +96,6 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     const backgroundColor = resolveWidgetBackgroundColor(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-// resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override
-    // means the shared default, and || 0 squared this panel off against a rounded
-    // container. The radius has to match the container's to line the corners up.
     const borderRadius = resolveWidgetCornerRadius(config);
     const accentHex = resolveAccentColor(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
@@ -314,7 +311,7 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     }
 
     function applyAppRowScale(entry, scale) {
-        const iconSize = Math.max(1, Math.round(APP_ICON_SIZE_PX * scale));
+        const iconSize = scaleFontSize(APP_ICON_SIZE_PX, scale);
         entry.iconSlot.width = iconSize;
         entry.iconSlot.height = iconSize;
         entry.appIcon.icon_size = iconSize;

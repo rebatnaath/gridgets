@@ -59,7 +59,7 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
 
 
     let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
-    const px = value => Math.max(1, Math.round(value * scale));
+    const px = (value, minimum = 1) => scaleFontSize(value, scale, minimum);
 
     const state = { dateKeys: buildTrailingDateKeys(), moodButtons: [] };
 
@@ -130,15 +130,14 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
 
     function applyScale(newScale) {
         scale = newScale;
-        const fontPx = (value, minimum) => scaleFontSize(value, scale, minimum);
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_PX)}px; spacing: ${px(PANEL_GAP_PX)}px;`;
         actionPanel.style = `width: ${px(LEFT_COLUMN_WIDTH_PX)}px; spacing: ${px(ACTION_PANEL_SPACING_PX)}px;`;
-        greetingLabel.style = `${fontCss}font-size: ${fontPx(GREETING_FONT_SIZE_PX, MIN_FONT_SIZE.title)}px; `
+        greetingLabel.style = `${fontCss}font-size: ${px(GREETING_FONT_SIZE_PX, MIN_FONT_SIZE.title)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.extrabold}; color: ${textColor};`;
         greetingLabel.width = px(GREETING_WIDTH_PX);
         greetingLabel.clutter_text.line_wrap = false;
-        dateLabel.style = `${fontCss}font-size: ${fontPx(DATE_FONT_SIZE_PX, MIN_FONT_SIZE.subtitle)}px; `
+        dateLabel.style = `${fontCss}font-size: ${px(DATE_FONT_SIZE_PX, MIN_FONT_SIZE.subtitle)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
 
         faceRow.style = `background-color: ${card};`
@@ -146,7 +145,7 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
 
         applyMoodSelection(getMood(todayDateString()));
 
-        historyLabel.style = `${fontCss}font-size: ${fontPx(HISTORY_LABEL_FONT_SIZE_PX, MIN_FONT_SIZE.body)}px;`
+        historyLabel.style = `${fontCss}font-size: ${px(HISTORY_LABEL_FONT_SIZE_PX, MIN_FONT_SIZE.body)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`
             + `margin-bottom: ${px(HISTORY_LABEL_MARGIN_BOTTOM_PX)}px;`;
 
