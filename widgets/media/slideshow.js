@@ -117,7 +117,7 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
         const captionForFirstSlide = usesDateCaption && firstDate === ''
             ? PLACEHOLDER_CAPTION
             : (firstDate || widgetData.caption || '');
-        const captionHandle = attachCaptionOverlay(container, widgetData, width, height, false, images[0], captionForFirstSlide);
+        const captionHandle = attachCaptionOverlay(container, widgetData, width, height, images[0], captionForFirstSlide);
 
         let currentIndex = 0;
         let currentLayer = watchActorLifecycle(createImageLayer(images[0], borderRadius, width, height, shouldAnimateGif));

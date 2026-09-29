@@ -18,7 +18,7 @@ export function createStaticImageNode(widgetData, width, height, xPosition, yPos
     });
 
     widgetNode.set_clip_to_allocation(true);
-    attachCaptionOverlay(widgetNode, widgetData, width, height, false, widgetData.imagePath);
+    attachCaptionOverlay(widgetNode, widgetData, width, height, widgetData.imagePath);
 
     return widgetNode;
 }

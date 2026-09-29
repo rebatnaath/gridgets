@@ -1,7 +1,6 @@
 import St from 'gi://St';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import Clutter from 'gi://Clutter';
 import { createCaptionOverlay, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { addSettleAfterResize } from '../../utils/resizeSettle.js';
@@ -139,7 +138,7 @@ function resolveCaptionText(widgetData, imagePath, override) {
 }
 
 /** Attaches the caption overlay, or returns null when there is no caption to show. */
-export function attachCaptionOverlay(widgetNode, widgetData, width, height, isWrappedContainer = false, imagePath = null, captionOverride = null) {
+export function attachCaptionOverlay(widgetNode, widgetData, width, height, imagePath = null, captionOverride = null) {
     const caption = resolveCaptionText(widgetData, imagePath, captionOverride);
     if (caption.length === 0) return null;
 
@@ -160,51 +159,17 @@ export function attachCaptionOverlay(widgetNode, widgetData, width, height, isWr
         overlay.updateCaptionScale(Math.min(Math.max(ratio, MIN_CAPTION_SCALE), MAX_CAPTION_SCALE));
     };
 
-    let textOverlay = null;
-    if (isWrappedContainer) {
-        textOverlay = new St.Widget({
-            width: width,
-            height: height,
-            layout_manager: new Clutter.BinLayout(),
-        });
-        textOverlay.add_child(overlay);
-        widgetNode.add_child(textOverlay);
-
-        // The wrapper and the text inside it move together, so both wait for the drag.
-        const widthSignalId = widgetNode.connect('notify::width', () => {
-            if (widgetNode.isResizing) return;
-            textOverlay.set_width(widgetNode.width);
-            updateCaptionScale();
-        });
-        const heightSignalId = widgetNode.connect('notify::height', () => {
-            if (widgetNode.isResizing) return;
-            textOverlay.set_height(widgetNode.height);
-            updateCaptionScale();
-        });
-        registerWidgetCleanup(widgetNode, () => {
-            widgetNode.disconnect(widthSignalId);
-            widgetNode.disconnect(heightSignalId);
-        });
-    } else {
-        widgetNode.add_child(overlay);
-        const widthSignalId = widgetNode.connect('notify::width', updateCaptionScale);
-        const heightSignalId = widgetNode.connect('notify::height', updateCaptionScale);
-        registerWidgetCleanup(widgetNode, () => {
-            widgetNode.disconnect(widthSignalId);
-            widgetNode.disconnect(heightSignalId);
-        });
-    }
-
-    // Sizes are cell-quantised during a drag, so releasing on a boundary sets the size
-    // to the value it already had and notify::width never fires, leaving the caption on
-    // its pre-drag scale.
-    addSettleAfterResize(widgetNode, () => {
-        if (textOverlay) {
-            if (isActorDestroyed(textOverlay)) return;
-            textOverlay.set_size(widgetNode.width, widgetNode.height);
-        }
-        updateCaptionScale();
+    widgetNode.add_child(overlay);
+    const widthSignalId = widgetNode.connect('notify::width', updateCaptionScale);
+    const heightSignalId = widgetNode.connect('notify::height', updateCaptionScale);
+    registerWidgetCleanup(widgetNode, () => {
+        widgetNode.disconnect(widthSignalId);
+        widgetNode.disconnect(heightSignalId);
     });
+
+    // Releasing on a cell boundary sets the size it already had, so notify::width never
+    // fires and the caption would keep its pre-drag scale.
+    addSettleAfterResize(widgetNode, updateCaptionScale);
 
     return {
         setCaption(text) {

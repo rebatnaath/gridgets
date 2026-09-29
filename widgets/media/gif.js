@@ -249,6 +249,6 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
         applyStaticFallback();
     });
 
-    attachCaptionOverlay(widgetNode, widgetData, width, height, true, widgetData.imagePath);
+    attachCaptionOverlay(widgetNode, widgetData, width, height, widgetData.imagePath);
     return widgetNode;
 }
