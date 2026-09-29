@@ -149,9 +149,6 @@ export function getTopStoryFeeds(genre) {
 export const SIZE_PRESET_TIERS = Object.freeze(['Small', 'Medium', 'Large']);
 export { FREE_FLOW_SIZE_TYPES, WIDE_MUSIC_LAYOUT_ASPECT_RATIO };
 
-/** Every layout name a weather widget may carry, for callers that validate the value. */
-export const WEATHER_LAYOUT_NAMES = Object.freeze(Object.keys(WEATHER_LAYOUTS));
-
 /**
  * Classifies the wide music layout. `isLargeLayout` is set by the preferences adder
  * before the widget has a size, so the intended layout can still be honoured.

@@ -576,7 +576,6 @@ export function resolveExplicitFontFamily(config) {
 // calls into them below, and `export { X } from` on its own binds nothing locally.
 import {
     SIZE_PRESET_TIERS,
-    FREE_FLOW_SIZE_TYPES,
     WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
     DEFAULT_TOP_STORY_GENRE,
     TOP_STORY_GENRE_NAMES,
@@ -590,7 +589,6 @@ import {
 
 export {
     SIZE_PRESET_TIERS,
-    FREE_FLOW_SIZE_TYPES,
     WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
     DEFAULT_TOP_STORY_GENRE,
     TOP_STORY_GENRE_NAMES,
