@@ -27,7 +27,6 @@ const DAY_LABELS_WIDTH_PX = 24;
 const DAY_LABEL_ROWS = { 1: 'Mon', 3: 'Wed', 5: 'Fri' };
 const MAIN_BOX_SPACING_PX = 10;
 const CONTRIBUTION_LEVEL_ALPHAS = [0, 0.28, 0.48, 0.72, 1];
-const LEGEND_BOX_SPACING_PX = 3;
 const MIN_CONTRIBUTION_WEEKS = 8;
 const MAX_CONTRIBUTION_WEEKS = 30;
 const AVATAR_REQUEST_SIZE_PX = 64;
@@ -188,35 +187,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
             + `color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`,
     });
 
-    const legendBox = new St.BoxLayout({
-        y_align: Clutter.ActorAlign.CENTER,
-        x_align: Clutter.ActorAlign.END,
-        x_expand: true,
-        style: `spacing: ${LEGEND_BOX_SPACING_PX}px;`,
-    });
-    const lessLabel = new St.Label({
-        text: 'Less',
-        y_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}font-size: ${FOOTER_FONT_SIZE_PX - 1}px;`
-            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; margin-right: 3px;`,
-    });
-    legendBox.add_child(lessLabel);
-    const legendSquares = [emptyCellColor, ...contributionColors.slice(1).reverse()].map(color => {
-        const square = new St.Widget({ y_align: Clutter.ActorAlign.CENTER });
-        square.legendColor = color;
-        legendBox.add_child(square);
-        return square;
-    });
-    const moreLabel = new St.Label({
-        text: 'More',
-        y_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}font-size: ${FOOTER_FONT_SIZE_PX - 1}px;`
-            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; margin-left: 3px;`,
-    });
-    legendBox.add_child(moreLabel);
-
     footerBox.add_child(statusLabel);
-    footerBox.add_child(legendBox);
 
     const persistUsername = () => saveJsonToFile(dataFilePath, { username });
 
@@ -241,12 +212,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`
             + `background-color: ${card}; border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
             + `border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px; padding: ${px(3)}px ${px(8)}px;`;
-
-        legendSquares.forEach(square => {
-            square.style = `background-color: ${square.legendColor};`
-                + `border-radius: ${Math.max(1, px(2))}px;`
-                + `width: ${px(8)}px; height: ${px(8)}px;`;
-        });
 
         renderMatrix();
     }

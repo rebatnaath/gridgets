@@ -1,5 +1,4 @@
 import St from 'gi://St';
-import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
@@ -95,6 +94,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         fetchFailureMessage: '',
     };
     let scale = 1;
+    const px = value => scaleFontSize(value, scale);
 
     const rootBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -243,7 +243,6 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
      * would sit unstyled until the next resize.
      */
     function styleCard(entry) {
-        const px = value => Math.max(1, Math.round(value * scale));
         const thumbnailPx = px(THUMBNAIL_SIZE_PX);
         const metaStyle = `${fontCss}font-size: ${scaleFontSize(SOURCE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
             + `color: ${textColor};`;
@@ -288,7 +287,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
     /** The placeholder reuses the card's hover tint, so a storyless tile reads as deliberate. */
     function styleThumbnailBox(entry, thumbnailPx, hasImage) {
         entry.thumbnailBox.style = `width: ${thumbnailPx}px; height: ${thumbnailPx}px;`
-            + `border-radius: ${Math.max(1, Math.round(THUMBNAIL_RADIUS_PX * scale))}px;`
+            + `border-radius: ${px(THUMBNAIL_RADIUS_PX)}px;`
             + (hasImage ? '' : ` background-color: ${cssColorToRgba(highlightBackground, GRAPHICS_OPACITY.gridLine)};`);
     }
 
@@ -322,7 +321,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
     }
 
     function thumbnailStyle(uri, sizePx) {
-        const radiusPx = Math.max(1, Math.round(THUMBNAIL_RADIUS_PX * scale));
+        const radiusPx = px(THUMBNAIL_RADIUS_PX);
         return `width: ${sizePx}px; height: ${sizePx}px; border-radius: ${radiusPx}px;`
             + (uri
                 ? ` background-image: url("${uri}");`
@@ -362,7 +361,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
 
     function renderCards() {
         const shown = Math.min(MAX_CARDS, state.articles.length);
-        const thumbnailPx = Math.max(1, Math.round(THUMBNAIL_SIZE_PX * scale));
+        const thumbnailPx = px(THUMBNAIL_SIZE_PX);
         for (let i = 0; i < shown; i++) {
             const article = state.articles[i];
             const entry = acquireCard(i);
@@ -441,7 +440,6 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
             return;
         }
         scale = Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX);
-        const px = value => Math.max(1, Math.round(value * scale));
         const headerIconPx = px(HEADER_ICON_SIZE_PX);
         headerBox.style = `padding: ${px(HEADER_PADDING_V_PX)}px ${px(CONTENT_INSET_PX)}px;`;
         headerLabel.style = `${fontCss}font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
