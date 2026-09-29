@@ -248,7 +248,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     function applyLayout(currentWidth, currentHeight) {
         if (!currentWidth || !currentHeight) return;
         scale = clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
-        const px = (v) => Math.max(1, Math.round(v * scale));
+        const px = v => scaleFontSize(v, scale);
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
 
