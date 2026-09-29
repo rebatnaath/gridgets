@@ -6,6 +6,7 @@ import {
     GRID_MARGIN_PX,
     COLUMNS_COUNT,
 } from '../utils/widgetUtils.js';
+import { settleAfterResize } from '../utils/resizeSettle.js';
 import { BUTTON_PRIMARY } from './constants.js';
 import { isActorDestroyed } from '../utils/actorLifecycle.js';
 import { registerWidgetCleanup } from '../shell/widgetUIUtils.js';
@@ -21,7 +22,6 @@ export function toggleWidgetResizeHandle(
     widgetData,
     cellTotalWidth,
     cellTotalHeight,
-    extensionPath,
     onResizeEnd,
     allWidgets = [],
     maxCols = COLUMNS_COUNT,
@@ -99,6 +99,7 @@ export function toggleWidgetResizeHandle(
             widgetNode.actionOverlay = null;
         if (isResizing) {
             isResizing = false;
+            widgetNode.isResizing = false;
             if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(false);
         }
         cleanupResizeHandlers();
@@ -118,6 +119,10 @@ export function toggleWidgetResizeHandle(
     const endResize = () => {
         if (!isResizing) return;
         isResizing = false;
+        // Cleared before the final set_size below, so anything that restyles itself on
+        // a size change settles once on the snapped size rather than on the last
+        // dragged one.
+        widgetNode.isResizing = false;
         if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(false);
         cleanupResizeHandlers();
 
@@ -134,6 +139,12 @@ export function toggleWidgetResizeHandle(
 
         onResizeEnd(validCols, validRows, validX);
 
+        // Anything that held still during the drag settles here on the final size.
+        // Done after the resize is applied, and unconditionally: the size is
+        // cell-quantised already, so this is the only point it is known to match the
+        // snapped result.
+        settleAfterResize(widgetNode);
+
         overlay.destroy();
     };
 
@@ -141,6 +152,7 @@ export function toggleWidgetResizeHandle(
         if (event.get_button() === BUTTON_PRIMARY) {
             cleanupResizeHandlers();
             isResizing = true;
+            widgetNode.isResizing = true;
             if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(true);
             const [stageX, stageY] = event.get_coords();
             resizeStartX = stageX;
@@ -159,22 +171,23 @@ export function toggleWidgetResizeHandle(
                 const dx = x - resizeStartX;
                 const dy = y - resizeStartY;
 
-                const rawWidth = Math.max(minWidth, resizeStartWidth + dx);
-                const rawHeight = Math.max(minHeight, resizeStartHeight + dy);
+                // A free-flow widget follows the pointer exactly and rounds to the grid
+                // only on release. The earlier cap was built from a rounded cell count,
+                // so it was itself a cell multiple and dragged the widget onto the grid
+                // while it was still growing. Shrinking never met that cap, which is why
+                // only growing looked wrong.
+                //
+                // Only a real edge stops the drag. The stage is used for the bottom rather
+                // than maxRows, because a screen too short for a whole number of cells
+                // leaves the last row hanging past the work area.
+                const placementHost = widgetNode.get_parent() || widgetNode;
+                const gridRight = GRID_MARGIN_PX + (maxCols * cellTotalWidth);
+                const gridBottom = global.stage.height - GRID_MARGIN_PX;
+                const originX = placementHost === widgetNode ? 0 : widgetNode.x;
+                const originY = placementHost === widgetNode ? 0 : widgetNode.y;
 
-                const proposedCols = Math.max(1, Math.round((rawWidth + GRID_GAP_PX) / cellTotalWidth));
-                const proposedRows = Math.max(1, Math.round((rawHeight + GRID_GAP_PX) / cellTotalHeight));
-                const proposedGridX = Math.round((widgetNode.x - GRID_MARGIN_PX) / cellTotalWidth);
-
-                const { validCols, validRows } = calculateResizedDimensions(
-                    widgetData, proposedCols, proposedRows, proposedGridX, allWidgets, maxCols, maxRows
-                );
-
-                const maxAllowedWidth = (validCols * cellTotalWidth) - GRID_GAP_PX;
-                const maxAllowedHeight = (validRows * cellTotalHeight) - GRID_GAP_PX;
-
-                const newWidth = Math.min(rawWidth, maxAllowedWidth);
-                const newHeight = Math.min(rawHeight, maxAllowedHeight);
+                const newWidth = Math.max(minWidth, Math.min(resizeStartWidth + dx, gridRight - originX));
+                const newHeight = Math.max(minHeight, Math.min(resizeStartHeight + dy, gridBottom - originY));
 
                 widgetNode.set_size(newWidth, newHeight);
                 return Clutter.EVENT_STOP;

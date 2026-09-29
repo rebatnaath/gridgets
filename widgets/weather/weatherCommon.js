@@ -15,6 +15,7 @@ import {
     isDarkBackgroundColor,
 } from '../../utils/widgetUtils.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
+import { addSettleAfterResize } from '../../utils/resizeSettle.js';
 import { scaleFontSize, TEXT_OPACITY } from '../../utils/typography.js';
 import { createGetMessage } from '../../utils/httpClient.js';
 
@@ -239,16 +240,20 @@ function resolveSaneExtent(extent) {
 
 // Keeps a child actor the same size as its widget node, storing the signal ids on it.
 function trackWidgetSize(actor, widgetNode) {
+    // Held still during a resize drag, like every other size listener, and applied
+    // once at the end. Cheap here, but it re-allocates on every motion event and the
+    // widget should not repaint while it is being dragged.
+    const resizeToWidget = () => {
+        if (isActorDestroyed(actor) || widgetNode.isResizing)
+            return;
+        actor.set_width(resolveSaneExtent(widgetNode.width));
+        actor.set_height(resolveSaneExtent(widgetNode.height));
+    };
     actor.backgroundSignalIds = [
-        widgetNode.connect('notify::width', () => {
-            if (!isActorDestroyed(actor))
-                actor.set_width(resolveSaneExtent(widgetNode.width));
-        }),
-        widgetNode.connect('notify::height', () => {
-            if (!isActorDestroyed(actor))
-                actor.set_height(resolveSaneExtent(widgetNode.height));
-        }),
+        widgetNode.connect('notify::width', resizeToWidget),
+        widgetNode.connect('notify::height', resizeToWidget),
     ];
+    addSettleAfterResize(widgetNode, resizeToWidget);
     return actor;
 }
 
