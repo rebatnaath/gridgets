@@ -33,6 +33,8 @@ const METRIC_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconMd;
 const ARC_MARGIN_X_RATIO = 0.1;
 const ARC_BASE_PADDING_RATIO = 0.18;
 const ARC_SEGMENT_COUNT = 64;
+const ARC_LINE_WIDTH_PX = 3;
+const ARC_TRACK_WIDTH_PX = 2;
 const ORB_RADIUS_PX = 5;
 const METRIC_ITEM_SPACING_PX = 8;
 const METRIC_TEXT_SPACING_PX = 1;
@@ -279,8 +281,8 @@ export function createSunScheduleNode(config, width, height, xPosition, yPositio
 
         const marginX = canvasWidth * ARC_MARGIN_X_RATIO;
         const basePadding = canvasHeight * ARC_BASE_PADDING_RATIO;
-        const lineWidth = Math.max(1, Math.round(3 * scale));
-        const trackWidth = Math.max(1, Math.round(2 * scale));
+        const lineWidth = scaleFontSize(ARC_LINE_WIDTH_PX, scale);
+        const trackWidth = scaleFontSize(ARC_TRACK_WIDTH_PX, scale);
         const leftX = marginX + lineWidth + 1;
         const rightX = canvasWidth - marginX - lineWidth - 1;
         const spanX = Math.max(1, rightX - leftX);
