@@ -73,10 +73,15 @@ export function openPreferences(grid, targetWidgetId = null) {
 
 /** Opens a GNOME Settings panel through GIO's app launcher instead of a raw fork/exec. */
 export function launchSettingsPanel(panelName = null) {
-    const args = panelName ? ['gnome-control-center', panelName] : ['gnome-control-center'];
+    // create_from_commandline takes one commandline string, not an argv array, and the
+    // flag is SUPPORTS_STARTUP_NOTIFICATION. Passing an array throws, and a misspelled
+    // flag reads as undefined, so both were wrong and neither threw at the call site.
+    const commandline = panelName
+        ? `gnome-control-center ${panelName}`
+        : 'gnome-control-center';
     try {
         const appInfo = Gio.AppInfo.create_from_commandline(
-            args, 'GNOME Settings', Gio.AppInfoCreateFlags.SUPPORT_STARTUP_NOTIFICATION);
+            commandline, 'GNOME Settings', Gio.AppInfoCreateFlags.SUPPORTS_STARTUP_NOTIFICATION);
         appInfo.launch([], null);
     } catch (e) {
         console.error('Failed to launch GNOME Settings:', e);
