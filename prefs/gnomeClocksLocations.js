@@ -3,30 +3,11 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
 import { loadGWeather } from './appAvailability.js';
+import { normalizeName, hasValidCoordinates, getLocationDisplayName, locationKey } from './locationCommon.js';
 
 const CLOCKS_BUS_NAME = 'org.gnome.clocks';
 const CLOCKS_OBJECT_PATH = '/org/gnome/clocks';
 const CLOCKS_INTERFACE = 'org.gnome.Shell.ClocksIntegration';
-
-function normalizeName(name) {
-    return name.trim().toLocaleLowerCase();
-}
-
-function hasValidCoordinates(latitude, longitude) {
-    return Number.isFinite(latitude)
-        && Number.isFinite(longitude)
-        && latitude >= -90
-        && latitude <= 90
-        && longitude >= -180
-        && longitude <= 180;
-}
-
-function getLocationDisplayName(location) {
-    const details = [location.countryName, location.timezone].filter(Boolean);
-    return details.length > 0
-        ? `${location.name} - ${details.join(' · ')}`
-        : location.name;
-}
 
 function launchGnomeClocks() {
     return new Promise(resolve => {
@@ -92,10 +73,10 @@ async function getGnomeClocksLocations() {
                             countryName: location.get_country_name() || '',
                             timezone: location.get_timezone_str() || '',
                         };
-                        const locationKey = `${normalizeName(name)}:${latitude.toFixed(4)}:${longitude.toFixed(4)}`;
-                        if (locationKeys.has(locationKey)) continue;
+                        const key = locationKey(name, latitude, longitude);
+                        if (locationKeys.has(key)) continue;
 
-                        locationKeys.add(locationKey);
+                        locationKeys.add(key);
                         locations.push(normalizedLocation);
                     }
 

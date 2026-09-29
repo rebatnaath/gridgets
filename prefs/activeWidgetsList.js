@@ -180,10 +180,10 @@ function createWidgetRow(window, settings, widget) {
 /**
  * Rebuilds the list in place, reusing the row of every widget that is unchanged.
  *
- * The list used to be cleared and rebuilt from scratch, which threw away the edit
- * panel of any other widget that was open. Those panels hold unsaved edits, so saving
- * one widget silently discarded the work in another. A row is only rebuilt when the
- * widget behind it is gone, changed type, or moved to a different monitor section.
+ * Clearing and rebuilding the list instead would throw away the edit panel of any
+ * other widget that was open. Those panels hold unsaved edits, so saving one widget
+ * would silently discard the work in another. A row is only rebuilt when the widget
+ * behind it is gone, changed type, or moved to a different monitor section.
  *
  * AdwPreferencesGroup has no API to enumerate its children, so the rows this function
  * adds are tracked here rather than read back off the widget.

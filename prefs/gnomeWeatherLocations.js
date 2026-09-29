@@ -3,22 +3,10 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
 import { loadGWeather } from './appAvailability.js';
+import { normalizeName, hasValidCoordinates, getLocationDisplayName, locationKey } from './locationCommon.js';
 
 const WEATHER_SCHEMA_ID = 'org.gnome.Weather';
 const COORDINATE_TOLERANCE = 0.0001;
-
-function hasValidCoordinates(latitude, longitude) {
-    return Number.isFinite(latitude)
-        && Number.isFinite(longitude)
-        && latitude >= -90
-        && latitude <= 90
-        && longitude >= -180
-        && longitude <= 180;
-}
-
-function normalizeName(name) {
-    return name.trim().toLocaleLowerCase();
-}
 
 function locationsMatch(firstLocation, secondLocation) {
     if (!firstLocation || !secondLocation)
@@ -36,13 +24,6 @@ function locationsMatch(firstLocation, secondLocation) {
 
 export function findGnomeWeatherLocation(locations, savedLocation) {
     return locations.find(location => locationsMatch(location, savedLocation)) ?? null;
-}
-
-function getLocationDisplayName(location) {
-    const details = [location.countryName, location.timezone].filter(Boolean);
-    return details.length > 0
-        ? `${location.name} - ${details.join(' · ')}`
-        : location.name;
 }
 
 function launchGnomeWeather() {
@@ -103,10 +84,10 @@ async function loadGnomeWeatherLocations() {
                 countryName: location.get_country_name() || '',
                 timezone: location.get_timezone_str() || '',
             };
-            const locationKey = `${normalizeName(name)}:${latitude.toFixed(4)}:${longitude.toFixed(4)}`;
-            if (locationKeys.has(locationKey)) continue;
+            const key = locationKey(name, latitude, longitude);
+            if (locationKeys.has(key)) continue;
 
-            locationKeys.add(locationKey);
+            locationKeys.add(key);
             locations.push(normalizedLocation);
         }
 
