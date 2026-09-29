@@ -25,32 +25,9 @@ export const COLUMNS_COUNT = 60;
 export const GRID_GAP_PX = 15;
 export const GRID_MARGIN_PX = 4;
 
-
-export const MIN_WIDGET_SIZES = Object.freeze({
-    'pomodoro': { minCols: 3, minRows: 3 },
-    'network-speed': { minCols: 3, minRows: 2 },
-    'cpu-ram': { minCols: 3, minRows: 2 },
-    'time': { minCols: 2, minRows: 2 },
-    'weather': { minCols: 2, minRows: 2 },
-    'music': { minCols: 3, minRows: 2 },
-    'notes': { minCols: 3, minRows: 3 },
-    'clipboard': { minCols: 3, minRows: 3 },
-    'app-launcher': { minCols: 3, minRows: 2 },
-    'slideshow': { minCols: 2, minRows: 2 },
-    'image': { minCols: 2, minRows: 2 },
-    'calendar': { minCols: 3, minRows: 3 },
-    'quotes': { minCols: 3, minRows: 3 },
-    'screen-time': { minCols: 6, minRows: 3 },
-    'calendar-grid': { minCols: 4, minRows: 4 },
-    'calendar-agenda': { minCols: 5, minRows: 4 },
-    'mood': { minCols: 4, minRows: 2 },
-    'system-dashboard': { minCols: 4, minRows: 4 },
-    'pomodoro-focus': { minCols: 8, minRows: 4 },
-    'todo': { minCols: 6, minRows: 4 },
-    'github': { minCols: 8, minRows: 4 },
-    'rss-headlines': { minCols: 4, minRows: 4 },
-    'sun-schedule': { minCols: 7, minRows: 5 },
-});
+// Every widget that reaches calculateResizedDimensions is a free-flow media type, and
+// the smallest either can be is 2x2.
+const MIN_RESIZABLE_CELLS = Object.freeze({ minCols: 2, minRows: 2 });
 
 /**
  * Resolves the use24h setting for a time widget.
@@ -620,22 +597,10 @@ export {
 
 /** Validates and constrains a widget's proposed new position and size during resize operations. */
 export function calculateResizedDimensions(widgetData, newCols, newRows, newGridX, widgets = null, maxCols = COLUMNS_COUNT, maxRows = Number.POSITIVE_INFINITY) {
-    const minLimits = MIN_WIDGET_SIZES[widgetData.type] || { minCols: 2, minRows: 2 };
+    const minLimits = MIN_RESIZABLE_CELLS;
     let validX = Math.max(0, Math.min(newGridX, maxCols - minLimits.minCols));
     let validCols = Math.max(minLimits.minCols, Math.min(newCols, maxCols - validX));
     let validRows = Math.max(minLimits.minRows, Math.min(newRows, maxRows - widgetData.y));
-
-    if (widgetData.type === 'music' && widgetData.isLargeLayout) {
-        validRows = Math.max(minLimits.minRows, Math.floor(validCols / 2));
-        validCols = validRows * 2;
-        if (validX + validCols > maxCols)
-            validX = maxCols - validCols;
-
-        if (widgetData.y + validRows > maxRows) {
-            validRows = Math.max(1, maxRows - widgetData.y);
-            validCols = validRows * 2;
-        }
-    }
 
     const otherWidgets = widgets ? widgets.filter(widget => widget.id !== widgetData.id) : [];
 

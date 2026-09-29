@@ -182,37 +182,37 @@ export function buildStorePage(window, settings, extensionPath) {
     }
 
     addStoreCategory(page, 'Weather', [
-        buildStoreCard(extensionPath, STORE_WIDGETS.weatherStandard, () => openAddWeatherDialog(window, settings, 3, 3, 'standard'), weatherState),
-        buildStoreCard(extensionPath, STORE_WIDGETS.weatherMinimal, () => openAddWeatherDialog(window, settings, 3, 3, 'simple'), weatherState),
-        buildStoreCard(extensionPath, STORE_WIDGETS.weatherForecast, () => openAddWeatherDialog(window, settings, 6, 4, 'forecast'), weatherState),
+        buildStoreCard(extensionPath, STORE_WIDGETS.weatherStandard, () => openAddWeatherDialog(window, settings, 'standard'), weatherState),
+        buildStoreCard(extensionPath, STORE_WIDGETS.weatherMinimal, () => openAddWeatherDialog(window, settings, 'simple'), weatherState),
+        buildStoreCard(extensionPath, STORE_WIDGETS.weatherForecast, () => openAddWeatherDialog(window, settings, 'forecast'), weatherState),
         buildStoreCard(extensionPath, STORE_WIDGETS.sunScheduleWidget, () => openAddSunScheduleDialog(window, settings), weatherState),
     ]);
 
     addStoreCategory(page, 'Media', [
-        buildStoreCard(extensionPath, STORE_WIDGETS.musicPlayer, () => addMusicWidget(settings, 4, 4)),
-        buildStoreCard(extensionPath, STORE_WIDGETS.musicPlayerWide, () => addMusicWidget(settings, 8, 4)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.musicPlayer, () => addMusicWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.musicPlayerWide, () => addMusicWidget(settings, true)),
         buildStoreCard(extensionPath, STORE_WIDGETS.imageGif, () => openAddImageDialog(window, settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.imageSlideshow, () => openAddSlideshowDialog(window, settings)),
     ]);
 
     addStoreCategory(page, 'System', [
-        buildStoreCard(extensionPath, STORE_WIDGETS.systemDashboard, () => addSystemDashboardWidget(settings, 4, 4)),
-        buildStoreCard(extensionPath, STORE_WIDGETS.systemMonitor, () => addCpuRamWidget(settings, 4, 2)),
-        buildStoreCard(extensionPath, STORE_WIDGETS.networkSpeed, () => addNetworkSpeedWidget(settings, 3, 2)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.systemDashboard, () => addSystemDashboardWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.systemMonitor, () => addCpuRamWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.networkSpeed, () => addNetworkSpeedWidget(settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.screenTimeWidget, () => addScreenTimeWidget(settings)),
     ]);
 
     addStoreCategory(page, 'Focus and Productivity', [
-        buildStoreCard(extensionPath, STORE_WIDGETS.pomodoroTimer, () => addPomodoroWidget(settings, 4, 4)),
-        buildStoreCard(extensionPath, STORE_WIDGETS.pomodoroFocus, () => addPomodoroFocusWidget(settings, 4, 2)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.pomodoroTimer, () => addPomodoroWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.pomodoroFocus, () => addPomodoroFocusWidget(settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.todoWidget, () => addTodoWidget(settings)),
-        buildStoreCard(extensionPath, STORE_WIDGETS.quickNotes, () => addNotesWidget(settings, 4, 4)),
-        buildStoreCard(extensionPath, STORE_WIDGETS.clipboardHistory, () => addClipboardWidget(settings, 4, 4)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.quickNotes, () => addNotesWidget(settings)),
+        buildStoreCard(extensionPath, STORE_WIDGETS.clipboardHistory, () => addClipboardWidget(settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.appLauncher, () => openAddAppLauncherDialog(window, settings)),
     ]);
 
     addStoreCategory(page, 'Time and Calendar', [
-        buildStoreCard(extensionPath, STORE_WIDGETS.timeAndDate, () => addTimeWidget(settings, 3, 2, 'digital')),
+        buildStoreCard(extensionPath, STORE_WIDGETS.timeAndDate, () => addTimeWidget(settings, 'digital')),
         buildStoreCard(extensionPath, STORE_WIDGETS.worldClock, () => openAddWorldClockDialog(window, settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.calendarWidget, () => addCalendarWidget(settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.calendarGrid, () => addCalendarGridWidget(settings)),

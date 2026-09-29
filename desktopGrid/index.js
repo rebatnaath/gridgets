@@ -42,7 +42,6 @@ import { resolveWeatherLayoutVariant } from '../widgets/weather/weatherCommon.js
 const GRID_LINE_ALPHA = 0.25;
 const EDIT_OVERLAY_ALPHA = 0.3;
 
-let REBUILD_SEQ = 0;
 
 export const DesktopGrid = GObject.registerClass(
     class DesktopGrid extends St.Widget {
@@ -205,7 +204,7 @@ export const DesktopGrid = GObject.registerClass(
             return { gridCols: COLUMNS_COUNT, gridRows, cellSize, cellTotalWidth, cellTotalHeight };
         }
 
-        _layoutWidgetsOnGrid(activeWidgets, gridCols, gridRows, cellSize, cellTotalWidth, cellTotalHeight) {
+        _layoutWidgetsOnGrid(activeWidgets, gridCols, gridRows) {
             let modified = false;
             const placedWidgets = [];
 
@@ -463,7 +462,7 @@ export const DesktopGrid = GObject.registerClass(
             const globalSettings = readGlobalSettings(this.settings, this.interfaceSettings);
             const createNode = this._createNodeFactory(layout, globalSettings);
 
-            const { sortedWidgets, modified } = this._layoutWidgetsOnGrid(activeWidgets, layout.gridCols, layout.gridRows, layout.cellSize, layout.cellTotalWidth, layout.cellTotalHeight);
+            const { sortedWidgets, modified } = this._layoutWidgetsOnGrid(activeWidgets, layout.gridCols, layout.gridRows);
 
             sortedWidgets.forEach(widgetData => {
                 if (this.widgetNodes.has(widgetData.id) && this._nodeConfigs.get(widgetData.id) === JSON.stringify(widgetData))
@@ -491,7 +490,6 @@ export const DesktopGrid = GObject.registerClass(
             }
         }
         _rebuildGrid() {
-            console.log(`[gridgets] grid rebuild #${++REBUILD_SEQ}`);
             this._lastAppliedWidgetsJson = this.settings.get_string('widgets');
 
             this.widgetNodes.forEach(node => node.destroy());
@@ -516,7 +514,7 @@ export const DesktopGrid = GObject.registerClass(
             const globalSettings = readGlobalSettings(this.settings, this.interfaceSettings);
             const createNode = this._createNodeFactory(layout, globalSettings);
 
-            const { sortedWidgets, modified } = this._layoutWidgetsOnGrid(activeWidgets, layout.gridCols, layout.gridRows, layout.cellSize, layout.cellTotalWidth, layout.cellTotalHeight);
+            const { sortedWidgets, modified } = this._layoutWidgetsOnGrid(activeWidgets, layout.gridCols, layout.gridRows);
 
             sortedWidgets.forEach(createNode);
 

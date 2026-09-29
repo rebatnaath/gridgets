@@ -143,8 +143,7 @@ export function openAddTopStoriesDialog(parentWindow, settings) {
             const genre = index >= 0 && index < TOP_STORY_GENRE_NAMES.length
                 ? TOP_STORY_GENRE_NAMES[index]
                 : DEFAULT_TOP_STORY_GENRE;
-            const { width, height } = parseStoreGridSize(STORE_WIDGETS.topStoriesWidget.gridSize);
-            addTopStoriesWidget(settings, genre, width, height);
+            addTopStoriesWidget(settings, genre);
         }
         dialogWindow.destroy();
     });
@@ -231,7 +230,7 @@ export function openAddWorldClockDialog(parentWindow, settings) {
             const sec1City = sec1Picker.getSelectedLocation();
             const sec2City = sec2Picker.getSelectedLocation();
             if (primaryCity && sec1City && sec2City) {
-                addTimeWidget(settings, 4, 4, 'world', [primaryCity, sec1City, sec2City]);
+                addTimeWidget(settings, 'world', [primaryCity, sec1City, sec2City]);
             }
         }
         dialogWindow.destroy();
@@ -302,7 +301,7 @@ export function openAddRssHeadlinesDialog(parentWindow, settings) {
     );
 }
 
-export function openAddWeatherDialog(parentWindow, settings, width, height, layout) {
+export function openAddWeatherDialog(parentWindow, settings, layout) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Weather Widget');
     let addButton = null;
     const locationPicker = createGnomeWeatherLocationPicker(null, (hasLocations) => {
@@ -319,7 +318,7 @@ export function openAddWeatherDialog(parentWindow, settings, width, height, layo
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
             const location = locationPicker.getSelectedLocation();
-            if (location) addWeatherWidget(settings, location, width, height, layout);
+            if (location) addWeatherWidget(settings, location, layout);
         }
         dialogWindow.destroy();
     });

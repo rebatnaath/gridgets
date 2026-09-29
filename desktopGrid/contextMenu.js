@@ -118,7 +118,6 @@ export function openWidgetContextMenu(grid, event, node, widgetData) {
                 widgetData,
                 grid.cellTotalWidth,
                 grid.cellTotalHeight,
-                grid.extensionPath,
                 (newCols, newRows, newX) => onWidgetResized(grid, widgetData.id, newCols, newRows, newX),
                 allWidgets,
                 gridCols,
