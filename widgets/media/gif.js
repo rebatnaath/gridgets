@@ -33,6 +33,11 @@ const MAX_CONSECUTIVE_FRAME_FAILURES = 10;
  */
 function createFramePainter(cornerRadius) {
     const area = new St.DrawingArea({
+        // BinLayout ignores FILL alignment on a child that does not expand, which left
+        // the frame at its last explicit set_size while the box grew around it, so the
+        // picture lagged the pointer during a drag and jumped on release.
+        x_expand: true,
+        y_expand: true,
         x_align: Clutter.ActorAlign.FILL,
         y_align: Clutter.ActorAlign.FILL,
     });
@@ -147,8 +152,6 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
                     }
                 }
 
-                imageActor.set_size(containerWidth, containerHeight);
-                imageActor.set_position(0, 0);
             }
 
             if (!renderPixbuf.get_has_alpha()) {
