@@ -135,16 +135,6 @@ function cancelInterruptedDrag(grid) {
 }
 
 export function attachDragHandlers(grid, node, widgetData) {
-    // The stage handlers installed below are released only through the node's
-    // cleanup registry. A creator that returns a plain actor instead of a
-    // WidgetActor would leave them connected to a destroyed object, so refuse to
-    // wire them rather than leak, and say why instead of failing silently inside
-    // the grid's node-creation catch.
-    if (typeof node.registerCleanup !== 'function') {
-        console.error(`Widget ${widgetData.id} (${widgetData.type}) does not support cleanup registration; dragging is disabled for it.`);
-        return;
-    }
-
     let pressX = 0;
     let pressY = 0;
     const state = { isDragging: false, dragMotionId: 0, dragReleaseId: 0, startX: 0, startY: 0, origGridX: 0, origGridY: 0 };

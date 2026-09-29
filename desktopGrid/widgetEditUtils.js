@@ -172,10 +172,10 @@ export function toggleWidgetResizeHandle(
                 const dy = y - resizeStartY;
 
                 // A free-flow widget follows the pointer exactly and rounds to the grid
-                // only on release. The earlier cap was built from a rounded cell count,
-                // so it was itself a cell multiple and dragged the widget onto the grid
-                // while it was still growing. Shrinking never met that cap, which is why
-                // only growing looked wrong.
+                // only on release, so nothing here may quantise the size: a cap derived
+                // from a cell count is itself a cell multiple, and it drags the widget
+                // onto the grid mid-drag while it is still growing. Shrinking moves away
+                // from a cap and never meets one, so only growing would show it.
                 //
                 // Only a real edge stops the drag. The stage is used for the bottom rather
                 // than maxRows, because a screen too short for a whole number of cells
