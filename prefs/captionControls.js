@@ -69,7 +69,7 @@ export function buildCaptionSourceControls({ options, selected, customEntry, isE
 }
 
 /** Add-dialog rows: Show Caption, the custom entry, then the source. */
-export function buildCaptionRows(grid, startRow, placeholderText, widgetType = 'image') {
+export function buildCaptionRows(grid, startRow, placeholderText, widgetType = 'image', selectedSource = CAPTION_SOURCES.CUSTOM) {
     let rowIdx = startRow;
 
     const showCaptionLabel = new Gtk.Label({ label: 'Show Caption:', xalign: 0, hexpand: true });
@@ -90,7 +90,7 @@ export function buildCaptionRows(grid, startRow, placeholderText, widgetType = '
     const sourceLabel = new Gtk.Label({ label: 'Caption From:', xalign: 0, hexpand: true });
     const source = buildCaptionSourceControls({
         options: captionSourceOptions(widgetType),
-        selected: CAPTION_SOURCES.CUSTOM,
+        selected: selectedSource,
         customEntry: captionEntry,
         isEnabled: () => showCaptionSwitch.get_active(),
     });
@@ -124,6 +124,7 @@ export function buildCaptionControls(grid, rowIdx, widget, settings, defaultCapt
         options: captionSourceOptions(widget.type),
         selected: resolveCaptionSource(widget),
         customEntry: captionEntry,
+        isEnabled: () => isCaptionSourceEnabled(),
     });
     grid.attach(sourceLabel, 0, rowIdx, 1, 1);
     grid.attach(source.dropdown, 1, rowIdx, 1, 1);
