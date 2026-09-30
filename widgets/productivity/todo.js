@@ -1,9 +1,10 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveAccentColor, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, saveJsonToFile, saveJsonToFileSync } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, attachButtonFeedback } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
@@ -32,11 +33,24 @@ const CHECKBOX_BORDER_WIDTH_PX = 1.5;
 const CHECKMARK_ICON_SIZE_PX = 10;
 const DELETE_ICON_SIZE_PX = 13;
 
-const DEFAULT_TASKS = [
-    { text: 'Make tea', done: false },
-    { text: 'Make cake', done: false },
-    { text: 'Linux os', done: false },
-];
+/** Renames a task file written under the old singular name, so no list is lost to the
+ *  rename below. Only ever acts when the old file exists and the new one does not. */
+function migrateTodoFileName(widgetId, currentFilePath) {
+    const legacyPath = GLib.build_filenamev([getGridgetsDataDir('todos'), `todo-${widgetId}.json`]);
+    if (legacyPath === currentFilePath)
+        return;
+    const legacyFile = Gio.File.new_for_path(legacyPath);
+    if (!legacyFile.query_exists(null))
+        return;
+    const currentFile = Gio.File.new_for_path(currentFilePath);
+    if (currentFile.query_exists(null))
+        return;
+    try {
+        legacyFile.move(currentFile, Gio.FileCopyFlags.OVERWRITE, null, null);
+    } catch (error) {
+        console.error('Gridgets: could not rename legacy todo file:', error.message);
+    }
+}
 
 export function createTodoNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveExplicitFontFamily(config);
@@ -49,13 +63,18 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     const accentStyle = `color: ${accentHex};`;
     const rowBackgroundStyle = `background-color: ${card};`;
 
+    // Named to match deleteCacheFile, which derives the name from the cache folder, so
+    // removing the widget removes this file rather than orphaning the user's tasks.
     const todosFilePath = GLib.build_filenamev([
         getGridgetsDataDir('todos'),
-        `todo-${config.id}.json`,
+        `todos-${config.id}.json`,
     ]);
+    migrateTodoFileName(config.id, todosFilePath);
 
-    let tasks = DEFAULT_TASKS.map(task => ({ ...task }));
-    let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
+    // The async load below is the only thing that fills this, so the widget shows the
+    // empty state until the file answers rather than a list the user never wrote.
+    let tasks = [];
+    let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
     let tasksLoaded = false;
 
     const state = { entryVisible: false };
@@ -159,7 +178,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
 
     function applyScale(newScale) {
         scale = newScale;
-        const px = (v) => Math.max(1, Math.round(v * scale));
+        const px = (v) => scaleFontSize(v, scale);
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px;`;
         leftColumn.set_style(`width: ${px(LEFT_COLUMN_WIDTH_PX)}px;`);
@@ -186,7 +205,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     }
 
     function buildTaskRow(task) {
-        const px = (v) => Math.max(1, Math.round(v * scale));
+        const px = (v) => scaleFontSize(v, scale);
         const fontSize = scaleFontSize(TASK_TEXT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.body);
         const checkboxSize = px(CHECKBOX_SIZE_PX);
 
@@ -270,7 +289,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
 
         taskList.destroy_all_children();
         if (tasks.length === 0) {
-            const px = (v) => Math.max(1, Math.round(v * scale));
+            const px = (v) => scaleFontSize(v, scale);
             const emptyLabel = new St.Label({
                 text: 'No tasks yet — press + to add one',
                 x_align: Clutter.ActorAlign.CENTER,
