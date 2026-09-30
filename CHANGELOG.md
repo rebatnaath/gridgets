@@ -124,9 +124,8 @@ widget appears at.
 - The clipboard widget now works out its card and highlight colours once instead
   of twice.
 - Music keeps its position and cover when the grid is rebuilt.
-- The todo widget no longer starts with three made-up tasks in it. Widgets you
-  already had keep the tasks they were given, so delete those yourself if you
-  do not want them.
+- The todo widget no longer starts with three made-up tasks in it. A todo list
+  saved under the old file name is moved over rather than left behind.
 
 Two known problems from `v0.9.4-beta` are fixed here: some widgets scaled their
 text wrongly, and music artwork could disappear.
