@@ -1,5 +1,8 @@
 import Soup from 'gi://Soup?version=3.0';
 
+/** The one status every caller here treats as a success. */
+export const HTTP_STATUS_OK = 200;
+
 /**
  * Soup 3 has no session-level user agent, and a request that carries none is fair game for
  * a server to refuse: The Guardian's feeds answer 406 to it, leaving the widget empty with
