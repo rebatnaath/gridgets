@@ -1,4 +1,5 @@
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
 import { DESKTOP_APP_KEY, getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile, saveJsonToFileSync, todayDateString, toDateString } from './widgetUtils.js';
 export { DESKTOP_APP_KEY } from './widgetUtils.js';
@@ -11,6 +12,15 @@ const HOURS_PER_DAY = 24;
 
 function dayFilePath(dateString) {
     return GLib.build_filenamev([getGridgetsDataDir('screen-time'), `${dateString}.json`]);
+}
+
+/** A full-width array of numbers, so a truncated or hand-edited file cannot poison the
+ *  totals with undefined. */
+function normaliseHours(hours) {
+    const normalised = new Array(HOURS_PER_DAY).fill(0);
+    for (let hour = 0; hour < Math.min(hours.length, HOURS_PER_DAY); hour++)
+        normalised[hour] = Number.isFinite(hours[hour]) ? hours[hour] : 0;
+    return normalised;
 }
 
 /**
@@ -26,6 +36,7 @@ export const screenTimeEngine = {
     _tickId: 0,
     _focusSignalId: 0,
     _saveThrottleId: 0,
+    _saveCancellable: new Gio.Cancellable(),
     _listeners: new Set(),
 
     /** Registers a consumer; tracking starts with the first and stops with the last. */
@@ -71,7 +82,7 @@ export const screenTimeEngine = {
             if (data && typeof data.apps === 'object') {
                 for (const [key, hours] of Object.entries(data.apps)) {
                     if (Array.isArray(hours))
-                        appsMap.set(key, hours.slice(0, HOURS_PER_DAY));
+                        appsMap.set(key, normaliseHours(hours));
                 }
             }
             callback(appsMap);
@@ -114,8 +125,17 @@ export const screenTimeEngine = {
             if (this._refCount === 0 || this._currentDate !== loadDate)
                 return;
             for (const [key, hours] of loadedMap) {
-                if (!this._appHours.has(key))
-                    this._appHours.set(key, hours);
+                const accumulated = this._appHours.get(key);
+                // Added rather than skipped when the key is already here: a focus change
+                // inside this one-tick window creates the entry holding only the seconds
+                // since startup, and skipping it would drop the whole saved day for that
+                // app. The next save writes this back, so the loss would be permanent.
+                if (!accumulated) {
+                    this._appHours.set(key, normaliseHours(hours));
+                    continue;
+                }
+                for (let hour = 0; hour < HOURS_PER_DAY; hour++)
+                    accumulated[hour] += Number.isFinite(hours[hour]) ? hours[hour] : 0;
             }
         });
     },
@@ -190,12 +210,25 @@ export const screenTimeEngine = {
             const boundaryEpochSecond = epochSecond - secondsIntoHour + SECONDS_PER_HOUR;
             const cursorEnd = Math.min(nowMicro, boundaryEpochSecond * MICROSECONDS_PER_SECOND);
             const seconds = Math.floor((cursorEnd - cursor) / MICROSECONDS_PER_SECOND);
-            if (seconds > 0)
+            if (seconds > 0) {
                 this._addSeconds(this._focusedKey, segmentStart.get_hour(), seconds);
-
-            cursor = cursorEnd;
+                // Advances by the seconds just counted, leaving the remainder for the next
+                // flush. Advancing to now instead threw the remainder away, and a tick
+                // that lands a fraction early then floors to zero every time: a 990ms
+                // poll accounted for no time at all, because no single segment ever
+                // reached a whole second.
+                cursor += seconds * MICROSECONDS_PER_SECOND;
+            } else if (cursorEnd > cursor) {
+                // Only a fraction of a second is left, which happens at an hour boundary
+                // the cursor is already inside. Without this the loop would not advance.
+                cursor = cursorEnd;
+            } else {
+                break;
+            }
         }
-        this._focusStartMicro = nowMicro;
+        // The cursor can sit up to a second behind now after the loop above, and that
+        // remainder belongs to the app still focused, not to the next one.
+        this._focusStartMicro = Math.min(cursor, nowMicro);
     },
 
     _addSeconds(appKey, hour, seconds) {
@@ -204,7 +237,10 @@ export const screenTimeEngine = {
             hours = new Array(HOURS_PER_DAY).fill(0);
             this._appHours.set(appKey, hours);
         }
-        hours[hour] += seconds;
+        // Added onto whatever is there rather than assumed to be a number: a seeded array
+        // can be shorter than a day, and undefined + seconds is NaN, which then poisons
+        // every total the app appears in.
+        hours[hour] = (Number.isFinite(hours[hour]) ? hours[hour] : 0) + seconds;
     },
 
     _resolveFocusedKey() {
@@ -229,6 +265,13 @@ export const screenTimeEngine = {
             GLib.Source.remove(this._saveThrottleId);
             this._saveThrottleId = 0;
         }
+        if (isTeardown) {
+            // Cancelled before the sync write, not after: the write is a temp file and a
+            // rename, so one still in flight would land afterwards and put the older
+            // contents back over the newer ones, undoing what the sync path is for.
+            this._saveCancellable.cancel();
+            this._saveCancellable = new Gio.Cancellable();
+        }
         const filePath = dayFilePath(this._currentDate);
         const payload = {
             date: this._currentDate,
@@ -239,6 +282,6 @@ export const screenTimeEngine = {
         if (isTeardown)
             saveJsonToFileSync(filePath, payload);
         else
-            saveJsonToFile(filePath, payload);
+            saveJsonToFile(filePath, payload, this._saveCancellable);
     },
 };
