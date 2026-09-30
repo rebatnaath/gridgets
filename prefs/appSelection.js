@@ -50,7 +50,7 @@ function setAppSelectionSummary(summaryLabel, helperLabel, selectedApps, statusM
     );
 }
 
-export function createAppSelectionControls(grid, rowIdx, defaultApps = []) {
+export function createAppSelectionControls(grid, rowIdx, defaultApps = [], onSelectionChanged = null) {
     const selectedApps = new Map(
         normalizeAppLauncherApps(defaultApps).map(app => [app.id, app])
     );
@@ -197,6 +197,7 @@ export function createAppSelectionControls(grid, rowIdx, defaultApps = []) {
                     selectedApps.delete(app.id);
                 }
                 setAppSelectionSummary(summaryLabel, helperLabel, selectedApps);
+                if (onSelectionChanged) onSelectionChanged(selectedApps.size > 0);
             });
 
             rowBox.append(icon);
