@@ -224,6 +224,38 @@ export function openAddSlideshowDialog(parentWindow, settings) {
     dialog.present();
 }
 
+export function openAddTimeDialog(parentWindow, settings) {
+    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Time & Date Widget');
+
+    const picker = createGnomeClocksLocationPicker(null, 0, null, true);
+    const pickerBox = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 4,
+        hexpand: true,
+    });
+    const pickerRow = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 12,
+        hexpand: true,
+    });
+    pickerRow.append(new Gtk.Label({ label: 'City:', xalign: 0, valign: Gtk.Align.CENTER }));
+    pickerRow.append(picker.locationWidget);
+    pickerBox.append(pickerRow);
+    pickerBox.append(picker.supportingWidget);
+    grid.attach(pickerBox, 0, 0, 2, 1);
+    grid.attach(picker.actionWidget, 0, 1, 2, 1);
+
+    dialog.connect('response', (dialogWindow, responseId) => {
+        if (responseId === Gtk.ResponseType.OK) {
+            const location = picker.getSelectedLocation();
+            addTimeWidget(settings, 'digital', null, location);
+        }
+        dialogWindow.destroy();
+    });
+
+    dialog.present();
+}
+
 export function openAddWorldClockDialog(parentWindow, settings) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure World Clock Widget');
     let addButton = null;

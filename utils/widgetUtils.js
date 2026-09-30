@@ -38,6 +38,23 @@ export function resolveUse24h(widgetData) {
 }
 
 /**
+ * The timezone a time widget should read, from a city picked in GNOME Clocks.
+ * A widget with no city, or one whose timezone is no longer resolvable, reads local time.
+ */
+export function resolveTimeZone(widgetData) {
+    const timezoneId = widgetData.location?.timezone;
+    if (!timezoneId)
+        return GLib.TimeZone.new_local();
+    // GLib.TimeZone.new accepts any string and silently yields UTC, so a stale or
+    // misspelled identifier has to be rejected here or the clock quietly shifts.
+    const resolved = GLib.TimeZone.new_identifier(timezoneId);
+    if (resolved)
+        return resolved;
+    console.error(`Unknown time zone "${timezoneId}", falling back to local time.`);
+    return GLib.TimeZone.new_local();
+}
+
+/**
  * Calculates grid cell dimensions from canvas size and column count.
  * Returns { cellSize, cellTotalWidth, cellTotalHeight, gridRows }.
  */

@@ -291,6 +291,38 @@ export function buildTimeSettings(grid, rowIdx, widget, settings, saveHandlers) 
     rowIdx++;
 
     let primaryPicker, sec1Picker, sec2Picker;
+    if (widget.layout !== 'world') {
+        // Local time is the first entry, so a widget that never picked a city keeps
+        // reading local time and saving simply leaves location unset.
+        const locationPicker = createGnomeClocksLocationPicker(widget.location ?? null, 0, null, true);
+        const locationBox = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            spacing: 4,
+            hexpand: true,
+        });
+        const locationRow = new Gtk.Box({
+            orientation: Gtk.Orientation.HORIZONTAL,
+            spacing: 12,
+            hexpand: true,
+        });
+        locationRow.append(new Gtk.Label({ label: 'City:', xalign: 0, valign: Gtk.Align.CENTER }));
+        locationRow.append(locationPicker.locationWidget);
+        locationBox.append(locationRow);
+        locationBox.append(locationPicker.supportingWidget);
+        grid.attach(locationBox, 0, rowIdx, 2, 1);
+        rowIdx++;
+        grid.attach(locationPicker.actionWidget, 0, rowIdx, 2, 1);
+        rowIdx++;
+
+        saveHandlers.push((target) => {
+            const location = locationPicker.getSelectedLocation();
+            if (location)
+                target.location = location;
+            else
+                delete target.location;
+        });
+    }
+
     if (widget.layout === 'world' || widget.cities) {
         const createPicker = (label, row, initialIndex) => {
             // A widget saved before the GNOME Clocks integration has no cities,

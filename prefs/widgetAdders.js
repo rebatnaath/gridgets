@@ -7,10 +7,13 @@ import { DEFAULT_TOP_STORY_GENRE } from '../utils/widgetRegistry.js';
 
 export const DEFAULT_RSS_REFRESH_MINUTES = 15;
 
-export function addTimeWidget(settings, layout = 'digital', cities = null) {
+export function addTimeWidget(settings, layout = 'digital', cities = null, location = null) {
     const config = { id: nextWidgetId(settings, 'time'), type: 'time', layout };
     if (cities && Array.isArray(cities)) {
         config.cities = cities;
+    }
+    if (layout !== 'world' && location) {
+        config.location = location;
     }
     addWidget(settings, config);
 }

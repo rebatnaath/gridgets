@@ -2,7 +2,6 @@ import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
 
 import {
-    addTimeWidget,
     addMusicWidget,
     addPomodoroWidget,
     addPomodoroFocusWidget,
@@ -25,6 +24,7 @@ import {
     openAddImageDialog,
     openAddSlideshowDialog,
     openAddWorldClockDialog,
+    openAddTimeDialog,
     openAddWeatherDialog,
     openAddGithubDialog,
     openAddRssHeadlinesDialog,
@@ -216,7 +216,7 @@ export function buildStorePage(window, settings, extensionPath) {
     ]);
 
     addStoreCategory(page, 'Time and Calendar', [
-        buildStoreCard(extensionPath, STORE_WIDGETS.timeAndDate, () => addTimeWidget(settings, 'digital')),
+        buildStoreCard(extensionPath, STORE_WIDGETS.timeAndDate, () => openAddTimeDialog(window, settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.worldClock, () => openAddWorldClockDialog(window, settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.calendarWidget, () => addCalendarWidget(settings)),
         buildStoreCard(extensionPath, STORE_WIDGETS.calendarGrid, () => addCalendarGridWidget(settings)),

@@ -90,8 +90,11 @@ async function getGnomeClocksLocations() {
     });
 }
 
-export function createGnomeClocksLocationPicker(savedLocation = null, initialIndex = 0) {
+export function createGnomeClocksLocationPicker(savedLocation = null, initialIndex = 0, onLocationsChanged = null, allowLocal = false) {
     let locations = [];
+    // With a local entry in front, index 0 means local and the cities start one later.
+    const offset = allowLocal ? 1 : 0;
+    const localEntryLabel = 'Local Time';
     const dropdown = new Gtk.DropDown({
         valign: Gtk.Align.CENTER,
         halign: Gtk.Align.END,
@@ -137,23 +140,30 @@ export function createGnomeClocksLocationPicker(savedLocation = null, initialInd
     const reload = async () => {
         const result = await getGnomeClocksLocations();
         locations = result.locations;
-        dropdown.set_model(Gtk.StringList.new(locations.map(getLocationDisplayName)));
+        const labels = locations.map(getLocationDisplayName);
+        dropdown.set_model(Gtk.StringList.new(allowLocal ? [localEntryLabel, ...labels] : labels));
         dropdown.set_visible(true);
-        dropdown.set_sensitive(locations.length > 0);
+        dropdown.set_sensitive(allowLocal || locations.length > 0);
 
         const selectedLocation = savedLocation
             ? locations.find(location => normalizeName(location.name) === normalizeName(savedLocation.name)
                 && (!savedLocation.timezone || location.timezone === savedLocation.timezone))
             : null;
         if (selectedLocation) {
-            dropdown.set_selected(locations.indexOf(selectedLocation));
+            dropdown.set_selected(offset + locations.indexOf(selectedLocation));
             statusLabel.set_text('');
+        } else if (allowLocal) {
+            // Local is the fallback whenever nothing is saved or the saved city is gone,
+            // so the widget never opens on a city the user did not choose.
+            dropdown.set_selected(0);
+            statusLabel.set_text(result.message || (savedLocation?.name ? `${savedLocation.name} is no longer saved in GNOME Clocks.` : ''));
         } else {
             dropdown.set_selected(locations.length > 0 ? Math.min(initialIndex, locations.length - 1) : -1);
             statusLabel.set_text(result.message || (savedLocation?.name ? `${savedLocation.name} is no longer saved in GNOME Clocks.` : ''));
         }
 
         statusLabel.set_visible(statusLabel.get_text().length > 0);
+        if (onLocationsChanged) onLocationsChanged(locations.length > 0);
     };
 
     openClocksButton.connect('clicked', async () => {
@@ -180,9 +190,19 @@ export function createGnomeClocksLocationPicker(savedLocation = null, initialInd
             return locations.length > 0;
         },
         reload,
+        // Null for the local entry, so a caller storing a single city can treat local and
+        // "nothing saved in GNOME Clocks" the same way.
         getSelectedLocation() {
             const selectedIndex = dropdown.get_selected();
-            return selectedIndex >= 0 ? locations[selectedIndex] : null;
+            if (selectedIndex < 0 || selectedIndex < offset)
+                return null;
+            return locations[selectedIndex - offset] || null;
+        },
+        // Fires on the picked city changing, not only when the locations load, so a
+        // caller gating a button on a complete selection stays in step with the dropdown.
+        connectSelectionChanged(handler) {
+            dropdown.connect('notify::selected', () => handler());
+            reload();
         },
     };
 }
