@@ -4,7 +4,7 @@ import Adw from 'gi://Adw';
 import GLib from 'gi://GLib';
 import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
-import { DESKTOP_APP_KEY, getGridgetsDataDir, todayDateString } from '../utils/widgetUtils.js';
+import { DESKTOP_APP_KEY, getGridgetsDataDir, todayDateString, MOOD_LEVELS } from '../utils/widgetUtils.js';
 import { listMoodDatesSync, getMood, loadDatesSync } from '../utils/moodStore.js';
 import { clearBox } from './displayUtils.js';
 
@@ -42,14 +42,6 @@ const RANGE_PRESETS = [
     { label: 'Last 14 Days', days: 14 },
     { label: 'Last 30 Days', days: 30 },
     { label: 'All Time', days: 0 },
-];
-
-const MOOD_LEVELS = [
-    { level: 1, label: 'Sad', icon: 'face-sad-symbolic', color: '#F43F5E' },
-    { level: 2, label: 'Worried', icon: 'face-worried-symbolic', color: '#F97316' },
-    { level: 3, label: 'Neutral', icon: 'face-plain-symbolic', color: '#EAB308' },
-    { level: 4, label: 'Happy', icon: 'face-smile-symbolic', color: '#22C55E' },
-    { level: 5, label: 'Ecstatic', icon: 'face-laugh-symbolic', color: '#3B82F6' },
 ];
 
 function formatCompactDuration(totalSeconds) {
@@ -152,12 +144,12 @@ function loadDaySummary(dateString) {
     if (cached && cached.mtimeSeconds === mtimeSeconds)
         return cached.summary;
 
-    const summary = parseDaySummary(file);
+    const summary = parseDaySummary(file, dateString);
     daySummaryCache.set(dateString, { mtimeSeconds, summary });
     return summary;
 }
 
-function parseDaySummary(file) {
+function parseDaySummary(file, dateString) {
     try {
         const [ok, bytes] = file.load_contents(null);
         if (!ok) return null;
@@ -176,7 +168,11 @@ function parseDaySummary(file) {
         }
         appTotals.sort((a, b) => b.seconds - a.seconds);
         return { date: dateString, totalSeconds, apps: appTotals };
-    } catch (_e) {
+    } catch (error) {
+        // A day file that will not read is expected to be skippable, but an
+        // exception thrown by this function is a bug, and returning null for
+        // both makes the page read as "no screen time" rather than "broken".
+        console.error(`Gridgets: could not parse screen-time day ${dateString}:`, error.message);
         return null;
     }
 }
@@ -527,12 +523,13 @@ export function buildInsightsPage(settings) {
             const summary = loadDaySummary(dateStr);
             if (summary) {
                 grandTotal += summary.totalSeconds;
-                for (const app of summary.apps)
+                const trackedApps = summary.apps.filter(app => app.key !== DESKTOP_APP_KEY);
+                for (const app of trackedApps)
                     appAgg[app.key] = (appAgg[app.key] || 0) + app.seconds;
                 days.push({
                     date: summary.date,
                     totalSeconds: summary.totalSeconds,
-                    apps: summary.apps.map(app => ({
+                    apps: trackedApps.map(app => ({
                         id: app.key,
                         name: resolveAppName(app.key),
                         seconds: app.seconds,
@@ -548,9 +545,12 @@ export function buildInsightsPage(settings) {
             exported: GLib.DateTime.new_now_local().format('%Y-%m-%dT%H:%M:%S'),
             range: RANGE_PRESETS[selectedRange].label,
             summary: {
-                totalDays: dates.length,
+                // From days, not dates: a day file that would not parse is not in the
+                // export, so counting it here would put a total in the summary that the
+                // days array does not support and divide by a number nothing else used.
+                totalDays: days.length,
                 totalSeconds: grandTotal,
-                dailyAverageSeconds: dates.length > 0 ? Math.round(grandTotal / dates.length) : 0,
+                dailyAverageSeconds: days.length > 0 ? Math.round(grandTotal / days.length) : 0,
                 topApps,
             },
             days,
@@ -574,16 +574,20 @@ export function buildInsightsPage(settings) {
         let totalLevel = 0;
         for (const e of entries) totalLevel += e.level;
         const avg = entries.length > 0 ? totalLevel / entries.length : 0;
-        const avgMood = MOOD_LEVELS.reduce((prev, curr) =>
-            Math.abs(curr.level - avg) < Math.abs(prev.level - avg) ? curr : prev
-        );
+        // Null rather than the nearest level: with no entries the average is 0, which
+        // sits below every level, so the reduce would always resolve to level 1 and
+        // report an average mood of Sad for a range that was never logged.
+        const avgMood = entries.length > 0
+            ? MOOD_LEVELS.reduce((prev, curr) =>
+                Math.abs(curr.level - avg) < Math.abs(prev.level - avg) ? curr : prev)
+            : null;
         return {
             exported: GLib.DateTime.new_now_local().format('%Y-%m-%dT%H:%M:%S'),
             range: RANGE_PRESETS[selectedRange].label,
             summary: {
                 totalEntries: entries.length,
                 averageLevel: Number(avg.toFixed(2)),
-                averageLabel: avgMood.label,
+                averageLabel: avgMood ? avgMood.label : null,
             },
             entries,
         };

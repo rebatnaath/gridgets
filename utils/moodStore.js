@@ -84,7 +84,11 @@ export function loadDatesSync(dateKeys) {
             } else {
                 monthCache.set(monthKey, {});
             }
-        } catch (_e) {
+        } catch (error) {
+            // Logged because the async path reports the same failure through
+            // loadJsonFromFileAsync, and a month that silently caches empty is a month of
+            // dots missing from the insights page with nothing to explain it.
+            console.error(`Error reading mood data in ${filePath}:`, error.message);
             monthCache.set(monthKey, {});
         }
     }
