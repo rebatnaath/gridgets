@@ -142,16 +142,32 @@ function createWidgetRow(window, settings, widget) {
     });
 
     deleteButton.connect('clicked', () => {
-        const widgets = getWidgets(settings);
-        const remainingWidgets = widgets.filter(existingWidget => existingWidget.id !== widget.id);
+        // Removing the widget also deletes its saved data, and there is no undo, so it is
+        // confirmed the same way the insights page confirms its own destructive clear.
+        const dialog = new Adw.AlertDialog({
+            heading: `Remove ${widget.type} widget?`,
+            body: 'This cannot be undone.',
+        });
+        dialog.add_response('cancel', 'Cancel');
+        dialog.add_response('remove', 'Remove');
+        dialog.set_response_appearance('remove', Adw.ResponseAppearance.DESTRUCTIVE);
+        dialog.set_default_response('cancel');
+        dialog.set_close_response('cancel');
+        dialog.connect('response', (_dlg, responseId) => {
+            if (responseId !== 'remove')
+                return;
+            const widgets = getWidgets(settings);
+            const remainingWidgets = widgets.filter(existingWidget => existingWidget.id !== widget.id);
 
-        const cacheFolder = getWidgetCacheFolder(widget.type);
-        if (cacheFolder) {
-            deleteCacheFile(cacheFolder, widget.id);
-            deleteLastGoodCache(widget.type, widget.id);
-        }
+            const cacheFolder = getWidgetCacheFolder(widget.type);
+            if (cacheFolder) {
+                deleteCacheFile(cacheFolder, widget.id);
+                deleteLastGoodCache(widget.type, widget.id);
+            }
 
-        saveWidgets(settings, remainingWidgets);
+            saveWidgets(settings, remainingWidgets);
+        });
+        dialog.present(window);
     });
 
     expanderRow.add_suffix(deleteButton);
