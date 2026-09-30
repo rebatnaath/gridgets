@@ -2,10 +2,10 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { createAnimatedImageNode } from './gif.js';
-import { listImagesInFolder, attachCaptionOverlay, imageDateCaption, backgroundImageStyle } from './mediaCommon.js';
+import { listImagesInFolder, attachCaptionOverlay, resolveCaptionText, backgroundImageStyle } from './mediaCommon.js';
 import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetCornerRadius, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
 import { WidgetActor, connectTimerCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
 
 const DEFAULT_SLIDE_INTERVAL_SECONDS = 10;
@@ -16,8 +16,8 @@ const CROSSFADE_DURATION_MS = 800;
 const CLUTTER_OPACITY_OPAQUE = 255;
 const CLUTTER_OPACITY_TRANSPARENT = 0;
 
-// A single space, not a word: the first picture may have no readable date, and the
-// overlay still has to exist so the next slide's date has somewhere to go.
+// A single space, not a word: the first picture may have no caption, and the overlay
+// still has to exist so the next slide's caption has somewhere to go.
 const PLACEHOLDER_CAPTION = ' ';
 
 /** A full-bleed rounded layer, whichever way the picture has to be drawn. */
@@ -87,7 +87,9 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
         placeholderLabel.style = `${fontCss}color: ${textColor}; font-size: ${fontSize}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; opacity: ${TEXT_OPACITY.secondary};`;
     };
-    updatePlaceholderScale(1);
+    // The scaler's first pass is deferred to an idle, so this would otherwise paint one
+    // frame unscaled.
+    updatePlaceholderScale(clampWidgetScale(Math.min(width / REFERENCE_WIDTH_PX, height / REFERENCE_HEIGHT_PX)));
     container.add_child(placeholderLabel);
     attachResponsiveScaler(container, REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX, (scale) => {
         updatePlaceholderScale(scale);
@@ -112,12 +114,11 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
         container.add_child(imageContainer);
 
         const shouldAnimateGif = widgetData.animateGif !== undefined ? widgetData.animateGif : (widgetData.globalAnimateGif !== false);
-        const usesDateCaption = widgetData.useDateCaption === true;
-        const firstDate = usesDateCaption ? imageDateCaption(images[0]) : '';
-        const captionForFirstSlide = usesDateCaption && firstDate === ''
-            ? PLACEHOLDER_CAPTION
-            : (firstDate || widgetData.caption || '');
-        const captionHandle = attachCaptionOverlay(container, widgetData, width, height, images[0], captionForFirstSlide);
+        // Through the shared path, so the first slide and the rest agree.
+        const firstSlideCaption = resolveCaptionText(widgetData, images[0]);
+        const captionHandle = attachCaptionOverlay(
+            container, widgetData, width, height, images[0],
+            firstSlideCaption || PLACEHOLDER_CAPTION);
 
         let currentIndex = 0;
         let currentLayer = watchActorLifecycle(createImageLayer(images[0], borderRadius, width, height, shouldAnimateGif));
@@ -129,10 +130,9 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
             currentIndex = (currentIndex + 1) % images.length;
             const nextImage = images[currentIndex];
 
-            // A picture with no readable date leaves the text empty rather than keeping
-            // the previous slide's, which would be a lie about the picture on screen.
-            if (usesDateCaption)
-                captionHandle?.setCaption(imageDateCaption(nextImage));
+            // Empty rather than the previous slide's, which would misdescribe the
+            // picture on screen.
+            captionHandle?.setCaption(resolveCaptionText(widgetData, nextImage));
 
             const incomingLayer = watchActorLifecycle(createImageLayer(nextImage, borderRadius, width, height, shouldAnimateGif));
             incomingLayer.set_opacity(CLUTTER_OPACITY_TRANSPARENT);

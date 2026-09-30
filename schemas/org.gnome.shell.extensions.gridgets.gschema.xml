@@ -96,6 +96,11 @@
       <summary>Caption Scrim</summary>
       <description>If true, fade a dark gradient behind image and slideshow captions so they stay readable over a light picture.</description>
     </key>
+    <key name="global-caption-color" type="s">
+      <default>'#ffffff'</default>
+      <summary>Global Caption Text Color</summary>
+      <description>Caption text color for image and slideshow widgets that follow the global setting.</description>
+    </key>
     <key name="global-monitor" type="s">
       <default>'primary'</default>
       <summary>Global Target Monitor</summary>

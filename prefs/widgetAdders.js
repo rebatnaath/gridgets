@@ -139,7 +139,7 @@ export function addAppLauncherWidget(settings, apps) {
     });
 }
 
-export function addSlideshowWidget(settings, folderPath, intervalSeconds = 10, width = 4, height = 4, caption = 'My Slideshow', showCaption = true, useDateCaption = false) {
+export function addSlideshowWidget(settings, folderPath, intervalSeconds = 10, width = 4, height = 4, caption = 'My Slideshow', showCaption = true, captionSource = 'custom') {
     const finalCaption = caption && caption.trim() !== '' ? caption.trim() : 'My Slideshow';
     const widgetConfig = {
         id: nextWidgetId(settings, 'slideshow'),
@@ -148,14 +148,14 @@ export function addSlideshowWidget(settings, folderPath, intervalSeconds = 10, w
         intervalSeconds,
         caption: finalCaption,
         showCaption: showCaption !== false,
-        captionFollowGlobal: false,
-        useDateCaption: useDateCaption === true,
+        captionFollowGlobal: true,
+        captionSource,
     };
 
     addWidget(settings, widgetConfig, width, height);
 }
 
-export function addImageWidget(settings, imagePath, caption = 'My Image', showCaption = true, width = 2, height = 2, useDateCaption = false) {
+export function addImageWidget(settings, imagePath, caption = 'My Image', showCaption = true, width = 2, height = 2, captionSource = 'custom') {
     const finalCaption = caption && caption.trim() !== '' ? caption.trim() : 'My Image';
     const widgetConfig = {
         id: nextWidgetId(settings, 'image'),
@@ -163,8 +163,8 @@ export function addImageWidget(settings, imagePath, caption = 'My Image', showCa
         imagePath,
         caption: finalCaption,
         showCaption: showCaption !== false,
-        captionFollowGlobal: false,
-        useDateCaption: useDateCaption === true,
+        captionFollowGlobal: true,
+        captionSource,
     };
 
     addWidget(settings, widgetConfig, width, height);

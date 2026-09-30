@@ -7,7 +7,8 @@ import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { toggleWidgetResizeHandle } from './widgetEditUtils.js';
 import { onWidgetResized, onWidgetDeleted } from './dragDrop.js';
-import { COLUMNS_COUNT, getWidgets, supportsSizePresets, SIZE_PRESET_TIERS, DEFAULT_TOP_STORY_GENRE, TOP_STORY_GENRE_NAMES, TOP_STORY_GENRE_LABELS } from '../utils/widgetUtils.js';
+import { COLUMNS_COUNT, getWidgets } from '../utils/widgetUtils.js';
+import { DEFAULT_TOP_STORY_GENRE, SIZE_PRESET_TIERS, TOP_STORY_GENRE_LABELS, TOP_STORY_GENRE_NAMES, supportsSizePresets } from '../utils/widgetRegistry.js';
 
 export function createPopupMenuAt(grid, event) {
     if (grid._contextMenuCloseIdleId) {
@@ -130,6 +131,14 @@ export function openWidgetContextMenu(grid, event, node, widgetData) {
             );
         });
         menu.addMenuItem(resizeItem);
+    }
+
+    if (widgetData.type === 'image' || widgetData.type === 'slideshow') {
+        const isSlideshow = widgetData.type === 'slideshow';
+        const sourceItem = new PopupMenu.PopupMenuItem(
+            isSlideshow ? 'Change Folder...' : 'Change Image...');
+        sourceItem.connect('activate', () => grid.pickWidgetSource(widgetData.id));
+        menu.addMenuItem(sourceItem);
     }
 
     const configItem = new PopupMenu.PopupMenuItem('Configure Widget...');

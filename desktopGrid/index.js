@@ -16,8 +16,9 @@ import {
     readGlobalSettings,
     calculateGridDimensions,
     parseCssColor,
-    resolveWidgetSizePreset,
 } from '../utils/widgetUtils.js';
+import { resolveWidgetSizePreset } from '../utils/widgetRegistry.js';
+import { openPortalFileChooser } from '../utils/fileChooser.js';
 import {
     DEFAULT_STAGE_WIDTH,
     DEFAULT_STAGE_HEIGHT,
@@ -156,11 +157,14 @@ export const DesktopGrid = GObject.registerClass(
             connectSetting('global-highlight-color', () => this._rebuildGrid());
             connectSetting('global-font-family', () => this._rebuildGrid());
             connectSetting('global-use-custom-font', () => this._rebuildGrid());
-            connectSetting('accent-color-override', () => this._rebuildGrid());
+            // accent-color-override is deliberately absent: the extension watches that one
+            // and rebuilds every grid, so reacting here as well would rebuild the same
+            // widgets twice for a single change.
             connectSetting('image-animate-gif', () => this._rebuildGrid());
             connectSetting('image-show-caption', () => this._rebuildGrid());
             connectSetting('slideshow-show-caption', () => this._rebuildGrid());
             connectSetting('image-caption-scrim', () => this._rebuildGrid());
+            connectSetting('global-caption-color', () => this._rebuildGrid());
             connectSetting('weather-use-fahrenheit', () => this._rebuildGrid());
             connectSetting('time-format-24h', () => this._rebuildGrid());
             connectSetting('weather-dynamic-color', () => this._rebuildGrid());
@@ -255,6 +259,7 @@ export const DesktopGrid = GObject.registerClass(
                 globalImageShowCaption: globalSettings.globalImageShowCaption,
                 globalSlideshowShowCaption: globalSettings.globalSlideshowShowCaption,
                 globalCaptionScrim: globalSettings.globalCaptionScrim,
+                globalCaptionColor: globalSettings.globalCaptionColor,
                 globalUseFahrenheit: globalSettings.globalUseFahrenheit,
                 globalWeatherDynamicColor: globalSettings.globalWeatherDynamicColor,
                 globalWeatherDynamicImage: globalSettings.globalWeatherDynamicImage,
@@ -365,10 +370,9 @@ export const DesktopGrid = GObject.registerClass(
         }
 
         /**
-         * Applies an S/M/L preset: repositions if the new footprint collides,
-         * then destroys and recreates the node so fonts/layout recompute.
+         * Switches which publisher sections a top-stories widget merges, and rebuilds
+         * only that node rather than the whole grid.
          */
-        /** Switches which publisher sections a top-stories widget merges. */
         applyWidgetGenre(widgetId, genre) {
             const { widgets } = this._resolveActiveWidgets();
             const target = widgets.find(widget => widget.id === widgetId);
@@ -392,6 +396,44 @@ export const DesktopGrid = GObject.registerClass(
             this._createNodeFactory(this._layout, globalSettings)(target);
         }
 
+        /**
+         * Picks a new file for an image widget or folder for a slideshow one. The field
+         * written is the one the prefs dialog edits, so individual settings show it too.
+         */
+        pickWidgetSource(widgetId) {
+            const { widgets } = this._resolveActiveWidgets();
+            const target = widgets.find(widget => widget.id === widgetId);
+            if (!target)
+                return;
+            const isSlideshow = target.type === 'slideshow';
+            openPortalFileChooser({
+                title: isSlideshow ? 'Select Image Folder' : 'Select Image',
+                chooseFolder: isSlideshow,
+            }, path => {
+                // Null on cancel or a missing portal backend: leave the widget alone.
+                if (!path)
+                    return;
+                // Re-resolved: the chooser is open for as long as the user takes, and the
+                // widget may have been deleted meanwhile.
+                const currentWidgets = this._resolveActiveWidgets().widgets;
+                const current = currentWidgets.find(widget => widget.id === widgetId);
+                if (!current)
+                    return;
+                if (isSlideshow)
+                    current.slideshowFolder = path;
+                else
+                    current.imagePath = path;
+                this._saveLocalWidgets(currentWidgets);
+                // The picked file may be a different aspect or size, so the node is
+                // rebuilt rather than restyled in place.
+                this._rebuildGrid();
+            });
+        }
+
+        /**
+         * Applies an S/M/L preset: repositions if the new footprint collides,
+         * then destroys and recreates the node so fonts/layout recompute.
+         */
         applySizePreset(widgetId, sizeIndex) {
             const { widgets } = this._resolveActiveWidgets();
             const target = widgets.find(widget => widget.id === widgetId);

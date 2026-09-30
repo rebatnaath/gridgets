@@ -20,11 +20,20 @@ const MAX_CAPTION_SCALE = 3.5;
 
 /** Shared by the static widget and the animated one's fallback, so a change to one cannot miss the other. */
 export function backgroundImageStyle(imagePath, baseStyle) {
-    return `background-image: url("file://${imagePath}"); background-size: cover; ${baseStyle}`;
+    // filename_to_uri percent-encodes for the url("...") token: a path holding a quote
+    // would otherwise close it early and the image would not paint.
+    const uri = GLib.filename_to_uri(imagePath, null);
+    return `background-image: url("${uri}"); background-size: cover; ${baseStyle}`;
 }
 
 const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Mirrors CAPTION_SOURCES in prefs/captionControls.js, which the shell cannot import.
+const CAPTION_SOURCE_FILE_NAME = 'file-name';
+const CAPTION_SOURCE_FOLDER_NAME = 'folder-name';
+const CAPTION_SOURCE_DATE = 'date';
+const CAPTION_SOURCE_CUSTOM = 'custom';
 
 /**
  * The picture's own date, as a caption.
@@ -120,20 +129,46 @@ function isCaptionVisible(widgetData) {
     return globalVisible;
 }
 
+/** The picture's own name, minus the extension. */
+function imageFileNameCaption(imagePath) {
+    if (!imagePath)
+        return '';
+    const name = imagePath.split('/').pop() || '';
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? name.slice(0, dot) : name;
+}
+
+function imageFolderNameCaption(imagePath) {
+    if (!imagePath)
+        return '';
+    const parts = imagePath.split('/');
+    parts.pop();
+    return parts[parts.length - 1] || '';
+}
+
 /**
  * The caption to show, or '' for none.
  *
- * `override` exists for a slideshow whose first picture has no readable date but whose
- * later ones do: without it no overlay is built, and those later dates have nowhere to go.
+ * `override` exists for a slideshow whose first picture has no caption but whose later
+ * ones do: without it no overlay is built, and those later captions have nowhere to go.
  */
-function resolveCaptionText(widgetData, imagePath, override) {
+export function resolveCaptionText(widgetData, imagePath, override) {
     // Visibility first, so an override cannot bring back a caption that is switched off.
     if (!isCaptionVisible(widgetData))
         return '';
     if (override !== undefined && override !== null)
         return override;
-    if (widgetData.useDateCaption === true)
+
+    // A widget saved before captions had a source means the same thing here as it does in
+    // the prefs: useDateCaption on is a date caption, anything else is custom text.
+    const source = widgetData.captionSource
+        || (widgetData.useDateCaption === true ? CAPTION_SOURCE_DATE : CAPTION_SOURCE_CUSTOM);
+    if (source === CAPTION_SOURCE_DATE)
         return imageDateCaption(imagePath);
+    if (source === CAPTION_SOURCE_FILE_NAME)
+        return imageFileNameCaption(imagePath);
+    if (source === CAPTION_SOURCE_FOLDER_NAME)
+        return imageFolderNameCaption(imagePath);
     return widgetData.caption || '';
 }
 
@@ -143,13 +178,11 @@ export function attachCaptionOverlay(widgetNode, widgetData, width, height, imag
     if (caption.length === 0) return null;
 
     const overlay = createCaptionOverlay(widgetData, caption);
-    // Derived from the widget's width rather than stored, so it survives a reload. A
-    // reference of the size the widget was created at is 1 at rest, which dropped a
-    // caption back to its base size on every load.
+    // Derived from the widget's width rather than stored, so it survives a reload.
     const CAPTION_REFERENCE_WIDTH_PX = 320;
     const updateCaptionScale = () => {
         if (isActorDestroyed(overlay)) return;
-        // Held still during a resize drag, which calls set_size on every motion event.
+        // Held still during a resize drag, per resizeSettle.js.
         if (widgetNode.isResizing) return;
         // Width only: the height would tie the font to the widget's aspect ratio.
         const currentWidth = widgetNode.width || width;

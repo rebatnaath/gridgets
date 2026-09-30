@@ -17,25 +17,20 @@ const MAX_CONSECUTIVE_FRAME_FAILURES = 10;
 /**
  * A drawing area that paints the current frame, clipped to the widget's corner radius.
  *
- * This is the only place in the shell process that needs Gdk, and it is here rather than
- * in shell/widgetUIUtils.js on purpose. Everything else that shows a picture hands a file
- * to a stylesheet (`background-image`), which needs nothing from Gdk; an animation cannot,
- * because a file per frame at GIF_FRAME_INTERVAL_MS is not viable. Gdk is still on the
- * "do not import in GNOME Shell" list, so this is a deliberate exception for animation
- * only - see .ideas-and-sketchpad/skills/gnome-guidelines/review-guidelines.md.
+ * The only place in the shell process that needs Gdk. Everything else that shows a picture
+ * hands a file to a stylesheet, which needs nothing from Gdk; an animation cannot, because
+ * a file per frame at GIF_FRAME_INTERVAL_MS is not viable. Gdk is on the "do not import in
+ * GNOME Shell" list, so this is a deliberate exception for animation only - see
+ * .ideas-and-sketchpad/skills/gnome-guidelines/review-guidelines.md.
  *
- * The rounding is a cairo clip rather than a mask baked into the pixels. The mask had to
- * know the display size to scale the radius, but the first frame is painted before Clutter
- * has allocated the widget, so that size was 0, the radius came out 0 and the picture was
- * left square; and it mutated the iterator's own pixbuf in place, so every later frame was
- * masked again on top of the last. Clipping here is computed from the size actually being
- * painted, and the frames are only ever read.
+ * A cairo clip rather than a mask in the pixels: a mask has to know the display size to
+ * scale the radius, and the first frame is painted before Clutter has allocated the widget.
  */
 function createFramePainter(cornerRadius) {
     const area = new St.DrawingArea({
-        // BinLayout ignores FILL alignment on a child that does not expand, which left
-        // the frame at its last explicit set_size while the box grew around it, so the
-        // picture lagged the pointer during a drag and jumped on release.
+        // Both expands are required: BinLayout ignores FILL alignment on a child that does
+        // not expand, which left the frame at its last explicit set_size while the box grew
+        // around it.
         x_expand: true,
         y_expand: true,
         x_align: Clutter.ActorAlign.FILL,
@@ -78,9 +73,8 @@ function createFramePainter(cornerRadius) {
 }
 
 export function createAnimatedImageNode(widgetData, width, height, xPosition, yPosition, animateGif = true) {
-    // resolveWidgetCornerRadius, not `appliedBorderRadius || 0`: an absent override means
-    // the 15px default, and || 0 quietly squared off every animated image. This radius is
-    // what rounds the drawn frames, since a drawing area has no stylesheet of its own.
+    // The drawn frames are rounded by this radius, since a drawing area has no stylesheet
+    // of its own.
     const borderRadius = resolveWidgetCornerRadius(widgetData);
     const baseStyle = buildBaseWidgetStyle(widgetData);
 
@@ -198,10 +192,8 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
         }
 
         // A resize drag calls set_size on every motion event, and repainting here would
-        // re-crop and re-rasterise a frame through cairo each time. That is the one
-        // resize path that cannot be cheap, and it is why the animated widget juddered
-        // while a static one did not: a growing widget is more pixels to redraw. Held
-        // still during the drag, then applied once to the settled size.
+        // re-crop and re-rasterise a frame through cairo each time, on a growing number of
+        // pixels. Held still during the drag, then applied once to the settled size.
         const repaintForCurrentSize = () => {
             if (isActorDestroyed(widgetNode))
                 return;

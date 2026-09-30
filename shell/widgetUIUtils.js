@@ -12,6 +12,7 @@ import {
     buildBaseWidgetStyle,
     resolveWidgetBackgroundColor,
     resolveWidgetForegroundColor,
+    resolveCaptionForegroundColor,
     resolveWidgetCornerRadius,
     resolveExplicitFontFamily,
     parseCssColor,
@@ -102,7 +103,6 @@ export function createWidgetContainer(config, width, height, xPosition, yPositio
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
 
     const container = new WidgetActor({
-        style_class: 'gridgets-widget',
         style: `${fontCss}background-color: ${backgroundColor}; color: ${textColor}; ${baseStyle}`,
         x: xPosition,
         y: yPosition,
@@ -115,15 +115,20 @@ export function createWidgetContainer(config, width, height, xPosition, yPositio
     return watchActorLifecycle(container);
 }
 
-export function connectTimerCleanup(container, state) {
+/**
+ * Removes a widget's GLib sources on destroy.
+ *
+ * `fields` names the state properties holding source ids. It takes them as arguments
+ * because a widget with a second timer otherwise has to register a second cleanup, which
+ * is the same three lines again in every file that needs one.
+ */
+export function connectTimerCleanup(container, state, fields = ['timerId', 'deferredUpdateId']) {
     registerWidgetCleanup(container, () => {
-        if (state.timerId) {
-            GLib.Source.remove(state.timerId);
-            state.timerId = null;
-        }
-        if (state.deferredUpdateId) {
-            GLib.Source.remove(state.deferredUpdateId);
-            state.deferredUpdateId = null;
+        for (const field of fields) {
+            if (!state[field])
+                continue;
+            GLib.Source.remove(state[field]);
+            state[field] = null;
         }
     });
 }
@@ -185,7 +190,7 @@ export function startMinuteAlignedTimer(state, widgetNode, updateCallback) {
 export function createCaptionOverlay(config, caption) {
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
-    const textColor = resolveWidgetForegroundColor(config);
+    const textColor = resolveCaptionForegroundColor(config);
 
     // Not a layout, which would give the scrim its own row, and not an St.Bin, which
     // holds one child and would drop the scrim when the label is added.
@@ -382,9 +387,8 @@ export function traceRoundedRect(ctx, x, y, width, height, radius) {
 
 export function attachResponsiveScaler(widgetNode, refWidth, refHeight, updateCallback) {
     const update = () => {
-        // A resize drag calls set_size on every motion event, and restyling here
-        // repaints dozens of times a second, which reads as judder under the pointer.
-        // Held still until the drag ends; the final size arrives as another notify.
+        // Per resizeSettle.js: held still until the drag ends, and the final size
+        // arrives as another notify.
         if (widgetNode.isResizing)
             return;
         // During teardown or before the first allocation Clutter can report a

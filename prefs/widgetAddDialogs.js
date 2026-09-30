@@ -56,7 +56,13 @@ export function openAddAppLauncherDialog(parentWindow, settings) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure App Launcher Widget');
     dialog.set_default_size(560, 560);
 
-    const appSelection = createAppSelectionControls(grid, 0);
+    let addButton = null;
+    const appSelection = createAppSelectionControls(grid, 0, [], (hasSelection) => {
+        if (addButton) addButton.set_sensitive(hasSelection);
+    });
+
+    addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
+    addButton.set_sensitive(appSelection.getSelectedApps().length > 0);
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
@@ -73,6 +79,7 @@ export function openAddAppLauncherDialog(parentWindow, settings) {
 
 export function openAddImageDialog(parentWindow, settings) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Image Widget');
+    let addButton = null;
 
     const imagePathLabel = new Gtk.Label({ label: 'Image File:', xalign: 0 });
     const imagePathEntry = new Gtk.Entry({ placeholder_text: 'Select image file...', hexpand: true });
@@ -86,6 +93,14 @@ export function openAddImageDialog(parentWindow, settings) {
         });
     });
 
+    // The entry is editable, so the button follows the text and not the browse click:
+    // clearing it by hand has to disable Add again.
+    const syncAddButton = () => {
+        if (addButton)
+            addButton.set_sensitive(imagePathEntry.get_text().trim() !== '');
+    };
+    imagePathEntry.connect('changed', syncAddButton);
+
     const imagePathBox = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 6, hexpand: true });
     imagePathBox.append(imagePathEntry);
     imagePathBox.append(imageBrowseBtn);
@@ -93,14 +108,17 @@ export function openAddImageDialog(parentWindow, settings) {
     grid.attach(imagePathLabel, 0, 0, 1, 1);
     grid.attach(imagePathBox, 1, 0, 1, 1);
 
-    const { captionEntry, showCaptionSwitch, useDateCaptionSwitch } = buildCaptionRows(grid, 1, 'My Image');
+    const { captionEntry, showCaptionSwitch, captionSource } = buildCaptionRows(grid, 1, 'My Image', 'image');
+
+    addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
+    syncAddButton();
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
             const imagePath = imagePathEntry.get_text().trim();
             if (imagePath) {
                 const { width, height } = parseStoreGridSize(STORE_WIDGETS.imageGif.gridSize);
-                addImageWidget(settings, imagePath, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), width, height, useDateCaptionSwitch.get_active());
+                addImageWidget(settings, imagePath, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), width, height, captionSource.getSelected());
             }
         }
         dialogWindow.destroy();
@@ -153,6 +171,7 @@ export function openAddTopStoriesDialog(parentWindow, settings) {
 
 export function openAddSlideshowDialog(parentWindow, settings) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Slideshow Widget');
+    let addButton = null;
 
     const folderLabel = new Gtk.Label({ label: 'Image Folder:', xalign: 0 });
     const folderEntry = new Gtk.Entry({ placeholder_text: 'Select folder...', hexpand: true });
@@ -165,6 +184,13 @@ export function openAddSlideshowDialog(parentWindow, settings) {
             }
         });
     });
+
+    // Follows the text, not the browse click: the entry is editable.
+    const syncAddButton = () => {
+        if (addButton)
+            addButton.set_sensitive(folderEntry.get_text().trim() !== '');
+    };
+    folderEntry.connect('changed', syncAddButton);
 
     const folderBox = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 6, hexpand: true });
     folderBox.append(folderEntry);
@@ -179,14 +205,17 @@ export function openAddSlideshowDialog(parentWindow, settings) {
     grid.attach(intervalLabel, 0, 1, 1, 1);
     grid.attach(intervalSpin, 1, 1, 1, 1);
 
-    const { captionEntry, showCaptionSwitch, useDateCaptionSwitch } = buildCaptionRows(grid, 2, 'My Slideshow');
+    const { captionEntry, showCaptionSwitch, captionSource } = buildCaptionRows(grid, 2, 'My Slideshow', 'slideshow');
+
+    addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
+    syncAddButton();
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
             const folderPath = folderEntry.get_text().trim();
             if (folderPath) {
                 const { width, height } = parseStoreGridSize(STORE_WIDGETS.imageSlideshow.gridSize);
-                addSlideshowWidget(settings, folderPath, intervalSpin.get_value_as_int(), width, height, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), useDateCaptionSwitch.get_active());
+                addSlideshowWidget(settings, folderPath, intervalSpin.get_value_as_int(), width, height, captionEntry.get_text().trim(), showCaptionSwitch.get_active(), captionSource.getSelected());
             }
         }
         dialogWindow.destroy();
@@ -197,6 +226,7 @@ export function openAddSlideshowDialog(parentWindow, settings) {
 
 export function openAddWorldClockDialog(parentWindow, settings) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure World Clock Widget');
+    let addButton = null;
 
     const createPicker = (label, row, initialIndex) => {
         const picker = createGnomeClocksLocationPicker(null, initialIndex);
@@ -224,6 +254,18 @@ export function openAddWorldClockDialog(parentWindow, settings) {
     const sec2Picker = createPicker('Secondary City (Bottom Right):', 4, 2);
     grid.attach(primaryPicker.actionWidget, 0, 6, 2, 1);
 
+    // All three cities are required, so the button follows the selection rather than
+    // the locations merely having loaded.
+    const pickers = [primaryPicker, sec1Picker, sec2Picker];
+    const syncAddButton = () => {
+        if (addButton)
+            addButton.set_sensitive(pickers.every(p => p.getSelectedLocation() !== null));
+    };
+    addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
+    syncAddButton();
+    for (const picker of pickers)
+        picker.connectSelectionChanged(syncAddButton);
+
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
             const primaryCity = primaryPicker.getSelectedLocation();
@@ -241,11 +283,20 @@ export function openAddWorldClockDialog(parentWindow, settings) {
 
 export function openAddGithubDialog(parentWindow, settings) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure GitHub Activity Widget');
+    let addButton = null;
 
     const userLabel = new Gtk.Label({ label: 'GitHub Username:', xalign: 0 });
     const userEntry = new Gtk.Entry({ placeholder_text: 'e.g. rebatnaath', hexpand: true });
+    const syncAddButton = () => {
+        if (addButton)
+            addButton.set_sensitive(userEntry.get_text().trim().replace(/^@/, '') !== '');
+    };
+    userEntry.connect('changed', syncAddButton);
     grid.attach(userLabel, 0, 0, 1, 1);
     grid.attach(userEntry, 1, 0, 1, 1);
+
+    addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
+    syncAddButton();
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
@@ -281,9 +332,17 @@ function openAddRssUrlDialog(parentWindow, settings, title, hintText, addWidget)
     });
     grid.attach(hintLabel, 0, 1, 2, 1);
 
+    const addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
+    addButton.set_sensitive(false);
+    urlEntry.connect('changed', () => {
+        addButton.set_sensitive(urlEntry.get_text().trim() !== '');
+    });
+
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
-            addWidget(settings, urlEntry.get_text().trim());
+            const url = urlEntry.get_text().trim();
+            if (url)
+                addWidget(settings, url);
         }
         dialogWindow.destroy();
     });

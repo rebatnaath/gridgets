@@ -461,15 +461,20 @@ export function buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandl
 
     const captionControls = buildCaptionControls(grid, rowIdx, widget, settings, 'My Slideshow');
     rowIdx = captionControls.rowIdx;
-    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, useDateCaptionSwitch } = captionControls;
+    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, captionSource } = captionControls;
 
     saveHandlers.push((target) => {
         target.intervalSeconds = Math.round(intervalSpin.get_value());
         target.caption = captionEntry.get_text().trim() || 'My Slideshow';
         target.showCaption = showCaptionSwitch.get_active();
         target.captionFollowGlobal = followGlobalSwitch.get_active();
-        target.fgColor = fgColorBtn.get_rgba().to_string();
-        target.useDateCaption = useDateCaptionSwitch.get_active();
+        // resolveWidgetConfigValue reads fgColor ahead of the global value, so leaving a
+        // stale one here would keep overriding the global setting permanently.
+        if (followGlobalSwitch.get_active())
+            delete target.captionColor;
+        else
+            target.captionColor = fgColorBtn.get_rgba().to_string();
+        target.captionSource = captionSource.getSelected();
     });
 
     return rowIdx;
@@ -513,15 +518,20 @@ export function buildImageSettings(grid, rowIdx, widget, settings, saveHandlers,
 
     const captionControls = buildCaptionControls(grid, rowIdx, widget, settings, 'My Image');
     rowIdx = captionControls.rowIdx;
-    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, useDateCaptionSwitch } = captionControls;
+    const { captionEntry, showCaptionSwitch, followGlobalSwitch, fgColorBtn, captionSource } = captionControls;
 
     saveHandlers.push((target) => {
         target.imagePath = imagePathEntry.get_text().trim();
         target.caption = captionEntry.get_text().trim() || 'My Image';
         target.showCaption = showCaptionSwitch.get_active();
         target.captionFollowGlobal = followGlobalSwitch.get_active();
-        target.fgColor = fgColorBtn.get_rgba().to_string();
-        target.useDateCaption = useDateCaptionSwitch.get_active();
+        // resolveWidgetConfigValue reads fgColor ahead of the global value, so leaving a
+        // stale one here would keep overriding the global setting permanently.
+        if (followGlobalSwitch.get_active())
+            delete target.captionColor;
+        else
+            target.captionColor = fgColorBtn.get_rgba().to_string();
+        target.captionSource = captionSource.getSelected();
     });
 
     return rowIdx;

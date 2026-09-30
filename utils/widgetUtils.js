@@ -169,6 +169,7 @@ export function readGlobalSettings(settings, interfaceSettings = null) {
         globalImageShowCaption: settings.get_boolean('image-show-caption'),
         globalSlideshowShowCaption: settings.get_boolean('slideshow-show-caption'),
         globalCaptionScrim: settings.get_boolean('image-caption-scrim'),
+        globalCaptionColor: settings.get_string('global-caption-color'),
         globalUseFahrenheit: settings.get_boolean('weather-use-fahrenheit'),
         globalWeatherDynamicColor: settings.get_boolean('weather-dynamic-color'),
         globalWeatherDynamicImage: settings.get_boolean('weather-dynamic-image'),
@@ -461,13 +462,19 @@ export function loadJsonFromFileAsync(filePath, callback) {
     });
 }
 
-/** Writes a JS object as JSON to the specified file path atomically, fire-and-forget (async). */
-export function saveJsonToFile(filePath, data) {
+/**
+ * Writes a JS object as JSON to the specified file path atomically, fire-and-forget (async).
+ *
+ * `cancellable` is for callers that must be able to abandon a write they no longer want,
+ * such as a teardown path that is about to write the newer contents synchronously.
+ */
+export function saveJsonToFile(filePath, data, cancellable = null) {
     const parentDir = Gio.File.new_for_path(filePath).get_parent();
     if (parentDir)
         ensureDirectory(parentDir.get_path(), 'parent directory');
     const bytes = new GLib.Bytes(JSON.stringify(data, null, 2));
-    Gio.File.new_for_path(filePath).replace_contents_bytes_async(bytes, null, false, Gio.FileCreateFlags.NONE, null, (file, res) => {
+    // Argument order is (contents, etag, make_backup, flags, cancellable, callback).
+    Gio.File.new_for_path(filePath).replace_contents_bytes_async(bytes, null, false, Gio.FileCreateFlags.NONE, cancellable, (file, res) => {
         try {
             file.replace_contents_finish(res);
         } catch (e) {
@@ -560,6 +567,23 @@ export function resolveWidgetForegroundColor(config) {
 }
 
 /**
+ * The caption's own colour, which is not the widget's text colour: a caption sitting on a
+ * photograph is usually picked for contrast against that picture rather than against the
+ * shell, and before this shared fgColor with every other text on the widget.
+ *
+ * Following the global setting wins outright, so a per-widget colour left over from before
+ * the switch was turned on cannot keep overriding it.
+ */
+export function resolveCaptionForegroundColor(config) {
+    const globalValue = config?.globalCaptionColor || DEFAULT_FG_COLOR;
+    if (config?.captionFollowGlobal === true)
+        return globalValue;
+    if (config?.captionColor)
+        return config.captionColor;
+    return globalValue;
+}
+
+/**
  * Returns the explicitly configured font family, or '' when none is set so
  * widgets inherit the system theme font. Never falls back to a hard-coded
  * family; DEFAULT_FONT_FAMILY is only a prefs-side display fallback.
@@ -572,33 +596,11 @@ export function resolveExplicitFontFamily(config) {
 
 // Widget identity — layout classification, size tiers, the wide-music test and the
 // per-type data folders — lives in widgetRegistry so the shell and the preferences
-// process cannot drift apart. Imported as well as re-exported because this module
-// calls into them below, and `export { X } from` on its own binds nothing locally.
-import {
-    SIZE_PRESET_TIERS,
-    WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
-    DEFAULT_TOP_STORY_GENRE,
-    TOP_STORY_GENRE_NAMES,
-    getTopStoryFeeds,
-    TOP_STORY_GENRE_LABELS,
-    getTopStoryGenreLabel,
-    isWideMusicLayout,
-    supportsSizePresets,
-    resolveWidgetSizePreset,
-} from './widgetRegistry.js';
+// process cannot drift apart. Callers import it directly rather than through here: this
+// module re-exported ten of these names once, and half the callers took them from
+// widgetRegistry while the other half came through this shim.
+import { supportsSizePresets, resolveWidgetSizePreset } from './widgetRegistry.js';
 
-export {
-    SIZE_PRESET_TIERS,
-    WIDE_MUSIC_LAYOUT_ASPECT_RATIO,
-    DEFAULT_TOP_STORY_GENRE,
-    TOP_STORY_GENRE_NAMES,
-    getTopStoryFeeds,
-    TOP_STORY_GENRE_LABELS,
-    getTopStoryGenreLabel,
-    isWideMusicLayout,
-    supportsSizePresets,
-    resolveWidgetSizePreset,
-};
 
 /** Validates and constrains a widget's proposed new position and size during resize operations. */
 export function calculateResizedDimensions(widgetData, newCols, newRows, newGridX, widgets = null, maxCols = COLUMNS_COUNT, maxRows = Number.POSITIVE_INFINITY) {

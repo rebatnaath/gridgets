@@ -1,6 +1,6 @@
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
-import { createSwitchRow } from './aestheticControls.js';
+import { createSwitchRow, createColorRow } from './aestheticControls.js';
 import { getConnectedMonitorsCount, buildMonitorEntries } from './displayUtils.js';
 
 function buildMonitorGroup(settings) {
@@ -75,6 +75,13 @@ function buildImageGroup(settings) {
         settings,
         'image-caption-scrim'
     ).row);
+    group.add(createColorRow(
+        'Caption Text Color',
+        'Caption colour for image and slideshow widgets that follow the global setting.',
+        settings,
+        'global-caption-color',
+        '#ffffff'
+    ));
     return group;
 }
 
