@@ -165,6 +165,7 @@ function getArtworkCachePath(artUrl, sourcePath = null) {
 const FILE_ENUM_BATCH_SIZE = 20;
 const ARTWORK_RETRY_INTERVAL_MS = 500;
 const ARTWORK_RETRY_MAX_ATTEMPTS = 20;
+const ARTWORK_MONITOR_DEBOUNCE_MS = 200;
 
 function fileExists(file) {
     return new Promise(resolve => {
@@ -194,7 +195,9 @@ function fileExists(file) {
 function copyArtworkIntoCache(sourcePath, artUrl, state, callback) {
     const destinationPath = getArtworkCachePath(artUrl, sourcePath);
     const destination = Gio.File.new_for_path(destinationPath);
-    if (destination.query_exists(null)) {
+    // Not query_exists: a copy cancelled part-way leaves a zero-byte file that would
+    // then be served as the cover and kept across restarts.
+    if (hasArtworkBytes(destinationPath)) {
         rememberArtworkFile(artUrl, destinationPath);
         callback(destinationPath);
         return;
@@ -225,8 +228,13 @@ function copyArtworkIntoCache(sourcePath, artUrl, state, callback) {
                     rememberArtworkFile(artUrl, destinationPath);
                     flushArtworkQueue(artUrl, destinationPath);
                 } catch (error) {
-                    if (state.artworkCancellable.is_cancelled())
+                    if (state.artworkCancellable.is_cancelled()) {
+                        // Flushed with null like every other exit: this queue is module
+                        // level and outlives the widget, so a stranded entry would strand
+                        // the next widget too.
+                        flushArtworkQueue(artUrl, null);
                         return;
+                    }
                     console.error(`Gridgets: cannot cache artwork from ${sourcePath}:`, error.message);
                     flushArtworkQueue(artUrl, null);
                 }
@@ -353,6 +361,71 @@ function waitForArtworkRetry(state) {
     });
 }
 
+/**
+ * Watches the art file the player advertises and reports when it is written.
+ *
+ * A player advertises the path before the cover exists, and by an unbounded margin, so a
+ * retry either spins or gives up first. Adapted from dynamic-music-pill (GPL-3.0).
+ */
+export function monitorArtworkFile(artUri, state, onChanged) {
+    if (!artUri || !artUri.startsWith('file://')) {
+        clearArtworkMonitor(state);
+        return;
+    }
+    if (state.monitoredArtUri === artUri)
+        return;
+
+    clearArtworkMonitor(state);
+    state.monitoredArtUri = artUri;
+
+    let file;
+    try {
+        file = Gio.File.new_for_uri(artUri);
+    } catch (error) {
+        console.error(`Gridgets: cannot watch artwork ${artUri}:`, error.message);
+        return;
+    }
+
+    let monitor;
+    try {
+        monitor = file.monitor_file(Gio.FileMonitorFlags.NONE, state.artworkCancellable);
+    } catch (error) {
+        console.error(`Gridgets: cannot watch artwork ${artUri}:`, error.message);
+        return;
+    }
+    state.artworkMonitor = monitor;
+
+    // A cover arrives as several events; one resolve per write.
+    monitor.connect('changed', (_monitor, _file, _otherFile, eventType) => {
+        if (eventType !== Gio.FileMonitorEvent.CHANGES_DONE_HINT
+            && eventType !== Gio.FileMonitorEvent.CREATED)
+            return;
+        if (state.artworkMonitorDebounce) {
+            GLib.Source.remove(state.artworkMonitorDebounce);
+            state.artworkMonitorDebounce = 0;
+        }
+        state.artworkMonitorDebounce = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ARTWORK_MONITOR_DEBOUNCE_MS, () => {
+            state.artworkMonitorDebounce = 0;
+            if (isActorDestroyed(state.container) || state.artworkCancellable.is_cancelled())
+                return GLib.SOURCE_REMOVE;
+            onChanged();
+            return GLib.SOURCE_REMOVE;
+        });
+    });
+}
+
+export function clearArtworkMonitor(state) {
+    if (state.artworkMonitorDebounce) {
+        GLib.Source.remove(state.artworkMonitorDebounce);
+        state.artworkMonitorDebounce = 0;
+    }
+    if (state.artworkMonitor) {
+        state.artworkMonitor.cancel();
+        state.artworkMonitor = null;
+    }
+    state.monitoredArtUri = null;
+}
+
 /** A path the player already has, copied into our cache so it cannot be taken away. */
 async function usePlayerFile(artUrl, source, state, callback) {
     const cachePath = getArtworkCachePath(artUrl, source);
@@ -384,8 +457,11 @@ async function resolvePlayerFile(artUrl, state, callback) {
             ? await newestArtworkIn(directory)
             : null;
         if (newest) {
-            if (newest !== localPath && state.lastLoggedReplacement !== newest) {
-                state.lastLoggedReplacement = newest;
+            // Once per widget, not per track: the retry loop below can reach this
+            // repeatedly and a player that always advertises a path it then deletes
+            // would write a line per attempt.
+            if (newest !== localPath && !state.loggedReplacement) {
+                state.loggedReplacement = true;
                 console.error(`Gridgets: ${localPath} is gone, using the player's current artwork: ${newest}`);
             }
             await usePlayerFile(artUrl, newest, state, callback);
@@ -395,7 +471,11 @@ async function resolvePlayerFile(artUrl, state, callback) {
         if (!waitSettled || isActorDestroyed(state.container))
             return;
     }
-    console.error(`Gridgets: no artwork found for ${localPath}, keeping the current one`);
+    // Latched: the loop above reaches this once per retry.
+    if (!state.loggedMissingArtwork) {
+        state.loggedMissingArtwork = true;
+        console.error(`Gridgets: no artwork found for ${localPath}, keeping the current one`);
+    }
 }
 
 /**
@@ -457,13 +537,15 @@ async function resolveRemoteArtwork(artUrl, state, callback) {
                 rememberArtworkFile(artUrl, filePath);
                 flushArtworkQueue(artUrl, filePath);
             } catch (e) {
+                // Cancellation is the disable path, and happens on every quit with a
+                // download in flight, so it is not logged.
                 if (downloadCancellable.is_cancelled()) {
-                    console.error(`Gridgets: artwork download cancelled for ${artUrl}`);
-                } else {
-                    const attempt = (failedArtworkDownloadAttempts.get(artUrl) || 0) + 1;
-                    failedArtworkDownloadAttempts.set(artUrl, attempt);
-                    console.error(`Gridgets: artwork download failed (${attempt}/${ARTWORK_RETRY_MAX_ATTEMPTS}) for ${artUrl}:`, e.message);
+                    flushArtworkQueue(artUrl, null);
+                    return;
                 }
+                const attempt = (failedArtworkDownloadAttempts.get(artUrl) || 0) + 1;
+                failedArtworkDownloadAttempts.set(artUrl, attempt);
+                console.error(`Gridgets: artwork download failed (${attempt}/${ARTWORK_RETRY_MAX_ATTEMPTS}) for ${artUrl}:`, e.message);
                 flushArtworkQueue(artUrl, null);
             }
         }
@@ -477,6 +559,26 @@ async function resolveRemoteArtwork(artUrl, state, callback) {
  * downloaded into the cache. A missing file is retried on timers held in
  * state.artworkRetryWaits, so they can all be cleared on widget destruction.
  */
+/**
+ * The artwork a player most recently wrote into the folder it advertises paths from.
+ *
+ * Firefox deletes the previous file and advertises the new one seconds after a track
+ * change, and reports no art URL for that gap. The folder is known from the last URL it
+ * did advertise.
+ */
+export async function newestArtworkForTrack(state, callback) {
+    if (!state.lastArtUrl || !state.lastArtUrl.startsWith('file://'))
+        return false;
+    const directory = Gio.File.new_for_uri(state.lastArtUrl).get_parent();
+    if (!directory || !(await fileExists(directory)))
+        return false;
+    const newest = await newestArtworkIn(directory);
+    if (!newest)
+        return false;
+    callback(newest);
+    return true;
+}
+
 export async function ensureLocalArtwork(artUrl, state, callback) {
     if (!artUrl) {
         callback(null);

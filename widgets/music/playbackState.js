@@ -21,8 +21,9 @@ const POSITION_JUMP_RESYNC_THRESHOLD_MICROSECONDS = 3000000;
 // A newly reported track must stay "Playing" for this long before the widget adopts it.
 // A YouTube hover preview holds a real media session for as long as the pointer rests on
 // it, so switching instantly would hijack the widget. Long enough to outlast a stray
-// hover, short enough not to hold up a real change: everything below this point is
-// skipped until it passes, the title and the artwork together.
+// hover, short enough not to hold up a real change: while the clock runs, nothing in the
+// widget changes, so the status, the metadata and the artwork all still describe the
+// previous track.
 const TRACK_ADOPT_DELAY_MICROSECONDS = 1200000;
 
 let seekedSignalId = 0;
@@ -76,22 +77,21 @@ export function resetWidgetState(state) {
     state.adoptedTrackKey = null;
     state.pendingTrackKey = null;
     state.pendingTrackSinceMicro = 0;
+    state.lastTrackKey = null;
     updateTimerLabel(state);
     if (state.titleLabel) state.titleLabel.set_text('Not Playing');
     if (state.artistLabel) state.artistLabel.set_text('Unknown Artist');
     if (state.albumLabel) state.albumLabel.hide();
     setAlbumColor(state, null);
     state.lastArtUrl = null;
+    state.resolvedArtUrl = null;
+    state.resolvedArtPath = undefined;
+    state.resolvedArtMisses = 0;
     state.lastAppliedArtPath = null;
     state.lastAppliedArtStyleSignature = null;
 }
 
 export function applyPlayerState(properties, state) {
-    const playbackStatus = unpackVariantValue(properties['PlaybackStatus']) || 'Stopped';
-    const isPlaying = playbackStatus === 'Playing';
-    state.playbackStatus = playbackStatus;
-    if (state.playPauseIcon) state.playPauseIcon.set_icon_name(isPlaying ? PAUSE_ICON : PLAY_ICON);
-
     const track = extractTrackMetadata(properties);
 
     // Firefox reports the same mpris:trackid for a hover preview and for the video
@@ -111,10 +111,22 @@ export function applyPlayerState(properties, state) {
     }
     state.pendingTrackKey = null;
 
-    const isNewTrack = state.lastTrackTitle !== track.title;
+    // Below the adoption check, so the icon changes with the rest of the widget. The
+    // position ticker keys off playbackStatus, and reading a "Playing" from a track whose
+    // metadata is still being held advanced the old track's position for the delay.
+    const playbackStatus = unpackVariantValue(properties['PlaybackStatus']) || 'Stopped';
+    state.playbackStatus = playbackStatus;
+    if (state.playPauseIcon) {
+        state.playPauseIcon.set_icon_name(playbackStatus === 'Playing' ? PAUSE_ICON : PLAY_ICON);
+    }
+
+    // Keyed the way adoption is, not on the title: a single and its album version share
+    // a title but are different recordings, and one of them would otherwise inherit the
+    // other's position and length.
+    const isNewTrack = state.lastTrackKey !== trackKey;
 
     if (isNewTrack) {
-        state.lastTrackTitle = track.title;
+        state.lastTrackKey = trackKey;
         state.currentPositionMicro = 0;
     }
 
@@ -126,12 +138,13 @@ export function applyPlayerState(properties, state) {
     if (track.artUrl) {
         state.lastArtUrl = track.artUrl;
     } else if (isNewTrack) {
-        // A player reports no art URL for a track it has not fetched a cover for yet, and
-        // some never send a second update. Clearing it here blanked the widget for good,
-        // so the last one is kept until a new one turns up.
+        // Firefox advertises no art URL for several seconds after a track change, and
+        // with two profiles running the widget may be following whichever one reported
+        // Playing. Clearing here left the cover blank for most of a track, so the last
+        // one is held until this track's own art arrives and replaces it.
         if (state.lastLoggedMissingArt !== trackKey) {
             state.lastLoggedMissingArt = trackKey;
-            console.error(`Gridgets: new track "${track.title}" has no art URL yet, keeping the last one: ${state.lastArtUrl}`);
+            console.error(`Gridgets: new track "${track.title}" has no art URL yet, holding the current cover`);
         }
     }
 
@@ -170,7 +183,7 @@ export function applyPlayerState(properties, state) {
         }
     }
 
-    applyArtworkToBackground(state.backgroundLayer, state.lastArtUrl || track.artUrl, state.config, state);
+    void applyArtworkToBackground(state.backgroundLayer, state.lastArtUrl || track.artUrl, state.config, state);
 }
 
 export async function fetchMusicDataForConfig(config, callback, preferredPlayer, cancellable) {

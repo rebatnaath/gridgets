@@ -2,7 +2,6 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetSurfaces, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { attachButtonFeedback } from '../../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { skipToNext, skipToPrevious, togglePlayPause } from './mpris.js';
 import { notifyPlayPauseAllInstances } from './playbackState.js';
 import { MIN_FONT_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, scaleFontSize } from '../../utils/typography.js';
@@ -20,8 +19,6 @@ const BASE_BUTTON_MARGIN_SMALL = 4;
 const BASE_PROGRESS_BAR_HEIGHT = 4;
 const BASE_PROGRESS_SPACER_HEIGHT = 8;
 const BASE_TIMER_MARGIN_TOP = 8;
-const BASE_CONTROL_CONTAINER_WIDTH = 240;
-const BASE_CONTROL_CONTAINER_HEIGHT = 140;
 const BASE_TIMER_FONT_SIZE = 12;
 
 // Both timer labels share this so a resize cannot drop the build-time dimming.
@@ -62,24 +59,16 @@ function createIconButton(iconName, iconSize, buttonMargin, textColor) {
     return button;
 }
 
-function resolveControlsAlignment(position, isLargeLayout) {
+/** The controls sit centred in the wide layout and along the bottom edge in the small one. */
+function resolveControlsAlignment(isLargeLayout) {
     if (isLargeLayout)
         return { xAlign: Clutter.ActorAlign.CENTER, yAlign: Clutter.ActorAlign.CENTER };
-
-    let xAlign = Clutter.ActorAlign.CENTER;
-    let yAlign = Clutter.ActorAlign.END;
-
-    if (position.includes('left')) xAlign = Clutter.ActorAlign.START;
-    if (position.includes('right')) xAlign = Clutter.ActorAlign.END;
-    if (position.includes('top')) yAlign = Clutter.ActorAlign.START;
-    if (position.includes('middle')) yAlign = Clutter.ActorAlign.CENTER;
-
-    return { xAlign, yAlign };
+    return { xAlign: Clutter.ActorAlign.CENTER, yAlign: Clutter.ActorAlign.END };
 }
 
 function connectControlButton(button, action) {
     button.connect('button-press-event', (_actor, event) => {
-        if (event.get_button() !== BUTTON_PRIMARY) return Clutter.EVENT_PROPAGATE;
+        if (event.get_button() !== Clutter.BUTTON_PRIMARY) return Clutter.EVENT_PROPAGATE;
         Promise.resolve(action()).catch(error => {
             console.error('Gridgets: control action failed:', error);
         });
@@ -132,19 +121,21 @@ export function updateControlButtonScaling(state, scale, fontFamily, textColor, 
     }
 }
 
-export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINER_WIDTH, height = BASE_CONTROL_CONTAINER_HEIGHT) {
+export function buildControlsColumn(config, state, initialScale = 1) {
     if (config.showControls === false) return null;
 
-    const dynScale = Math.min(width / BASE_CONTROL_CONTAINER_WIDTH, height / BASE_CONTROL_CONTAINER_HEIGHT);
-    const scale = (config.layoutScale || 1) * dynScale;
+    // Pre-allocation values, replaced by updateControlButtonScaling once the responsive
+    // scaler has run. The caller supplies its own reference box, so the first frame is
+    // already the size the widget settles at; a flat 1 would be far too large for a
+    // small widget.
+    const scale = initialScale;
     const textColor = resolveWidgetForegroundColor(config);
     const { highlight } = resolveWidgetSurfaces(config);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
 
     const isLargeLayout = config.isLargeLayout === true;
-    const controlsPosition = config.controlsPosition || 'bottom-center';
-    const { xAlign, yAlign } = resolveControlsAlignment(controlsPosition, isLargeLayout);
+    const { xAlign, yAlign } = resolveControlsAlignment(isLargeLayout);
 
     const controlsColumn = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -235,14 +226,14 @@ export function buildControlsColumn(config, state, width = BASE_CONTROL_CONTAINE
 
     const progressSpacer = new St.Widget({
         y_expand: false,
-        height: Math.floor(BASE_PROGRESS_SPACER_HEIGHT * scale),
+        height: scaleFontSize(BASE_PROGRESS_SPACER_HEIGHT, scale),
     });
     controlsColumn.add_child(progressSpacer);
     controlsColumn.add_child(progressRow);
     const timerRow = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         x_expand: true,
-        style: `margin-top: ${Math.floor(BASE_TIMER_MARGIN_TOP * scale)}px;`,
+        style: `margin-top: ${scaleFontSize(BASE_TIMER_MARGIN_TOP, scale)}px;`,
     });
     timerRow.add_child(timerLabelLeft);
     const timerSpacer = new St.Widget({ x_expand: true });

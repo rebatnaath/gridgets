@@ -2,7 +2,7 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveWidgetSurfaces, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { buildControlsColumn, updateControlButtonScaling } from './controls.js';
-import { resolveMusicPanelColors, resolveArtworkLayerStyle } from './cover.js';
+import { resolveMusicPanelColors, resolveArtworkLayerStyle, initialMusicScale } from './cover.js';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
@@ -23,7 +23,9 @@ const scaledLabelMargin = scale => scaleFontSize(LABEL_MARGIN_BOTTOM_PX, scale);
 
 export function buildLargeLayout(config, state, width) {
     const cornerRadius = resolveWidgetCornerRadius(config);
-    const scale = config.layoutScale || 1;
+    // The responsive scaler below owns sizing. This is the pre-allocation value;
+    // applyLayoutStyles replaces it on the first pass.
+    const scale = initialMusicScale(state.container, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT);
     const fontFamily = resolveExplicitFontFamily(config);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const { panelColor, textColor } = resolveMusicPanelColors(config, state);
@@ -50,7 +52,7 @@ export function buildLargeLayout(config, state, width) {
         y_expand: true,
         width: halfWidth,
         x_align: Clutter.ActorAlign.CENTER,
-        style: `padding: ${Math.floor(BASE_PADDING * scale)}px;`,
+        style: `padding: ${scaleFontSize(BASE_PADDING, scale)}px;`,
     });
 
     const labelsSection = new St.BoxLayout({
@@ -87,7 +89,7 @@ export function buildLargeLayout(config, state, width) {
     labelsSection.add_child(artistLabel);
     labelsSection.add_child(albumLabel);
 
-    const controlsBox = buildControlsColumn(config, state);
+    const controlsBox = buildControlsColumn(config, state, initialMusicScale(state.container, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT));
 
     infoPanel.add_child(labelsSection);
     if (controlsBox) infoPanel.add_child(controlsBox);
@@ -130,6 +132,9 @@ export function buildLargeLayout(config, state, width) {
         }
     };
 
+    // Before the scaler is attached, whose first pass is deferred to an idle: the panels
+    // are built unscaled and would otherwise paint one frame at 1.0.
+    applyLayoutStyles(scale, width);
     const updateScaling = attachResponsiveScaler(state.container, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT, applyLayoutStyles);
 
     if (config.coverBackground === true) {

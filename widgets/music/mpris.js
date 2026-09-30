@@ -172,6 +172,11 @@ export async function fetchPlayerPosition(playerName, cancellable = null) {
     }
 }
 
+// A player that does not implement a control (Firefox has no Next) answers "not
+// available now", which is a normal reply. Logged once per player and method so a
+// control that was never supported does not write a line on every press of it.
+const loggedUnsupportedControls = new Set();
+
 async function callPlayerMethod(playerName, method) {
     if (!playerName) return;
     try {
@@ -184,10 +189,11 @@ async function callPlayerMethod(playerName, method) {
             Gio.DBusCallFlags.NONE, DBUS_CALL_TIMEOUT_MS, null
         );
     } catch (error) {
-        // A player that does not implement a control (Firefox has no Next)
-        // answers "not available now"; that is a normal reply, not a fault.
-        // console.error, not console.debug, which GLib drops by default.
-        console.error(`Gridgets: ${method} unavailable on ${playerName}:`, error.message);
+        const key = `${playerName}.${method}`;
+        if (!loggedUnsupportedControls.has(key)) {
+            loggedUnsupportedControls.add(key);
+            console.error(`Gridgets: ${method} unavailable on ${playerName}:`, error.message);
+        }
     }
 }
 

@@ -5,18 +5,20 @@ import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import Soup from 'gi://Soup?version=3.0';
 import { resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { loadLastGoodCache, saveLastGoodCache } from '../../utils/lastGoodCache.js';
 import { createOfflineNotice, noticeMessageForFetchFailure, OFFLINE_NOTICE_MESSAGES } from '../../components/offline/offlineNotice/offlineNotice.js';
 import { isNetworkAvailable, subscribeToSettledConnectivity } from '../../utils/connectivity.js';
-import { createGetMessage } from '../../utils/httpClient.js';
+import { HTTP_STATUS_OK, createGetMessage } from '../../utils/httpClient.js';
 
 const QUOTE_ROTATE_INTERVAL_SEC = 30;
 const QUOTE_REFETCH_INTERVAL_SEC = 60 * 60;
 const QUOTES_URL = 'https://raw.githubusercontent.com/rebatnaath/gridgets/main/github/quotesData.json';
-const HTTP_STATUS_OK = 200;
+// A session with no timeout waits forever, so a network that accepts the connection and
+// then goes quiet would leave the widget on its last quote indefinitely.
+const QUOTES_REQUEST_TIMEOUT_SECONDS = 30;
 const OUTER_PADDING_PX = 14;
 const QUOTE_SIDE_PADDING_PX = 4;
 
@@ -28,7 +30,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
 
     const REF_WIDTH = 220;
     const REF_HEIGHT = 220;
-    let scale = Math.min(width / REF_WIDTH, height / REF_HEIGHT);
+    let scale = clampWidgetScale(Math.min(width / REF_WIDTH, height / REF_HEIGHT));
     const px = value => scaleFontSize(value, scale);
     const authorStyle = () => `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label)}px; `
         + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; opacity: ${TEXT_OPACITY.secondary}; padding-right: ${px(QUOTE_SIDE_PADDING_PX)}px;`;
@@ -66,7 +68,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
     offlineNotice.actor.hide();
     outerBox.add_child(offlineNotice.actor);
 
-    const session = new Soup.Session();
+    const session = new Soup.Session({ timeout: QUOTES_REQUEST_TIMEOUT_SECONDS });
     const state = {
         rotateTimerId: null,
         refetchTimerId: null,
@@ -218,16 +220,9 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
         return GLib.SOURCE_CONTINUE;
     });
 
+    connectTimerCleanup(container, state, ['rotateTimerId', 'refetchTimerId']);
     registerWidgetCleanup(container, () => {
         releaseConnectivity();
-        if (state.rotateTimerId) {
-            GLib.Source.remove(state.rotateTimerId);
-            state.rotateTimerId = null;
-        }
-        if (state.refetchTimerId) {
-            GLib.Source.remove(state.refetchTimerId);
-            state.refetchTimerId = null;
-        }
         state.fetchCancellable.cancel();
         session.abort();
     });

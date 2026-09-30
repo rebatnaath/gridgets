@@ -1,6 +1,6 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import { WIDE_MUSIC_LAYOUT_ASPECT_RATIO } from '../../utils/widgetUtils.js';
+import { WIDE_MUSIC_LAYOUT_ASPECT_RATIO } from '../../utils/widgetRegistry.js';
 import { connectTimerCleanup, createWidgetContainer, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
 import { DBUS_POLL_INTERVAL_MS } from './mpris.js';
 import {
@@ -15,6 +15,7 @@ import {
 import { buildSmallLayout } from './musicSmall.js';
 import { buildLargeLayout } from './musicLarge.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import { clearArtworkMonitor } from './artwork.js';
 
 const LARGE_LAYOUT_BASE_HEIGHT = 240;
 
@@ -59,6 +60,34 @@ function beginMusicPolling(config, onPollTick) {
     };
 }
 
+// A settings or monitor change rebuilds the grid, and a rebuilt widget would otherwise
+// start at 00:00 with no cover. Keyed by widget id, which survives a rebuild.
+const retainedStateByWidgetId = new Map();
+
+// Only what describes the music. Actor handles, cancellables and timers belong to the
+// instance being torn down and must not be carried over.
+const RETAINED_STATE_FIELDS = Object.freeze([
+    'lastArtUrl',
+    'currentPlayer',
+    'adoptedTrackKey',
+    'pendingTrackKey',
+    'pendingTrackSinceMicro',
+    'currentPositionMicro',
+    'trackLengthMicro',
+    'playbackStatus',
+    'lastTrackKey',
+    'resolvedArtUrl',
+    'resolvedArtPath',
+    'resolvedArtMisses',
+    'lastLoggedMissingArt',
+]);
+function retainableFields(state) {
+    const retained = {};
+    for (const field of RETAINED_STATE_FIELDS)
+        retained[field] = state[field];
+    return retained;
+}
+
 export function createMusicNode(config, width, height, xPosition, yPosition) {
     const playerContainer = createWidgetContainer(config, width, height, xPosition, yPosition);
 
@@ -76,6 +105,9 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
         timerId: null,
         artworkRetryWaits: null,
         artworkCancellable: new Gio.Cancellable(),
+        artworkMonitor: null,
+        artworkMonitorDebounce: 0,
+        monitoredArtUri: null,
         fetchCancellable: new Gio.Cancellable(),
         fetchGeneration: 0,
         lastArtUrl: null,
@@ -87,13 +119,26 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
         trackLengthMicro: 0,
         playbackStatus: 'Stopped',
         lastSeekTimestamp: 0,
+        // Latches so a player that never supplies a cover writes one line, not one per
+        // retry and one per track change.
+        loggedReplacement: false,
+        loggedMissingArtwork: false,
     };
+
+    // Seeded before the first fetch, so the rebuild paints the same cover at once.
+    const retained = config.id ? retainedStateByWidgetId.get(config.id) : null;
+    if (retained) {
+        Object.assign(state, retained);
+    }
 
     registerMusicWidgetInstance(state);
     registerWidgetCleanup(playerContainer, () => {
+        if (config.id)
+            retainedStateByWidgetId.set(config.id, retainableFields(state));
         unregisterMusicWidgetInstance(state);
         state.fetchCancellable.cancel();
         state.artworkCancellable.cancel();
+        clearArtworkMonitor(state);
         if (state.artworkRetryWaits) {
             for (const wait of [...state.artworkRetryWaits]) {
                 wait.settle(false);
