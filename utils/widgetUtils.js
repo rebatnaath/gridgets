@@ -37,10 +37,7 @@ export function resolveUse24h(widgetData) {
     return (widgetData.use24h === false) ? false : (widgetData.globalUse24h !== false);
 }
 
-/**
- * The timezone a time widget should read, from a city picked in GNOME Clocks.
- * A widget with no city, or one whose timezone is no longer resolvable, reads local time.
- */
+/** The timezone a time widget reads, from a city picked in GNOME Clocks, else local. */
 export function resolveTimeZone(widgetData) {
     const timezoneId = widgetData.location?.timezone;
     if (!timezoneId)
@@ -613,9 +610,8 @@ export function resolveExplicitFontFamily(config) {
 
 // Widget identity — layout classification, size tiers, the wide-music test and the
 // per-type data folders — lives in widgetRegistry so the shell and the preferences
-// process cannot drift apart. Callers import it directly rather than through here: this
-// module re-exported ten of these names once, and half the callers took them from
-// widgetRegistry while the other half came through this shim.
+// process cannot drift apart. Callers import it directly rather than through here, so
+// there is one obvious place to find it.
 import { supportsSizePresets, resolveWidgetSizePreset } from './widgetRegistry.js';
 
 

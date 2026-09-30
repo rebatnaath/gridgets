@@ -2,7 +2,7 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveUse24h } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, formatTimeParts, startMinuteAlignedTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
@@ -325,7 +325,7 @@ export function createWorldTimeNode(widgetData, width, height, xPosition, yPosit
     const cities = widgetData.cities || DEFAULT_CITIES;
     // Sized before the first paint, so the initial frame is not drawn at the base size
     // and then restyled by the scaler's first idle pass.
-    const initialScale = Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT);
+    const initialScale = clampWidgetScale(Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT));
     const ui = buildWorldClockUI(widgetNode, fontCss, initialScale, cities);
 
     const state = {
@@ -333,11 +333,9 @@ export function createWorldTimeNode(widgetData, width, height, xPosition, yPosit
     };
 
     const updateDisplay = () => {
-        if (isActorDestroyed(widgetNode)) return GLib.SOURCE_REMOVE;
         // Re-evaluated per tick so toggling 24h takes effect without a rebuild.
         const is24h = resolveUse24h(widgetData);
         updateWorldTimes(ui, is24h);
-        return GLib.SOURCE_CONTINUE;
     };
 
     updateDisplay();

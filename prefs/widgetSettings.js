@@ -557,8 +557,7 @@ export function buildImageSettings(grid, rowIdx, widget, settings, saveHandlers,
         target.caption = captionEntry.get_text().trim() || 'My Image';
         target.showCaption = showCaptionSwitch.get_active();
         target.captionFollowGlobal = followGlobalSwitch.get_active();
-        // resolveWidgetConfigValue reads fgColor ahead of the global value, so leaving a
-        // stale one here would keep overriding the global setting permanently.
+        // Same rule as the slideshow save above: a stale colour would keep winning.
         if (followGlobalSwitch.get_active())
             delete target.captionColor;
         else

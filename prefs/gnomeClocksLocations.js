@@ -11,8 +11,7 @@ const CLOCKS_INTERFACE = 'org.gnome.Shell.ClocksIntegration';
 
 function launchGnomeClocks() {
     return new Promise(resolve => {
-        // (commandline, working_directory, flags). Passing the flags second throws
-        // "Expected type string for application_name", which is why nothing opened.
+        // (commandline, working_directory, flags). Passing the flags second throws.
         const appInfo = Gio.AppInfo.create_from_commandline('gnome-clocks', null, GLib.SpawnFlags.SEARCH_PATH);
         if (!appInfo) {
             resolve(false);

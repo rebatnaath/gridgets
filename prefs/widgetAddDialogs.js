@@ -185,7 +185,8 @@ export function openAddSlideshowDialog(parentWindow, settings) {
         });
     });
 
-    // Follows the text, not the browse click: the entry is editable.
+    // Same rule as the image dialog above: the entry is editable, so the button
+    // follows the text and not the browse click.
     const syncAddButton = () => {
         if (addButton)
             addButton.set_sensitive(folderEntry.get_text().trim() !== '');

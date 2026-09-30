@@ -60,7 +60,6 @@ function buildTimeAndDateLabels({ is24h, fontCss, textColor, timeFontSize, ampmF
         x_align: Clutter.ActorAlign.CENTER,
     });
 
-    // A local-time widget has no city to name, so the row is absent rather than blank.
     let cityLabel = null;
     if (locationName) {
         cityLabel = new St.Label({
