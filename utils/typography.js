@@ -55,8 +55,10 @@ export const MIN_FONT_SIZE = Object.freeze({
 });
 
 // Bounds for widget scale, applied by attachResponsiveScaler. The upper bound
-// stops type growing without limit on oversized widgets; the lower bound is a
-// backstop behind the per-role MIN_FONT_SIZE floors.
+// stops a type growing without limit on an oversized widget. The lower bound is
+// often the binding one: 60 columns on a 1366px screen gives a 7px cell, so most
+// Small and Medium presets derive below 0.5 and the floor, not the per-role
+// MIN_FONT_SIZE values, is what decides their rendered size.
 export const MIN_WIDGET_SCALE = 0.5;
 export const MAX_WIDGET_SCALE = 1.5;
 
