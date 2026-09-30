@@ -56,8 +56,7 @@ const SIZE_PRESETS = Object.freeze({
 const FREE_FLOW_SIZE_TYPES = Object.freeze(['image', 'slideshow']);
 
 // Data a widget persists beside its settings, and the folder it lives in. One map
-// serves both processes so deleting a widget from either side cleans up the same
-// files; the two used to disagree and left notes files behind.
+// serves both processes so deleting a widget from either side cleans up the same files.
 const CACHE_FOLDERS = Object.freeze({
     notes: 'notes',
     clipboard: 'clipboard',
@@ -147,11 +146,15 @@ export function getTopStoryFeeds(genre) {
 }
 
 export const SIZE_PRESET_TIERS = Object.freeze(['Small', 'Medium', 'Large']);
-export { FREE_FLOW_SIZE_TYPES, WIDE_MUSIC_LAYOUT_ASPECT_RATIO };
+export { WIDE_MUSIC_LAYOUT_ASPECT_RATIO };
 
 /**
  * Classifies the wide music layout. `isLargeLayout` is set by the preferences adder
  * before the widget has a size, so the intended layout can still be honoured.
+ *
+ * The aspect test is a fallback for a widget saved before that flag existed. Both music
+ * footprints are 2:1 in cells, so on the fixed grid the ratio is 2.0 at any cell size and
+ * this can only ever say yes; the flag is what actually chooses the layout.
  */
 export function isWideMusicLayout(widget) {
     if (widget.isLargeLayout) return true;
