@@ -42,7 +42,7 @@ const ICON_TEXT_GAP_PX = 6;
 export function createOfflineNotice({ fontCss = '', textColor = '', scale = 1 } = {}) {
     const icon = new St.Icon({
         icon_name: OFFLINE_ICON_NAME,
-        icon_size: Math.max(1, Math.round(BASE_ICON_SIZE_PX * scale)),
+        icon_size: scaleFontSize(BASE_ICON_SIZE_PX, scale),
     });
 
     const label = new St.Label({
@@ -63,8 +63,8 @@ export function createOfflineNotice({ fontCss = '', textColor = '', scale = 1 } 
 
     function applyScale(nextScale) {
         const currentScale = Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
-        const gap = Math.max(1, Math.round(ICON_TEXT_GAP_PX * currentScale));
-        icon.icon_size = Math.max(1, Math.round(BASE_ICON_SIZE_PX * currentScale));
+        const gap = scaleFontSize(ICON_TEXT_GAP_PX, currentScale);
+        icon.icon_size = scaleFontSize(BASE_ICON_SIZE_PX, currentScale);
         // Opacity goes in the stylesheet, which takes a 0-1 float. ClutterActor.opacity
         // is a 0-255 ubyte and would truncate this to zero.
         icon.style = `color: ${textColor}; opacity: ${ICON_OPACITY_SECONDARY};`;
