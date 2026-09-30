@@ -1,6 +1,6 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import { getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile } from './widgetUtils.js';
+import { getGridgetsDataDir, loadJsonFromFileAsync, saveJsonToFile, saveJsonToFileSync } from './widgetUtils.js';
 import { getWidgetCacheFolder } from './widgetRegistry.js';
 
 /** Bumped when a caller's payload shape changes, so old files are ignored rather than misread. */
@@ -108,6 +108,14 @@ export function saveLastGoodCache(widgetType, widgetId, payload) {
     const filePath = cacheFilePath(widgetType, widgetId);
     if (!filePath || payload === null || payload === undefined)
         return;
+    // The doc above makes "non-empty" a caller obligation, and all five call sites do
+    // hold it, so this is a backstop rather than the mechanism: an empty array or object
+    // means the fetch produced nothing, and storing that would destroy the last good data.
+    const isEmptyPayload = Array.isArray(payload)
+        ? payload.length === 0
+        : (typeof payload === 'object' && Object.keys(payload).length === 0);
+    if (isEmptyPayload)
+        return;
 
     let json;
     try {
@@ -123,13 +131,15 @@ export function saveLastGoodCache(widgetType, widgetId, payload) {
         return;
     }
 
-    const state = writeStates.get(filePath) || { timerId: 0, lastJson: null, payload: null, savedAtMs: 0 };
+    const state = writeStates.get(filePath) || { timerId: 0, lastJson: null, payload: null, savedAtMs: 0, widgetType: null };
     if (state.lastJson === json)
         return;
 
     state.lastJson = json;
     state.payload = payload;
     state.savedAtMs = Date.now();
+    // Kept so a teardown flush can write without the caller, which only has a path here.
+    state.widgetType = widgetType;
     writeStates.set(filePath, state);
     if (state.timerId)
         return;
@@ -138,10 +148,20 @@ export function saveLastGoodCache(widgetType, widgetId, payload) {
     // lands mid-debounce is the one that reaches disk.
     state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, SAVE_DEBOUNCE_MS, () => {
         state.timerId = 0;
-        ensureCacheFolder(widgetType);
-        saveJsonToFile(filePath, envelopeFor(state.payload, state.savedAtMs));
+        writeStateNow(filePath, state);
         return GLib.SOURCE_REMOVE;
     });
+}
+
+function writeStateNow(filePath, state, isTeardown = false) {
+    ensureCacheFolder(state.widgetType);
+    const envelope = envelopeFor(state.payload, state.savedAtMs);
+    // The debounced path can afford to be async; a teardown flush cannot, because the
+    // main loop that would complete it is what is going away.
+    if (isTeardown)
+        saveJsonToFileSync(filePath, envelope);
+    else
+        saveJsonToFile(filePath, envelope);
 }
 
 function imageDirPath(widgetType, widgetId) {
@@ -350,11 +370,16 @@ function deleteFileQuietly(filePath) {
     });
 }
 
-/** Drops pending debounced writes so a disable leaves no timers behind. */
+/** Flushes pending debounced writes, then drops them so a disable leaves no timers behind.
+ *  Removing the timer without writing loses the most recent seconds of every widget that
+ *  had something new, which is every widget on a logout. */
 export function clearLastGoodCaches() {
-    for (const state of writeStates.values()) {
-        if (state.timerId)
-            GLib.Source.remove(state.timerId);
+    for (const [filePath, state] of writeStates) {
+        if (!state.timerId)
+            continue;
+        GLib.Source.remove(state.timerId);
+        state.timerId = 0;
+        writeStateNow(filePath, state, true);
     }
     writeStates.clear();
 }
