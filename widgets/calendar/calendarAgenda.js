@@ -122,12 +122,13 @@ export function createCalendarAgendaNode(config, width, height, xPosition, yPosi
         state.eventCancellable.cancel();
     });
 
-    function applyLayout(currentWidth, currentHeight) {
+    function applyLayout(currentWidth, currentHeight, currentScale) {
         // Clamped like every other widget; left raw, a large agenda scaled its fonts
-        // past twice their intended size.
-        const currentScale = clampWidgetScale(
+        // past twice their intended size. The scaler hands its own clamped ratio over, so
+        // only the build-time call has to derive one.
+        const scale = currentScale ?? clampWidgetScale(
             Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
-        const spacing = Math.round(PANEL_SPACING_PX * currentScale);
+        const spacing = Math.round(PANEL_SPACING_PX * scale);
         const available = Math.max(2, currentWidth - spacing);
         const halfWidth = Math.floor(available / 2);
 
@@ -145,14 +146,14 @@ export function createCalendarAgendaNode(config, width, height, xPosition, yPosi
         splitBox.style = `spacing: ${spacing}px;`;
         dayPanelHost.width = dayWidth;
         gridPanelHost.width = gridWidth;
-        dayColumn.applyLayout(currentScale, currentHeight);
-        monthGrid.applyLayout(gridWidth, currentScale);
+        dayColumn.applyLayout(scale, currentHeight);
+        monthGrid.applyLayout(gridWidth, scale);
     }
 
     dayColumn.setDate(state.selectedDate);
     applyLayout(container.width || width, container.height || height);
-    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (_ratio, currentWidth, currentHeight) => {
-        applyLayout(currentWidth, currentHeight);
+    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (ratio, currentWidth, currentHeight) => {
+        applyLayout(currentWidth, currentHeight, ratio);
     });
 
     startPollingTimer(watchDayRollover(monthGrid, now => {

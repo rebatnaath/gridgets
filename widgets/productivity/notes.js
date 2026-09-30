@@ -2,9 +2,8 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetColors, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, scheduleDeferredUpdate, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const DEFAULT_NOTE_TEXT = 'Quick Note\n- [ ] Task 1\n- [x] Task 2\n\n**Click the pen icon to edit**';
@@ -12,6 +11,9 @@ const BASE_TITLE_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
 const BASE_CONTENT_FONT_SIZE = TYPOGRAPHY_SIZE.body;
 const BASE_ICON_SIZE = 16;
 const MARKDOWN_RULES = [
+    // Ahead of the bold and italic rules, which would otherwise each match half of a
+    // ***span*** and cross the tags, which pango rejects.
+    [/\*{3,}(.*?)\*{3,}/g, '<b><i>$1</i></b>'],
     [/\*\*(.*?)\*\*/g, '<b>$1</b>'],
     [/\*(.*?)\*/g, '<i>$1</i>'],
     [/^- \[ \]/gm, '[ ] '],
@@ -190,7 +192,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     });
 
     editButton.connect('button-press-event', (_actor, event) => {
-        if (event.get_button() === BUTTON_PRIMARY) {
+        if (event.get_button() === Clutter.BUTTON_PRIMARY) {
             if (isEditingActive) {
                 noteContent = textEditor.text;
                 showNoteViewer();
@@ -209,7 +211,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     function applyScale(scale) {
         const titleFontSize = scaleFontSize(BASE_TITLE_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle);
         const contentFontSize = scaleFontSize(BASE_CONTENT_FONT_SIZE, scale, MIN_FONT_SIZE.body);
-        const iconSize = Math.max(1, Math.round(BASE_ICON_SIZE * scale));
+        const iconSize = scaleFontSize(BASE_ICON_SIZE, scale);
 
         titleLabel.set_style(`${fontCss}color: ${textColor}; font-size: ${titleFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`);
         editIcon.set_icon_size(iconSize);
@@ -250,7 +252,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
         }
     }
 
-    applyScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
+    applyScale(clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX)));
     attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (scale) => {
         if (isActorDestroyed(container)) return;
         applyScale(scale);

@@ -20,7 +20,7 @@ import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { resolveDesktopAppInfo } from '../../shell/appResolution.js';
 import { toDateString } from '../../utils/moodStore.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, GRAPHICS_OPACITY, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, GRAPHICS_OPACITY, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 
 const REF_WIDTH = 360;
 const REF_HEIGHT = 170;
@@ -205,8 +205,8 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         y_expand: true,
         y_align: yAxisAlignments[index],
         x_align: Clutter.ActorAlign.END,
-        style: `${fontCss}color: ${textColor}; font-size: ${AXIS_LABEL_FONT_SIZE_PX}px; `
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; opacity: ${SECONDARY_TEXT_OPACITY};`,
+        // No style here: applyLayout runs before the scaler is attached and rewrites
+        // these, so a constructor copy would be the unscaled version and never paint.
     }));
     const yAxisBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -220,9 +220,7 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         text,
         x_expand: true,
         x_align: xAxisAlignments[index],
-        style: `${fontCss}color: ${textColor}; font-size: ${AXIS_LABEL_FONT_SIZE_PX}px; `
-                    + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`,
-            }));
+    }));
     const xAxisBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
     });
@@ -266,8 +264,8 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         }
     }
 
-    // Identity only: including the seconds changed this on nearly every tick and
-    // forced a full rebuild each time.
+    // Identity only: including the seconds would change this on nearly every tick and
+    // force a full rebuild each time.
     function appListSignature() {
         return JSON.stringify(visibleApps().map(app => app.key));
     }
@@ -451,11 +449,11 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         ctx.$dispose();
     });
 
-    function applyLayout(currentWidth, currentHeight) {
+    function applyLayout(currentWidth, currentHeight, currentScale) {
         // Skip until the container has real dimensions; otherwise scale and
         // plot extents collapse to NaN and Clutter allocates INT32_MIN.
         if (!currentWidth || !currentHeight) return;
-        const scale = Math.min(currentWidth / REF_WIDTH, currentHeight / REF_HEIGHT);
+        const scale = currentScale ?? clampWidgetScale(Math.min(currentWidth / REF_WIDTH, currentHeight / REF_HEIGHT));
         if (!isFinite(scale) || scale <= 0) return;
         state.geometry.scale = scale;
 
@@ -519,7 +517,7 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     }
 
     applyLayout(width, height);
-    attachResponsiveScaler(container, REF_WIDTH, REF_HEIGHT, (_ratio, w, h) => applyLayout(w, h));
+    attachResponsiveScaler(container, REF_WIDTH, REF_HEIGHT, (ratio, w, h) => applyLayout(w, h, ratio));
     refreshData();
 
     return container;

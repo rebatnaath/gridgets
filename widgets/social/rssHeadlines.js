@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { cssColorToRgba, resolveExplicitFontFamily, resolveWidgetColors, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { subscribeToFeed } from '../../utils/rssEngine.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
@@ -57,7 +57,7 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     let currentIndex = 0;
     /** Non-empty while a fetch has failed, so the notice can say why the list may be old. */
     let fetchFailureMessage = '';
-    let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
+    let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
 
     const mainBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -131,8 +131,7 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
 
         // Content on screen always wins over the notice, so a refresh that failed keeps
         // the headlines the user was already reading. With nothing cached and no fetch
-        // finished yet the widget stays blank rather than claiming there is no content,
-        // which is what the empty hand-off from the engine used to trigger.
+        // finished yet the widget stays blank rather than claiming there is no content.
         if (articles.length === 0) {
             articleTitle.text = '';
             articleTitle.visible = false;
@@ -266,10 +265,10 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
         return GLib.SOURCE_CONTINUE;
     });
 
-    function applyLayout(currentWidth, currentHeight) {
+    function applyLayout(currentWidth, currentHeight, currentScale) {
         if (!currentWidth || !currentHeight) return;
-        scale = Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX);
-        const px = (v) => Math.max(1, Math.round(v * scale));
+        scale = currentScale ?? clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
+        const px = (v) => scaleFontSize(v, scale);
 
         titleBar.style = `padding: ${px(TITLEBAR_PADDING_V_PX)}px ${px(TITLEBAR_PADDING_H_PX)}px;`
             + `background-color: ${subtleBackground};`
@@ -296,9 +295,9 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     }
 
     applyLayout(width, height);
-    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (_ratio, w, h) => {
+    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (ratio, w, h) => {
         if (isActorDestroyed(container)) return;
-        applyLayout(w, h);
+        applyLayout(w, h, ratio);
     });
 
     return container;

@@ -11,10 +11,9 @@ import {
     resolveChildCornerRadius,
 } from '../../utils/widgetUtils.js';
 import { resolveDesktopAppInfo } from '../../shell/appResolution.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
+import { createWidgetContainer, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 
 const DEFAULT_APP_ICON = 'application-x-executable-symbolic';
 const REFERENCE_WIDTH_PX = 140;
@@ -68,7 +67,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.body, scale, MIN_FONT_SIZE.body);
             emptyLabel.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
         };
-        updateEmptyLabel(Math.min(width / REFERENCE_WIDTH_PX, height / REFERENCE_HEIGHT_PX));
+        updateEmptyLabel(clampWidgetScale(Math.min(width / REFERENCE_WIDTH_PX, height / REFERENCE_HEIGHT_PX)));
         container.add_child(emptyLabel);
         attachResponsiveScaler(container, REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX, (ratio) => {
             updateEmptyLabel(ratio);
@@ -182,7 +181,6 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             const cell = {
                 appId: app.id,
                 displayName: app.name,
-                appInfo,
                 icon: appIcon,
                 button,
                 padding: TILE_PADDING_MIN,
@@ -204,7 +202,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             });
 
             button.connect('button-press-event', (_actor, event) => {
-                if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
+                if (event.get_button() !== Clutter.BUTTON_PRIMARY || container.actionOverlay)
                     return Clutter.EVENT_PROPAGATE;
                 const [x, y] = event.get_coords();
                 cell.pressX = x;
@@ -213,7 +211,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
             });
 
             button.connect('button-release-event', (_actor, event) => {
-                if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
+                if (event.get_button() !== Clutter.BUTTON_PRIMARY || container.actionOverlay)
                     return Clutter.EVENT_PROPAGATE;
 
                 const [releaseX, releaseY] = event.get_coords();
@@ -252,11 +250,9 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
         }
     };
 
-    registerWidgetCleanup(container, () => {
-        for (const cell of cells)
-            cell.appInfo = null;
-    });
-
+    // Sized now rather than waiting for the scaler's deferred first pass: the tiles are
+    // built at MIN_ICON_SIZE, so a large widget would show 8px icons until that idle.
+    updateScaling(clampWidgetScale(Math.min(width / REFERENCE_WIDTH_PX, height / REFERENCE_HEIGHT_PX)), width, height);
     attachResponsiveScaler(container, REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX, updateScaling);
 
     return container;

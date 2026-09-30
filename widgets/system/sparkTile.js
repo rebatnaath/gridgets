@@ -10,7 +10,7 @@ import {
     DEFAULT_CHILD_CORNER_RADIUS_PX,
 } from '../../utils/widgetUtils.js';
 import { createWidgetContainer, SPARK_SAMPLE_CAPACITY, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 
 const BASE_CONTAINER_WIDTH = 260;
 const BASE_CONTAINER_HEIGHT = 130;
@@ -70,7 +70,7 @@ function createSparklineTile({
 
     // Every dimension derives from the widget's scale, so a resize restyles the tile here.
     const applyScale = (newScale) => {
-        const tilePadding = Math.max(1, Math.round(TILE_PADDING_BASE_PX * newScale));
+        const tilePadding = scaleFontSize(TILE_PADDING_BASE_PX, newScale);
         const tileRadius = resolveChildCornerRadius(TILE_RADIUS_BASE_PX, newScale);
         const valueFontSize = scaleFontSize(VALUE_FONT_SIZE_PX, newScale, MIN_FONT_SIZE.primary);
         const unitFontSize = scaleFontSize(VALUE_FONT_SIZE_PX * UNIT_FONT_SIZE_RATIO, newScale, MIN_FONT_SIZE.metadata);
@@ -129,7 +129,7 @@ export function createSparkTileRow({ config, width, height, xPosition, yPosition
     const accentRgb = parseCssColor(resolveAccentColor(config));
     const { card } = resolveWidgetSurfaces(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
-    const scale = Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT);
+    const scale = clampWidgetScale(Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT));
 
     const tiles = tileSpecs.map(spec => createSparklineTile({
         lineColor: accentRgb,
@@ -145,16 +145,16 @@ export function createSparkTileRow({ config, width, height, xPosition, yPosition
 
     const tilesBox = createTilesRow(
         tiles.map(tile => tile.tile),
-        Math.max(1, Math.round(TILE_GAP_PX * scale)),
-        Math.max(1, Math.round(TILE_MARGIN_PX * scale)));
+        scaleFontSize(TILE_GAP_PX, scale),
+        scaleFontSize(TILE_MARGIN_PX, scale));
     container.add_child(tilesBox);
 
     // Without this the padding, corner radius and font sizes stay frozen at construction.
     attachResponsiveScaler(container, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT, (newScale) => {
         for (const tile of tiles)
             tile.applyScale(newScale);
-        tilesBox.layout_manager.spacing = Math.max(1, Math.round(TILE_GAP_PX * newScale));
-        tilesBox.style = `margin: ${Math.max(1, Math.round(TILE_MARGIN_PX * newScale))}px;`;
+        tilesBox.layout_manager.spacing = scaleFontSize(TILE_GAP_PX, newScale);
+        tilesBox.style = `margin: ${scaleFontSize(TILE_MARGIN_PX, newScale)}px;`;
     });
 
     return { container, tiles };

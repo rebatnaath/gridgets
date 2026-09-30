@@ -4,9 +4,9 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Soup from 'gi://Soup?version=3.0';
 import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, DEFAULT_CHILD_CORNER_RADIUS_PX, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveChildCornerRadius, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, cssColorToRgba, saveJsonToFile, resolveAccentColor } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
-import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, traceRoundedRect, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../shell/widgetUIUtils.js';
-import { createGetMessage } from '../../utils/httpClient.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, traceRoundedRect, MONTH_NAMES_ABBREVIATED as MONTH_NAMES, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
+import { HTTP_STATUS_OK, createGetMessage } from '../../utils/httpClient.js';
 import { createOfflineNotice, OFFLINE_NOTICE_MESSAGES } from '../../components/offline/offlineNotice/offlineNotice.js';
 import { isNetworkAvailable, subscribeToSettledConnectivity } from '../../utils/connectivity.js';
 import { cachedImageUri, writeCachedImageBytes } from '../../utils/lastGoodCache.js';
@@ -31,8 +31,13 @@ const MIN_CONTRIBUTION_WEEKS = 8;
 const MAX_CONTRIBUTION_WEEKS = 30;
 const AVATAR_REQUEST_SIZE_PX = 64;
 const REFRESH_INTERVAL_SECONDS = 600;
-const HTTP_STATUS_OK = 200;
+// A session with no timeout waits forever, so a network that accepts the connection and
+// then goes quiet would leave a request in flight until the widget was destroyed.
+const GITHUB_REQUEST_TIMEOUT_SECONDS = 30;
 const decoder = new TextDecoder();
+
+/** Usernames whose avatar has already failed, so a 404 is not retried in the journal. */
+const loggedAvatarFailures = new Set();
 
 function contributionLevel(count) {
     if (count >= 10) return 4;
@@ -53,15 +58,15 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     const emptyCellColor = card;
 
     let username = typeof config.username === 'string' ? config.username : '';
-    let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
-    const px = (v) => Math.max(1, Math.round(v * scale));
+    let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
+    const px = (v) => scaleFontSize(v, scale);
     let lastSyncTime = null;
     let latestByDate = new Map();
     /** file:// URI of the stored avatar, empty until one has been fetched. */
     let avatarImageUri = '';
 
     const state = { timerId: null, editing: false, cancellable: new Gio.Cancellable() };
-    const session = new Soup.Session();
+    const session = new Soup.Session({ timeout: GITHUB_REQUEST_TIMEOUT_SECONDS });
 
     const dataFilePath = GLib.build_filenamev([
         getGridgetsDataDir('github'),
@@ -83,8 +88,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     // A plain widget with the picture as its background: border-radius then clips the
     // image itself, so the avatar is round without any pixel masking. Masking the pixels
-    // instead depends on the decoded size being square and on cairo honouring the alpha,
-    // and it left a rectangle when either assumption did not hold.
+    // instead depends on the decoded size being square and on cairo honouring the alpha.
     const avatarWidget = new St.Widget({
         style: `background-color: ${card}; border-radius: 999px;`,
         y_align: Clutter.ActorAlign.CENTER,
@@ -101,19 +105,16 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     });
     avatarWidget.add_child(initialsLabel);
 
+    // No style here: applyLayout runs before the scaler is attached and writes these,
+    // so a constructor copy would be the unscaled, un-themed version and never paint.
     const usernameLabel = new St.Label({
         text: '',
         y_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`,
     });
 
     const badgeLabel = new St.Label({
         text: '',
         y_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}font-size: ${BADGE_FONT_SIZE_PX}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`
-            + `background-color: ${card}; border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
-            + `border-radius: 12px; padding: 3px 8px;`,
     });
 
     const usernameEntry = new St.Entry({
@@ -138,7 +139,10 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     });
     mainBox.add_child(matrixBox);
 
-    const monthLabelsRow = new St.Widget({ x_align: Clutter.ActorAlign.START });
+    const monthLabelsRow = new St.Widget({
+        layout_manager: new Clutter.BinLayout(),
+        x_align: Clutter.ActorAlign.START,
+    });
     matrixBox.add_child(monthLabelsRow);
 
     const matrixBody = new St.BoxLayout({
@@ -244,8 +248,9 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
                 continue;
             currentMonth = month;
 
-            // BinLayout stacks children, so translation_x positions each label
-            // absolutely over its week column regardless of label text width.
+            // The BinLayout gives every label the row's full width, so translation_x
+            // positions each one absolutely over its week column regardless of how long
+            // the month name is.
             const label = new St.Label({
                 text: MONTH_NAMES[month],
                 x_align: Clutter.ActorAlign.START,
@@ -282,7 +287,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     }
 
     function cellSize() {
-        return Math.max(1, Math.round(CELL_SIZE_PX * scale));
+        return scaleFontSize(CELL_SIZE_PX, scale);
     }
 
     function cellGap() {
@@ -338,8 +343,9 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
         const today = GLib.DateTime.new_now_local();
         const daysInGrid = weeks * 7;
-        // Anchor to the end of the current week (GLib dow: Mon=1..Sun=7) so
-        // the latest, partial week is always the last column on screen.
+        // Anchor to the end of the current week so the latest, partial week is always
+        // the last column. The modulus turns GLib's Sun=1..Sat=7 into Sat=6, so this
+        // lands on Saturday, which is the last row the cells below are numbered for.
         const gridEnd = today.add_days(6 - (today.get_day_of_week() % 7));
         const alignedStart = gridEnd.add_days(-(daysInGrid - 1));
 
@@ -353,7 +359,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
             const dateKey = date.format('%Y-%m-%d');
             const column = Math.floor(index / 7);
-            const row = date.get_day_of_week() % 7; // Sun=7 -> row 0
+            const row = date.get_day_of_week() % 7; // GLib Sun=1..Sat=7 -> row Sun=0
 
             cells.push({
                 x: column * (size + gap),
@@ -396,14 +402,17 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     function loadAvatar() {
         if (!username) return;
-        const url = `https://github.com/${encodeURIComponent(username)}.png?size=${AVATAR_REQUEST_SIZE_PX}`;
+        // The request is for this user specifically, so the key and the guard both have to
+        // be taken from it rather than from whatever username holds when the answer lands.
+        const requestedUsername = username;
+        const url = `https://github.com/${encodeURIComponent(requestedUsername)}.png?size=${AVATAR_REQUEST_SIZE_PX}`;
         const message = createGetMessage(url);
         if (!message) {
             console.error('Gridgets: github avatar request could not be created');
             return;
         }
         session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (s, res) => {
-            if (isActorDestroyed(container)) return;
+            if (isActorDestroyed(container) || username !== requestedUsername) return;
             try {
                 const bytes = s.send_and_read_finish(res);
                 if (!bytes || bytes.get_size() === 0)
@@ -418,27 +427,35 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
                 // and St's CSS cache cannot serve one avatar in place of another. The style
                 // is applied only once the write has landed, because a background-image
                 // pointing at a file that is not there yet fails silently.
-                const key = `avatar-${username}-${AVATAR_REQUEST_SIZE_PX}`;
+                const key = `avatar-${requestedUsername}-${AVATAR_REQUEST_SIZE_PX}`;
                 const uri = cachedImageUri('github', config.id, key);
                 if (!uri)
                     throw new Error('no cache path for avatar');
                 writeCachedImageBytes('github', config.id, key, bytes, () => {
-                    if (isActorDestroyed(container)) return;
+                    if (isActorDestroyed(container) || username !== requestedUsername) return;
                     avatarImageUri = uri;
                     initialsLabel.hide();
                     applyLayout();
                 });
             } catch (err) {
-                console.error('Gridgets: github avatar could not be fetched:', err.message);
+                // Latched per username: a mistyped name 404s on every fetch, and the avatar
+                // is retried on each reconnect, so this would otherwise repeat indefinitely
+                // for what is a user error rather than a fault.
+                const key = `avatar-failed-${requestedUsername}`;
+                if (!loggedAvatarFailures.has(key)) {
+                    loggedAvatarFailures.add(key);
+                    console.error('Gridgets: github avatar could not be fetched:', err.message);
+                }
             }
         });
     }
 
     function fetchContributions() {
         if (!username) return;
+        const requestedUsername = username;
         updateStatus('Syncing…');
-        fetchJson(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(username)}`, (err, data) => {
-            if (isActorDestroyed(container)) return;
+        fetchJson(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(requestedUsername)}`, (err, data) => {
+            if (isActorDestroyed(container) || username !== requestedUsername) return;
             if (err || !data || !Array.isArray(data.contributions)) {
                 if (!isNetworkAvailable()) {
                     showOfflineState();
@@ -491,7 +508,11 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         username = submitted;
         config.username = username;
         persistUsername();
+        // applyLayout is what drops the previous avatar out of the stylesheet. Without
+        // it the old picture stays behind the new initials until the replacement
+        // arrives, and stays for good if that fetch fails.
         avatarImageUri = '';
+        applyLayout();
         initialsLabel.show();
         updateHeader();
         fetchContributions();
@@ -529,12 +550,9 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         return GLib.SOURCE_CONTINUE;
     });
 
+    connectTimerCleanup(container, state);
     registerWidgetCleanup(container, () => {
         state.cancellable.cancel();
-        if (state.timerId) {
-            GLib.Source.remove(state.timerId);
-            state.timerId = null;
-        }
         session.abort();
         persistUsername();
         if (global.stage.get_key_focus() === usernameEntry)
@@ -555,9 +573,9 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         loadAvatar();
     });
 
-    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (_ratio, w, h) => {
+    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (ratio, w, h) => {
         if (isActorDestroyed(container)) return;
-        scale = Math.min(w / REF_WIDTH_PX, h / REF_HEIGHT_PX);
+        scale = ratio;
         applyLayout();
     });
 

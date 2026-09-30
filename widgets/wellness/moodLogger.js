@@ -2,7 +2,7 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, MOOD_LEVELS } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, attachResponsiveScaler, attachButtonFeedback, connectTimerCleanup, startPollingTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { todayDateString, toDateString, loadDatesAsync, getMood, saveMood } from '../../utils/moodStore.js';
@@ -58,7 +58,7 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
 
-    let scale = Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX);
+    let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
     const px = (value, minimum = 1) => scaleFontSize(value, scale, minimum);
 
     const state = { dateKeys: buildTrailingDateKeys(), moodButtons: [] };
@@ -148,6 +148,9 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
         historyLabel.style = `${fontCss}font-size: ${px(HISTORY_LABEL_FONT_SIZE_PX, MIN_FONT_SIZE.body)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`
             + `margin-bottom: ${px(HISTORY_LABEL_MARGIN_BOTTOM_PX)}px;`;
+
+        dotGrid.layout_manager.column_spacing = px(DOT_GRID_GAP_PX);
+        dotGrid.layout_manager.row_spacing = px(DOT_GRID_GAP_PX);
 
         renderDotGrid();
     }

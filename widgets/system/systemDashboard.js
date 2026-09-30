@@ -11,7 +11,7 @@ import {
     DEFAULT_CHILD_CORNER_RADIUS_PX,
     resolveAccentColor } from '../../utils/widgetUtils.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { cpuRamEngine, networkEngine } from '../../utils/systemMonitorEngine.js';
 import { formatBytesPerSecond } from './network.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
@@ -144,7 +144,7 @@ export function createSystemDashboardNode(config, width, height, xPosition, yPos
         actor.style = build(metrics);
     }
 
-    metrics = computeMetrics(Math.min(width / BASE_CONTAINER_WIDTH_PX, height / BASE_CONTAINER_HEIGHT_PX));
+    metrics = computeMetrics(clampWidgetScale(Math.min(width / BASE_CONTAINER_WIDTH_PX, height / BASE_CONTAINER_HEIGHT_PX)));
 
     const createChartArea = () => new St.DrawingArea({
         x_expand: true,

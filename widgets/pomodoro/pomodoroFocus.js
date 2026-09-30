@@ -2,7 +2,6 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetColors, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, resolveAccentColor } from '../../utils/widgetUtils.js';
 import { drawCircularArc, createWidgetContainer, connectTimerCleanup, registerWidgetCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { BUTTON_PRIMARY } from '../../desktopGrid/constants.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import {
@@ -118,7 +117,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         // and would leave this handler unreachable.
         attachButtonFeedback(button);
         button.connect('button-press-event', (_actor, event) => {
-            if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
+            if (event.get_button() !== Clutter.BUTTON_PRIMARY || container.actionOverlay)
                 return Clutter.EVENT_PROPAGATE;
             timer.switchToPhase(phase);
             return Clutter.EVENT_STOP;
@@ -225,7 +224,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     };
 
     startBtn.connect('button-press-event', (_actor, event) => {
-        if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
+        if (event.get_button() !== Clutter.BUTTON_PRIMARY || container.actionOverlay)
             return Clutter.EVENT_PROPAGATE;
         if (state.isRunning) timer.stopTimer();
         else timer.startTimer();
@@ -235,7 +234,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     });
 
     resetBtn.connect('button-press-event', (_actor, event) => {
-        if (event.get_button() !== BUTTON_PRIMARY || container.actionOverlay)
+        if (event.get_button() !== Clutter.BUTTON_PRIMARY || container.actionOverlay)
             return Clutter.EVENT_PROPAGATE;
         timer.resetCurrentPhase();
         updateDisplay();
@@ -245,9 +244,9 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
 
     connectTimerCleanup(container, state);
 
-    function applyLayout(currentWidth, currentHeight) {
+    function applyLayout(currentWidth, currentHeight, currentScale) {
         if (!currentWidth || !currentHeight) return;
-        scale = clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
+        scale = currentScale ?? clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
         const px = v => scaleFontSize(v, scale);
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
@@ -264,9 +263,9 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     }
 
     applyLayout(width, height);
-    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (_ratio, w, h) => {
+    attachResponsiveScaler(container, REF_WIDTH_PX, REF_HEIGHT_PX, (ratio, w, h) => {
         if (isActorDestroyed(container)) return;
-        applyLayout(w, h);
+        applyLayout(w, h, ratio);
     });
 
     return container;
