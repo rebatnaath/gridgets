@@ -54,10 +54,8 @@ export function createCalendarGridNode(config, width, height, xPosition, yPositi
     // Clamped like every other widget, so the type cannot grow past twice its
     // intended size on a large grid.
     monthGrid.applyLayout(width, clampWidgetScale(Math.min(width / REF_SIZE_PX, height / REF_SIZE_PX)));
-    attachResponsiveScaler(container, REF_SIZE_PX, REF_SIZE_PX, (_ratio, currentWidth, currentHeight) => {
-        const currentScale = clampWidgetScale(
-            Math.min(currentWidth / REF_SIZE_PX, currentHeight / REF_SIZE_PX));
-        monthGrid.applyLayout(currentWidth, currentScale);
+    attachResponsiveScaler(container, REF_SIZE_PX, REF_SIZE_PX, (ratio, currentWidth) => {
+        monthGrid.applyLayout(currentWidth, ratio);
     });
     startPollingTimer(watchDayRollover(monthGrid), DATE_POLL_INTERVAL_MS, state);
     connectTimerCleanup(container, state);

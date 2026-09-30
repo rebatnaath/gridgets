@@ -6,7 +6,7 @@ import {
     resolveChildCornerRadius, resolveWidgetBackgroundColor, resolveWidgetSurfaces,
     cssColorToRgba, blendCssColor,
 } from '../../utils/widgetUtils.js';
-import { GRID_REF_PADDING_PX } from './calendarCommon.js';
+import { GRID_REF_PADDING_PX, weekdayIndex } from './calendarCommon.js';
 import { COMPACT_TYPE_SCALE } from './monthGridPanel.js';
 import { connectShortClick } from '../../utils/widgetInteractions.js';
 import { TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
@@ -310,7 +310,7 @@ export function createDayColumn({
             blockPadding: scaledBlockPadding(state.scale),
             blockRadius: resolveChildCornerRadius(EVENT_BLOCK_RADIUS_PX, state.scale),
             ruleWidth: Math.max(2, Math.round(EVENT_RULE_WIDTH_PX * state.scale)),
-            morePadding: Math.max(1, Math.round(MORE_LINE_PADDING_PX * state.scale)),
+            morePadding: scaleFontSize(MORE_LINE_PADDING_PX, state.scale),
         };
     }
 
@@ -362,8 +362,7 @@ export function createDayColumn({
 
         if (remaining > 0) {
             const { onHighlight, highlight, morePadding } = state.eventStyle;
-            const moreFontSize = Math.max(
-                MIN_FONT_SIZE.metadata, Math.round(fontSize * MORE_LINE_FONT_SCALE));
+            const moreFontSize = scaleFontSize(fontSize * MORE_LINE_FONT_SCALE, 1, MIN_FONT_SIZE.metadata);
 
             moreLineBox.visible = true;
             moreLineLabel.text = `+${remaining} ${MORE_EVENTS_LABEL}`;
@@ -408,8 +407,8 @@ export function createDayColumn({
         // event list no vertical room.
         column.style = `padding: ${pad}px ${Math.max(pad, CONTENT_SIDE_PADDING_PX)}px;`
             + ` spacing: ${Math.round(COLUMN_SPACING_PX * currentScale)}px;`;
-        // The list, the footer and the empty-day note used to be siblings under the
-        // column and shared its spacing; now they are nested, so they need their own.
+        // Nested rather than a sibling of the column, so it does not inherit the column's
+        // spacing and needs its own.
         eventAreaBox.style = `spacing: ${Math.round(COLUMN_SPACING_PX * currentScale)}px;`;
 
         weekdayLabel.style = `${fontCss}color: ${accentHex};`
@@ -454,9 +453,8 @@ export function createDayColumn({
         // The footer is reserved whether needed or not; deriving it from the leftover
         // meant estimating its height, and a low estimate drew the chip into space that
         // was not there.
-        const lineHeight = (Math.max(MIN_FONT_SIZE.metadata,
-            Math.round(eventFontSize * MORE_LINE_FONT_SCALE)) * LINE_HEIGHT_RATIO)
-            + (Math.max(1, Math.round(MORE_LINE_PADDING_PX * currentScale)) * 2);
+        const lineHeight = (scaleFontSize(eventFontSize * MORE_LINE_FONT_SCALE, 1, MIN_FONT_SIZE.metadata) * LINE_HEIGHT_RATIO)
+            + (state.eventStyle.morePadding * 2);
         const forEvents = forRows - lineHeight;
         // Whole rows only, so a floor rather than a rounding.
         const rows = forEvents > 0 ? Math.floor(forEvents / (rowHeight + rowGap)) : 0;
@@ -515,7 +513,7 @@ export function createDayColumn({
             }
         },
         setDate(date) {
-            const weekday = CALENDAR_WEEKDAY_NAMES[date.get_day_of_week() % 7];
+            const weekday = CALENDAR_WEEKDAY_NAMES[weekdayIndex(date)];
             weekdayLabel.text = weekday.toUpperCase();
             dateLabel.text = String(date.get_day_of_month());
             state.currentDate = date;

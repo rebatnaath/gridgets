@@ -79,13 +79,20 @@ export function watchCalendarSettings(settings, onChanged) {
     };
 }
 
-/** 0 for Sunday. */
+// GLib counts weekdays 1-7 from Sunday; every name and column table here starts at 0.
+// Deriving that shift at each call site is what let the panels drift apart from the
+// weekday header, so it lives in one place.
+/** 0 for Sunday. GLib counts Sunday as 1, so the weekday wraps at 7 rather than 0. */
+export function weekdayIndex(date) {
+    return date.get_day_of_week() % 7;
+}
+
 export function getColumnForDate(date, firstDay) {
-    return (date.get_day_of_week() - firstDay + 7) % 7;
+    return (weekdayIndex(date) - firstDay + 7) % 7;
 }
 
 export function isWeekend(date, weekendDays) {
-    return weekendDays.has(CALENDAR_WEEKDAY_NAMES[date.get_day_of_week() % 7].toLowerCase());
+    return weekendDays.has(CALENDAR_WEEKDAY_NAMES[weekdayIndex(date)]);
 }
 
 /** Matches the DTSTART form used by the calendar file. */
