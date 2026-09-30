@@ -2,8 +2,8 @@ import {
     addWidget,
     nextWidgetId,
     normalizeAppLauncherApps,
-    DEFAULT_TOP_STORY_GENRE,
 } from '../utils/widgetUtils.js';
+import { DEFAULT_TOP_STORY_GENRE } from '../utils/widgetRegistry.js';
 
 export const DEFAULT_RSS_REFRESH_MINUTES = 15;
 
@@ -116,7 +116,7 @@ export function addMoodWidget(settings) {
     addWidget(settings, { id: nextWidgetId(settings, 'mood'), type: 'mood' });
 }
 
-export function addSunScheduleWidget(settings, city, latitude, longitude) {
+export function addSunTimesWidget(settings, city, latitude, longitude) {
     addWidget(settings, {
         id: nextWidgetId(settings, 'sun-schedule'),
         type: 'sun-schedule',

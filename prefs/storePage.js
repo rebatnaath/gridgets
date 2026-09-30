@@ -28,7 +28,7 @@ import {
     openAddWeatherDialog,
     openAddGithubDialog,
     openAddRssHeadlinesDialog,
-    openAddSunScheduleDialog,
+    openAddSunTimesDialog,
     openAddTopStoriesDialog,
 } from './widgetAddDialogs.js';
 
@@ -74,7 +74,7 @@ function buildPreview(extensionPath, thumbnail, fallbackIconName) {
 }
 
 function buildStoreCard(extensionPath, widgetEntry, onAdd, buttonState = {}) {
-    const { title, description, gridSize, thumbnail, fallbackIconName } = widgetEntry;
+    const { title, description, thumbnail, fallbackIconName } = widgetEntry;
     const card = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 0,
@@ -91,7 +91,11 @@ function buildStoreCard(extensionPath, widgetEntry, onAdd, buttonState = {}) {
 
     const row = new Adw.ActionRow({
         title,
-        subtitle: `${description}  ·  ${gridSize}`,
+        // No footprint here: preset widgets spawn at the Large tier of their own S/M/L
+        // table, so the catalog's gridSize only holds true for the two free-flow media
+        // widgets that read it back. Printing it on 26 of 28 cards described a size the
+        // widget never took.
+        subtitle: description,
         use_markup: false,
         hexpand: true,
         margin_start: 10,
@@ -185,7 +189,7 @@ export function buildStorePage(window, settings, extensionPath) {
         buildStoreCard(extensionPath, STORE_WIDGETS.weatherStandard, () => openAddWeatherDialog(window, settings, 'standard'), weatherState),
         buildStoreCard(extensionPath, STORE_WIDGETS.weatherMinimal, () => openAddWeatherDialog(window, settings, 'simple'), weatherState),
         buildStoreCard(extensionPath, STORE_WIDGETS.weatherForecast, () => openAddWeatherDialog(window, settings, 'forecast'), weatherState),
-        buildStoreCard(extensionPath, STORE_WIDGETS.sunScheduleWidget, () => openAddSunScheduleDialog(window, settings), weatherState),
+        buildStoreCard(extensionPath, STORE_WIDGETS.sunTimesWidget, () => openAddSunTimesDialog(window, settings), weatherState),
     ]);
 
     addStoreCategory(page, 'Media', [

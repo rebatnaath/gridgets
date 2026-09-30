@@ -20,11 +20,14 @@ import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { subscribeToSettledConnectivity } from '../../utils/connectivity.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 
-export { createSunScheduleNode } from './solarSchedule.js';
+export { createSunTimesNode } from './sunTimes.js';
 
 const GNOME_WEATHER_BUS_NAME = 'org.gnome.Weather';
 const GNOME_WEATHER_OBJECT_PATH = '/org/gnome/Weather';
 const COORDINATE_TOLERANCE = 0.0001;
+// formatSnapshotAge steps in whole minutes, so anything coarser than that leaves the
+// label wrong between ticks.
+const SNAPSHOT_AGE_REFRESH_SECONDS = 60;
 
 function launchGnomeWeather() {
     return launchApplication('gnome-weather');
@@ -219,6 +222,64 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
         extensionPath,
     };
 
+    // The age is a function of the wall clock, so it goes stale on its own while the
+    // widget sits on a snapshot. Recomputed until a real reading arrives, which is the
+    // only thing that makes the label irrelevant.
+    let snapshotSavedAtMs = 0;
+    // Whether the reading on screen came from the network. The age label is tied to this
+    // rather than to connectivity: a reading is stale once it stops being live, whether
+    // that is because the network dropped or because the API stopped answering.
+    let hasLiveReading = false;
+    let ageRefreshId = 0;
+    context.markLiveReading = () => {
+        hasLiveReading = true;
+    };
+    context.markFetchFailed = showArchivedData;
+
+    const applyArchivedReading = (json, savedAtMs) => {
+        snapshotSavedAtMs = savedAtMs;
+        context.snapshotJson = json;
+        context.snapshotAgeText = formatSnapshotAge(savedAtMs);
+        updateWeatherUi(json, context);
+    };
+
+    // Restarts on every failure, so the timer is armed here rather than only at setup:
+    // it stops itself once live data is on screen and has to be rearmed when a later
+    // fetch fails and the widget goes back to the archive.
+    const armAgeRefresh = () => {
+        if (ageRefreshId)
+            return;
+        ageRefreshId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, SNAPSHOT_AGE_REFRESH_SECONDS, () => {
+            if (isActorDestroyed(widgetNode) || !snapshotSavedAtMs || hasLiveReading) {
+                ageRefreshId = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+            const ageText = formatSnapshotAge(snapshotSavedAtMs);
+            if (ageText !== context.snapshotAgeText) {
+                context.snapshotAgeText = ageText;
+                updateWeatherUi(context.snapshotJson, context);
+            }
+            return GLib.SOURCE_CONTINUE;
+        });
+    };
+
+    // Falls back to the cached reading and labels it. Called when a fetch fails, so a
+    // widget that was showing live data does not go on presenting a temperature that is
+    // now hours old with nothing to say so.
+    function showArchivedData() {
+        if (isActorDestroyed(widgetNode))
+            return;
+        hasLiveReading = false;
+        restoreWeatherSnapshot(widgetData, (json, savedAtMs) => {
+            // A fetch that succeeds while this cache read is in flight wins: painting
+            // the archive over it would both stale the reading and stamp it with an age.
+            if (isActorDestroyed(widgetNode) || hasLiveReading)
+                return;
+            applyArchivedReading(json, savedAtMs);
+        });
+        armAgeRefresh();
+    }
+
     const triggerWeatherFetch = () => {
         if (isActorDestroyed(widgetNode)) return;
         releaseWeatherSession(widgetNode);
@@ -226,10 +287,10 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
     };
 
     restoreWeatherSnapshot(widgetData, (json, savedAtMs) => {
-        if (isActorDestroyed(widgetNode)) return;
-        context.snapshotAgeText = formatSnapshotAge(savedAtMs);
-        updateWeatherUi(json, context);
+        if (isActorDestroyed(widgetNode) || hasLiveReading) return;
+        applyArchivedReading(json, savedAtMs);
     });
+    armAgeRefresh();
 
     triggerWeatherFetch();
 
@@ -271,6 +332,10 @@ export function createWeatherNode(widgetData, width, height, xPosition, yPositio
     connectTimerCleanup(widgetNode, state);
     registerWidgetCleanup(widgetNode, () => releaseWeatherSession(widgetNode));
     registerWidgetCleanup(widgetNode, () => {
+        if (ageRefreshId) {
+            GLib.Source.remove(ageRefreshId);
+            ageRefreshId = 0;
+        }
         if (state.unlockTimeoutId) {
             GLib.Source.remove(state.unlockTimeoutId);
             state.unlockTimeoutId = 0;

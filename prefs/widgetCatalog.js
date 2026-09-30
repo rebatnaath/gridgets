@@ -1,4 +1,4 @@
-import { isWideMusicLayout } from '../utils/widgetUtils.js';
+import { isWideMusicLayout } from '../utils/widgetRegistry.js';
 
 export const STORE_WIDGETS = Object.freeze({
     weatherStandard: {
@@ -189,11 +189,11 @@ export const STORE_WIDGETS = Object.freeze({
         thumbnail: 'quotes/mood-logger.svg',
         fallbackIconName: 'face-smile-big-symbolic',
     },
-    sunScheduleWidget: {
-        title: 'Solar Schedule',
+    sunTimesWidget: {
+        title: 'Sun Times',
         description: 'Sunrise and sunset times for any city, powered by Open-Meteo.',
         gridSize: '3x3',
-        thumbnail: 'solar-schedule/solar-schedule.svg',
+        thumbnail: 'sun-times/sun-times.svg',
         fallbackIconName: 'daytime-sunset-symbolic',
     },
 });
@@ -280,7 +280,7 @@ function getStoreWidgetKey(widget) {
         case 'mood':
             return 'moodWidget';
         case 'sun-schedule':
-            return 'sunScheduleWidget';
+            return 'sunTimesWidget';
         default:
             return null;
     }

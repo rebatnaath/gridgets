@@ -9,23 +9,23 @@ import {
     resolveWidgetBackgroundColor,
     resolveWidgetForegroundColor,
     resolveExplicitFontFamily,
+    resolveWidgetCornerRadius,
     DEFAULT_BG_COLOR,
     buildBaseWidgetStyle,
     celsiusToFahrenheit,
     isDarkBackgroundColor,
 } from '../../utils/widgetUtils.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
+import { clampWidgetScale } from '../../utils/typography.js';
 import { addSettleAfterResize } from '../../utils/resizeSettle.js';
 import { scaleFontSize, TEXT_OPACITY } from '../../utils/typography.js';
-import { createGetMessage } from '../../utils/httpClient.js';
+import { HTTP_STATUS_OK, createGetMessage } from '../../utils/httpClient.js';
 
 export const REFRESH_INTERVAL_SECONDS = 1800;
 
-export const HTTP_STATUS_OK = 200;
 
 export const HOURLY_FORECAST_COUNT = 6;
 
-const DEFAULT_WEATHER_BORDER_RADIUS_PX = 24;
 export const WEATHER_METADATA_OPACITY = TEXT_OPACITY.metadata;
 export const WEATHER_SUBTLE_OPACITY = TEXT_OPACITY.subtle;
 
@@ -71,6 +71,19 @@ export function buildFontCss(widgetData) {
     return fontFamily ? `font-family: ${fontFamily}; ` : '';
 }
 
+/**
+ * The scale the responsive scaler would compute, for use before it is attached.
+ *
+ * Its first pass is deferred to an idle, so a layout that only styles itself from the
+ * callback paints one frame at its unscaled BASE_* sizes. Falls back to the reference
+ * size while the actor is still unallocated, which is a scale of 1.
+ */
+export function initialScaleFor(widgetNode, refWidth, refHeight) {
+    const width = widgetNode.width > 0 ? widgetNode.width : refWidth;
+    const height = widgetNode.height > 0 ? widgetNode.height : refHeight;
+    return clampWidgetScale(Math.min(width / refWidth, height / refHeight));
+}
+
 const decoder = new TextDecoder('utf-8');
 
 const MILLISECONDS_PER_SECOND = 1000;
@@ -84,16 +97,44 @@ const GEOCODE_CACHE = new Map();
 const GEOCODE_CACHE_LIMIT = 32;
 let cachedGnomeWeatherIconDirectory = null;
 
+/**
+ * The hour key for a moment in the location's own timezone. Open-Meteo reports its series
+ * in that zone, so its keys carry no offset and cannot be compared against UTC.
+ */
+function locationHourKey(epochMs, utcOffsetSeconds) {
+    const local = new Date(epochMs + utcOffsetSeconds * MILLISECONDS_PER_SECOND);
+    const pad = value => String(value).padStart(2, '0');
+    return `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}T${pad(local.getUTCHours())}`;
+}
+
+/**
+ * The hour as the location reads it.
+ *
+ * The request asks for `timezone=auto`, so time_str is already the location's own clock
+ * and its is_day flag was computed from it. The digits are taken from that string rather
+ * than from a Date: building one from the hour and minute makes a local wall-clock
+ * instant, and formatting it re-enters the system zone, which shifts the label away from
+ * the icon beside it. The 12/24h choice still follows the system, since that is a
+ * presentation preference rather than a time.
+ */
 function formatHourLabel(hourData) {
-    const timestampSeconds = Number.isFinite(hourData.time_epoch)
-        ? hourData.time_epoch
-        : Date.parse(hourData.time_str) / 1000;
-    if (!Number.isFinite(timestampSeconds))
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(hourData.time_str || ''));
+    if (!match)
         return '--';
-    return new Date(timestampSeconds * 1000).toLocaleTimeString(undefined, {
-        hour: 'numeric',
-        minute: '2-digit',
-    });
+    const hour = Number(match[4]);
+    const minute = match[5];
+    if (!hour12Clock())
+        return `${String(hour).padStart(2, '0')}:${minute}`;
+    const suffix = hour < 12 ? 'AM' : 'PM';
+    const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+    return `${hour12}:${minute} ${suffix}`;
+}
+
+let cachedHour12 = null;
+function hour12Clock() {
+    if (cachedHour12 === null)
+        cachedHour12 = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12 === true;
+    return cachedHour12;
 }
 
 function cacheBounded(cache, capacity, cacheKey, cacheValue) {
@@ -153,6 +194,8 @@ const WEATHER_ASSET_RULES = [
     {
         matches: code => code === WEATHER_CODE_CLOUDY_1,
         dayIcon: 'weather-few-clouds',
+        // Without this the night hours fall back to dayIcon and show a sun after dark.
+        nightIcon: 'weather-few-clouds-night',
         dayBackground: ['#121D2B', '#1a2a3d', 'cloudy-day'],
         nightBackground: ['#14181a', '#0c0f12', 'cloudy-day'],
     },
@@ -240,9 +283,7 @@ function resolveSaneExtent(extent) {
 
 // Keeps a child actor the same size as its widget node, storing the signal ids on it.
 function trackWidgetSize(actor, widgetNode) {
-    // Held still during a resize drag, like every other size listener, and applied
-    // once at the end. Cheap here, but it re-allocates on every motion event and the
-    // widget should not repaint while it is being dragged.
+    // Held still during a resize drag, per resizeSettle.js, and applied once at the end.
     const resizeToWidget = () => {
         if (isActorDestroyed(actor) || widgetNode.isResizing)
             return;
@@ -374,7 +415,12 @@ function updateHourlyForecastUi(json, uiElements, currentEpoch, extensionPath, u
     if (json.forecast.forecastday.length > 1 && json.forecast.forecastday[1].hour)
         allHours = allHours.concat(json.forecast.forecastday[1].hour);
 
-    const currentHourStr = json.current ? json.current.last_updated_hour : null;
+    // Against the current hour, not the hour of the fetch: this also runs on a restored
+    // snapshot, where the fetch may have been hours ago and the hours it kept are past.
+    const offsetSeconds = json.current ? json.current.utc_offset_seconds : null;
+    const currentHourStr = Number.isFinite(offsetSeconds)
+        ? locationHourKey(Date.now(), offsetSeconds)
+        : (json.current ? json.current.last_updated_hour : null);
     let futureHours;
     if (currentHourStr) {
         futureHours = allHours.filter(hourData => hourData.time_str && hourData.time_str.slice(0, ISO_HOUR_KEY_LENGTH) > currentHourStr);
@@ -466,9 +512,7 @@ function updateWidgetStyle(widgetNode, bgImageActor, widgetData, assets, isDynam
     }
 
     if (isDynamicImage && assets.bgImagePath) {
-        const borderRadius = widgetData.appliedBorderRadius ??
-            widgetData.borderRadius ??
-            DEFAULT_WEATHER_BORDER_RADIUS_PX;
+        const borderRadius = resolveWidgetCornerRadius(widgetData);
         bgImageActor.style = `
             background-image: url("${assets.bgImagePath}");
             background-size: cover;
@@ -501,10 +545,17 @@ export function updateWeatherUi(json, context) {
     updateHourlyForecastUi(json, uiElements, json.current.last_updated_epoch, extensionPath, useFahrenheit, folderName);
 }
 
-function getWmoConditionText(code) {
+/**
+ * The condition as a label.
+ *
+ * The clear codes say "Sunny" by day and "Clear" at night: WMO 0 and 1 describe the sky,
+ * not the time, and the icon beside this already switches on is_day. Without that the
+ * widget read "Sunny" next to a moon.
+ */
+function getWmoConditionText(code, isDay = true) {
     switch (code) {
-        case 0: return 'Sunny';
-        case 1: return 'Mainly Clear';
+        case 0: return isDay ? 'Sunny' : 'Clear';
+        case 1: return isDay ? 'Mainly Clear' : 'Mostly Clear';
         case 2: return 'Partly Cloudy';
         case 3: return 'Overcast';
         case 45: case 48: return 'Foggy';
@@ -576,7 +627,11 @@ export async function fetchOpenMeteoFallback(locationName, context) {
         const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(locationName)}&count=1&language=en&format=json`;
         const geoJson = await fetchJsonAsync(widgetNode.weatherSession, geoUrl);
 
-        if (isActorDestroyed(widgetNode) || !geoJson.results || geoJson.results.length === 0) return;
+        if (isActorDestroyed(widgetNode) || !geoJson.results || geoJson.results.length === 0) {
+            if (!isActorDestroyed(widgetNode))
+                context.markFetchFailed?.();
+            return;
+        }
         const { latitude, longitude, name } = geoJson.results[0];
         cacheBounded(GEOCODE_CACHE, GEOCODE_CACHE_LIMIT, locationName, { latitude, longitude, name });
 
@@ -584,6 +639,7 @@ export async function fetchOpenMeteoFallback(locationName, context) {
     } catch (error) {
         if (isCancelledError(error)) return;
         console.error('Error geocoding location for Open-Meteo fallback:', error);
+        context.markFetchFailed?.();
     }
 }
 
@@ -600,9 +656,10 @@ function buildOpenMeteoHourlyGroups(weatherJson, currentCode) {
 
     hourlyData.time.forEach((timeString, timeIndex) => {
         // Open-Meteo keeps these series parallel, but a short read would otherwise index
-        // past the end and put NaN in the temperature column.
+        // past the end and put NaN in the temperature column. A gap in the series arrives
+        // as null rather than undefined, and rounding that would read as a real 0 degrees.
         const temperatureCelsius = hourlyData.temperature_2m[timeIndex];
-        if (temperatureCelsius === undefined)
+        if (!Number.isFinite(temperatureCelsius))
             return;
         const weatherCode = hourlyData.weathercode?.[timeIndex] ?? currentCode;
         const isDay = hourlyData.is_day?.[timeIndex] ?? weatherJson.current_weather.is_day;
@@ -615,7 +672,7 @@ function buildOpenMeteoHourlyGroups(weatherJson, currentCode) {
             is_day: isDay === 1 || isDay === true,
             condition: {
                 code: wmoToWeatherApiCode(weatherCode),
-                text: getWmoConditionText(weatherCode),
+                text: getWmoConditionText(weatherCode, isDay === 1 || isDay === true),
             },
         };
         const dayEntries = hourlyGroups.get(dateKey) || [];
@@ -635,7 +692,7 @@ function buildOpenMeteoDailyForecasts(weatherJson, hourlyGroups) {
         const currentTemperature = weatherJson.current_weather.temperature;
         let highTemperature = currentTemperature;
         let lowTemperature = currentTemperature;
-        if (dayIndex >= 0 && weatherJson.daily?.temperature_2m_max?.[dayIndex] !== undefined) {
+        if (dayIndex >= 0 && Number.isFinite(weatherJson.daily?.temperature_2m_max?.[dayIndex])) {
             highTemperature = weatherJson.daily.temperature_2m_max[dayIndex];
             lowTemperature = weatherJson.daily.temperature_2m_min[dayIndex];
         }
@@ -659,9 +716,11 @@ function buildOpenMeteoPayload(weatherJson, locationName) {
     const currentCode = currentWeather.weathercode;
     const utcOffsetSeconds = weatherJson.utc_offset_seconds || 0;
     const nowLocationMs = Date.now() + (utcOffsetSeconds * MILLISECONDS_PER_SECOND);
-    const nowLocation = new Date(nowLocationMs);
-    const padNumber = (value) => String(value).padStart(2, '0');
-    const currentHour = `${nowLocation.getUTCFullYear()}-${padNumber(nowLocation.getUTCMonth() + 1)}-${padNumber(nowLocation.getUTCDate())}T${padNumber(nowLocation.getUTCHours())}`;
+    const currentHour = locationHourKey(Date.now(), utcOffsetSeconds);
+    // A missing reading is not a reading of zero, and this value is what gets stored as the
+    // widget's last good weather, so an absent one must not be cached as a fact.
+    if (!Number.isFinite(currentWeather.temperature))
+        return null;
     const hourlyGroups = buildOpenMeteoHourlyGroups(weatherJson, currentCode);
     return {
         location: { name: locationName },
@@ -671,9 +730,12 @@ function buildOpenMeteoPayload(weatherJson, locationName) {
             is_day: currentWeather.is_day,
             last_updated_epoch: Math.floor(nowLocationMs / MILLISECONDS_PER_SECOND),
             last_updated_hour: currentHour,
+            // Open-Meteo's hour keys carry no offset, so a restored snapshot can only be
+            // re-filtered against the current wall clock if it knows whose clock that is.
+            utc_offset_seconds: utcOffsetSeconds,
             condition: {
                 code: wmoToWeatherApiCode(currentCode),
-                text: getWmoConditionText(currentCode),
+                text: getWmoConditionText(currentCode, currentWeather.is_day === 1 || currentWeather.is_day === true),
             },
         },
         forecast: {
@@ -748,8 +810,8 @@ export function cacheWeatherSnapshot(widgetData, latitude, longitude, name, json
 }
 
 /**
- * Offers a stored snapshot to apply. Calls back with (null, 0) when there is nothing
- * usable, which leaves the widget showing its -- placeholders.
+ * Offers a stored snapshot to apply. The callback does not run when there is nothing
+ * usable, so the widget keeps whatever it already has on screen.
  */
 export function restoreWeatherSnapshot(widgetData, apply) {
     if (!widgetData?.id)
@@ -757,8 +819,37 @@ export function restoreWeatherSnapshot(widgetData, apply) {
     loadLastGoodCache('weather', widgetData.id, (payload, savedAtMs) => {
         if (!payload || !payload.json || !snapshotMatchesWidget(payload, widgetData))
             return;
-        apply(reindexForecastDays(payload.json), savedAtMs);
+        apply(reindexForecastDays(refreshSnapshotText(payload.json)), savedAtMs);
     }, WEATHER_CACHE_MAX_AGE_MS);
+}
+
+/**
+ * Repairs the labels a snapshot written before they followed is_day.
+ *
+ * Such a snapshot has "Sunny" frozen in, and nothing else recomputes it, so the widget
+ * would read Sunny beside a moon until a fetch replaced the file. Only the two clear-sky
+ * labels are corrected, by matching on the stored text: the stored `code` is in
+ * weatherapi's numbering while the text helper switches on WMO, so it cannot be re-derived
+ * from the code alone.
+ */
+function refreshSnapshotText(json) {
+    // is_day arrives as 0 or 1, so it is compared numerically: 0 === false is not true
+    // in JS, and a strict check against a boolean would skip every night payload.
+    const repair = (condition, isDay) => {
+        if (!condition || (isDay !== 0 && isDay !== false))
+            return;
+        if (condition.text === 'Sunny')
+            condition.text = 'Clear';
+        else if (condition.text === 'Mainly Clear')
+            condition.text = 'Mostly Clear';
+    };
+
+    repair(json.current?.condition, json.current?.is_day);
+    for (const day of json.forecast?.forecastday || []) {
+        for (const hour of day.hour || [])
+            repair(hour.condition, hour.is_day);
+    }
+    return json;
 }
 
 
@@ -774,14 +865,37 @@ async function fetchOpenMeteoWeather({ latitude, longitude, name }, context) {
             + '&hourly=temperature_2m,weathercode,is_day'
             + '&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto';
         const weatherJson = await fetchJsonAsync(widgetNode.weatherSession, weatherUrl);
-        if (isActorDestroyed(widgetNode) || !weatherJson.current_weather) return;
+        if (isActorDestroyed(widgetNode))
+            return;
+        // A 200 says the request succeeded, not that the body holds a reading, and a body
+        // without one left the widget on its placeholders with nothing in the journal to
+        // tell that apart from still loading.
+        if (!weatherJson.current_weather) {
+            console.error(`Error fetching Open-Meteo weather: response for ${name} had no current conditions`);
+            context.markFetchFailed?.();
+            return;
+        }
         const payload = buildOpenMeteoPayload(weatherJson, name);
+        // Nothing to show and nothing worth keeping: the seeded placeholders stay up and
+        // the previous snapshot is left alone rather than overwritten with this answer.
+        if (!payload) {
+            console.error('Error fetching Open-Meteo fallback: response had no current temperature');
+            context.markFetchFailed?.();
+            return;
+        }
+        // Marked before painting, not after, so a snapshot read that is still in flight
+        // cannot land on top of this and stamp live data with an age.
+        if (context.markLiveReading)
+            context.markLiveReading();
         context.snapshotAgeText = '';
         updateWeatherUi(payload, context);
         cacheWeatherSnapshot(context.widgetData, latitude, longitude, name, payload);
     } catch (error) {
         if (isCancelledError(error)) return;
         console.error('Error fetching Open-Meteo fallback:', error);
+        // A cancelled request is the periodic reload superseding its own predecessor, so
+        // it is not a failure; anything else leaves the archive as the only honest source.
+        context.markFetchFailed?.();
     }
 }
 

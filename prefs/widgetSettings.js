@@ -1,7 +1,8 @@
 import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
-import { isWideMusicLayout, DEFAULT_BG_COLOR, DEFAULT_FG_COLOR } from '../utils/widgetUtils.js';
+import { DEFAULT_BG_COLOR, DEFAULT_FG_COLOR } from '../utils/widgetUtils.js';
+import { isWideMusicLayout } from '../utils/widgetRegistry.js';
 import { openImageFileDialog } from './fileDialogs.js';
 import { createNormalizedFontDescription } from './aestheticControls.js';
 import { DEFAULT_RSS_REFRESH_MINUTES } from './widgetAdders.js';
@@ -164,7 +165,7 @@ export function buildRssSettings(grid, rowIdx, widget, saveHandlers) {
     return rowIdx;
 }
 
-export function buildSunScheduleSettings(grid, rowIdx, widget, saveHandlers) {
+export function buildSunTimesSettings(grid, rowIdx, widget, saveHandlers) {
     const currentLocation = { name: widget.city || '' };
     if (widget.latitude !== undefined && widget.longitude !== undefined) {
         currentLocation.latitude = widget.latitude;

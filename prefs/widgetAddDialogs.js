@@ -7,7 +7,7 @@ import {
     addWeatherWidget,
     addGithubWidget,
     addRssHeadlinesWidget,
-    addSunScheduleWidget,
+    addSunTimesWidget,
     addAppLauncherWidget,
     addTopStoriesWidget,
 } from './widgetAdders.js';
@@ -17,7 +17,7 @@ import { createGnomeWeatherLocationPicker } from './gnomeWeatherLocations.js';
 import { buildCaptionRows } from './captionControls.js';
 import { STORE_WIDGETS, parseStoreGridSize } from './widgetCatalog.js';
 import { MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
-import { DEFAULT_TOP_STORY_GENRE, TOP_STORY_GENRE_NAMES, TOP_STORY_GENRE_LABELS } from '../utils/widgetUtils.js';
+import { DEFAULT_TOP_STORY_GENRE, TOP_STORY_GENRE_LABELS, TOP_STORY_GENRE_NAMES } from '../utils/widgetRegistry.js';
 
 export { MIN_SLIDESHOW_INTERVAL_SEC, MAX_SLIDESHOW_INTERVAL_SEC, STEP_SLIDESHOW_INTERVAL_SEC, DEFAULT_SLIDESHOW_INTERVAL_SEC } from './widgetConstants.js';
 
@@ -326,8 +326,8 @@ export function openAddWeatherDialog(parentWindow, settings, layout) {
     dialog.present();
 }
 
-export function openAddSunScheduleDialog(parentWindow, settings) {
-    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Solar Schedule Widget');
+export function openAddSunTimesDialog(parentWindow, settings) {
+    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Sun Times Widget');
     let addButton = null;
     const locationPicker = createGnomeWeatherLocationPicker(null, (hasLocations) => {
         if (addButton) addButton.set_sensitive(hasLocations);
@@ -343,7 +343,7 @@ export function openAddSunScheduleDialog(parentWindow, settings) {
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
             const location = locationPicker.getSelectedLocation();
-            if (location) addSunScheduleWidget(settings, location.name, location.latitude, location.longitude);
+            if (location) addSunTimesWidget(settings, location.name, location.latitude, location.longitude);
         }
         dialogWindow.destroy();
     });

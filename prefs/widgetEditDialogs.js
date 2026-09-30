@@ -3,7 +3,7 @@ import { getWidgets, saveWidgets } from '../utils/widgetUtils.js';
 import {
     buildStandardSettings,
     buildRssSettings,
-    buildSunScheduleSettings,
+    buildSunTimesSettings,
     buildWeatherSettings,
     buildTimeSettings,
     buildMusicSettings,
@@ -37,7 +37,7 @@ export function buildWidgetEditPanel(parentWindow, widget, settings, onSavedCall
             rowIdx = buildRssSettings(grid, rowIdx, widget, saveHandlers);
             break;
         case 'sun-schedule':
-            rowIdx = buildSunScheduleSettings(grid, rowIdx, widget, saveHandlers);
+            rowIdx = buildSunTimesSettings(grid, rowIdx, widget, saveHandlers);
             break;
         case 'weather':
             rowIdx = buildWeatherSettings(grid, rowIdx, widget, settings, saveHandlers);
@@ -48,6 +48,7 @@ export function buildWidgetEditPanel(parentWindow, widget, settings, onSavedCall
         case 'music':
             rowIdx = buildMusicSettings(grid, rowIdx, widget, saveHandlers);
             break;
+        case 'pomodoro':
         case 'pomodoro-focus':
             rowIdx = buildPomodoroSettings(grid, rowIdx, widget, saveHandlers);
             break;
@@ -58,9 +59,8 @@ export function buildWidgetEditPanel(parentWindow, widget, settings, onSavedCall
             rowIdx = buildSlideshowSettings(grid, rowIdx, widget, settings, saveHandlers);
             break;
         case 'image':
-            // The animate switch used to sit behind a 'gif' case that nothing ever
-            // produced: an image widget is stored with type 'image' and only becomes
-            // animated at runtime. Without this the per-widget override was unsettable.
+            // An image widget is stored with type 'image' and only becomes animated at
+            // runtime, so it needs the image settings and the animated ones both.
             rowIdx = buildImageSettings(grid, rowIdx, widget, settings, saveHandlers, parentWindow);
             rowIdx = buildGifSettings(grid, rowIdx, widget, saveHandlers);
             break;

@@ -10,6 +10,7 @@ import {
     WEATHER_LOADING_TEXT,
     scaleWeatherValue,
     buildWeatherTextStyle,
+    initialScaleFor,
     WEATHER_METADATA_OPACITY,
 } from './weatherCommon.js';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
@@ -38,11 +39,9 @@ export function buildForecastLayout(layout, widgetData) {
     const leftLayout = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL, x_expand: true });
     uiElements.cityLabel = new St.Label({
         text: widgetData.location || LOCATION_UNAVAILABLE_TEXT,
-        style: `${fontCss}font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; font-size: ${BASE_CITY_FONT_SIZE}px; margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px;`
     });
     uiElements.tempLabel = new St.Label({
         text: '--°',
-        style: `${fontCss}font-size: ${BASE_TEMP_FONT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.extrabold};`
     });
     leftLayout.add_child(uiElements.cityLabel);
     leftLayout.add_child(uiElements.tempLabel);
@@ -52,18 +51,14 @@ export function buildForecastLayout(layout, widgetData) {
     const iconWrapper = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, x_align: Clutter.ActorAlign.END, x_expand: true });
     uiElements.conditionIcon = new St.Icon({
         icon_name: createFallbackIcon(),
-        icon_size: BASE_ICON_SIZE,
-        style: `margin-bottom: ${CITY_MARGIN_BOTTOM_PX}px;`
     });
     iconWrapper.add_child(uiElements.conditionIcon);
 
     uiElements.conditionLabel = new St.Label({
         text: WEATHER_LOADING_TEXT,
-        style: `${fontCss}font-size: ${BASE_CONDITION_FONT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium}; text-align: right;`
     });
     uiElements.highLowLabel = new St.Label({
         text: HIGH_LOW_LOADING_TEXT,
-        style: `${fontCss}font-size: ${BASE_HIGHLOW_FONT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; opacity: ${WEATHER_METADATA_OPACITY}; text-align: right;`,
         x_align: Clutter.ActorAlign.END
     });
     uiElements.highLowLabel.clutter_text.set_line_alignment(Pango.Alignment.RIGHT);
@@ -84,21 +79,17 @@ export function buildForecastLayout(layout, widgetData) {
         const hourBox = new St.BoxLayout({ orientation: Clutter.Orientation.VERTICAL, x_expand: true, x_align: Clutter.ActorAlign.CENTER });
         const timeLbl = new St.Label({
             text: '--',
-            style: `${fontCss}font-size: ${BASE_HOURLY_TEXT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px; text-align: center;`
         });
         timeLbl.clutter_text.set_line_alignment(Pango.Alignment.CENTER);
 
         const icon = new St.Icon({
             icon_name: createFallbackIcon(),
-            icon_size: BASE_HOURLY_ICON_SIZE,
-            style: `margin-bottom: ${HOURLY_ITEM_MARGIN_BOTTOM_PX}px;`
         });
         const hourlyIconWrapper = new St.BoxLayout({ orientation: Clutter.Orientation.HORIZONTAL, x_align: Clutter.ActorAlign.CENTER, x_expand: true });
         hourlyIconWrapper.add_child(icon);
 
         const tempLbl = new St.Label({
             text: '--°',
-            style: `${fontCss}font-size: ${BASE_HOURLY_TEXT_SIZE}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium}; text-align: center;`
         });
         tempLbl.clutter_text.set_line_alignment(Pango.Alignment.CENTER);
 
@@ -115,7 +106,7 @@ export function buildForecastLayout(layout, widgetData) {
 
 export function attachForecastScaler(widgetNode, uiElements, widgetData) {
     const fontCss = buildFontCss(widgetData);
-    return attachResponsiveScaler(widgetNode, BASE_LAYOUT_WIDTH, BASE_LAYOUT_HEIGHT, (scale) => {
+    const applyLayout = (scale) => {
         if (!uiElements || !uiElements.cityLabel) return;
 
         const citySize = scaleWeatherValue(BASE_CITY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle);
@@ -168,5 +159,10 @@ export function attachForecastScaler(widgetNode, uiElements, widgetData) {
                 textAlign: 'center',
             });
         });
-    });
+    };
+
+    // Before the scaler is attached, whose first pass is deferred to an idle: the labels
+    // are built at the unscaled BASE_* sizes and would otherwise paint one frame at 1.0.
+    applyLayout(initialScaleFor(widgetNode, BASE_LAYOUT_WIDTH, BASE_LAYOUT_HEIGHT));
+    return attachResponsiveScaler(widgetNode, BASE_LAYOUT_WIDTH, BASE_LAYOUT_HEIGHT, applyLayout);
 }
