@@ -15,10 +15,16 @@ const feedCache = new Map();
 
 /** Minimal RSS 2.0 / Atom extractor — tag-level parsing avoids a full DOM parser. */
 
+/** One numeric entity, or the original text when the code point is out of range.
+ *  fromCodePoint throws above 0x10FFFF, and a feed is not obliged to be well formed. */
+function decodeNumericEntity(match, codePoint) {
+    return codePoint >= 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : match;
+}
+
 function decodeXmlEntities(text) {
     return text
-        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-        .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+        .replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => decodeNumericEntity(match, parseInt(hex, 16)))
+        .replace(/&#(\d+);/g, (match, dec) => decodeNumericEntity(match, parseInt(dec, 10)))
         .replace(/&quot;/g, '"')
         .replace(/&apos;/g, '\'')
         .replace(/&lt;/g, '<')
@@ -68,14 +74,14 @@ function extractAttribute(block, pattern) {
  */
 function extractItemImage(block, rawSummary) {
     const mediaRss = extractAttribute(block, /<media:thumbnail\b[^>]*\burl=["']([^"']+)["']/i);
-    if (mediaRss) return absoluteUrl(mediaRss);
+    if (mediaRss) return isFetchableImageUrl(mediaRss);
 
     const mediaContent = extractAttribute(block,
         /<media:content\b(?=[^>]*\burl=["']([^"']+)["'])(?=[^>]*(?:\btype=["']image\/|\bmedium=["']image["']))[^>]*>/i);
-    if (mediaContent) return absoluteUrl(mediaContent);
+    if (mediaContent) return isFetchableImageUrl(mediaContent);
 
     const enclosure = extractAttribute(block, /<enclosure\b(?=[^>]*\btype=["']image\/)[^>]*\burl=["']([^"']+)["']/i);
-    if (enclosure) return absoluteUrl(enclosure);
+    if (enclosure) return isFetchableImageUrl(enclosure);
 
     const rssImage = extractTagText(block, 'image');
     if (rssImage) {
@@ -86,8 +92,14 @@ function extractItemImage(block, rawSummary) {
     return extractAttribute(rawSummary, /<img\b[^>]*\bsrc=["']([^"']+)["']/i);
 }
 
-/** Feed image URLs are often relative; without a base they cannot be fetched. */
-function absoluteUrl(candidate) {
+/**
+ * Whether a feed's image reference is usable as-is.
+ *
+ * It is a test, not a resolver: nothing here holds the feed URL, and the callers have no
+ * base to resolve a relative path against, so anything that is not already absolute and
+ * http is dropped. Named for what it decides rather than what it builds.
+ */
+function isFetchableImageUrl(candidate) {
     return /^https?:\/\//i.test(candidate) ? candidate : '';
 }
 
@@ -298,12 +310,32 @@ class RssFeedEngine {
                 return;
             }
 
+            let parsed = null;
+            try {
+                parsed = parseFeed(bodyText);
+            } catch (error) {
+                // Inside the handler because a malformed body is the commonest real
+                // failure here: escaping it would leave the widget on the old headlines
+                // with no notice and nothing in the journal.
+                this._logFetchFailure(`RSS feed ${this.feedUrl} could not be parsed: ${error.message}`);
+                this._notifySubscribers(this.lastItems);
+                return;
+            }
+
+            // A paywall page, an empty body or a feed that no longer matches this parser
+            // all come back as a successful fetch with nothing in it. Treating that as
+            // success is what leaves a widget showing stale headlines with no notice.
+            if (!parsed) {
+                this._logFetchFailure(`RSS feed ${this.feedUrl} returned a response with no readable entries`);
+                this._notifySubscribers(this.lastItems);
+                return;
+            }
+
             this.lastFetchFailed = false;
             this.etag = message.response_headers.get_one('ETag') || null;
             this.lastModified = message.response_headers.get_one('Last-Modified') || null;
 
-            const parsed = parseFeed(bodyText);
-            this.lastItems = parsed ? parsed.items : this.lastItems;
+            this.lastItems = parsed.items;
             feedCache.set(this.feedUrl, this.lastItems);
             this._notifySubscribers(this.lastItems);
         });
