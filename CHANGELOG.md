@@ -29,6 +29,10 @@ widget appears at.
 
 ### Weather
 
+- Weather conditions now read as "Clear" instead of "Sunny" after dark, and the
+  night hours get night icons. Before, a clear night showed a sun.
+- A weather reading that fails to refresh now falls back to the last good one and
+  says how old it is, instead of going blank.
 - Weather and solar schedule widgets take their city from the places saved in
   GNOME Weather, instead of a city list that shipped with the extension. That
   list and the custom weather drawings have both been deleted.
@@ -87,10 +91,25 @@ widget appears at.
   settings.
 - Image and slideshow captions can show the picture's date instead of a caption
   you type yourself, under Use Image Date.
+- Captions now pick where their text comes from: the file name, the folder name
+  for slideshows, the image date, or your own text. A folder name is only offered
+  for slideshows, which are the only ones with a folder to name.
+- Caption colour is now its own setting, separate from the widget's text colour,
+  with a Caption Text Color row in the global settings. Widgets follow it by
+  default, and keep a per-widget colour only if you turn that switch off.
+- Right-click an image or slideshow widget to change its picture or folder
+  without opening the settings.
+- The time widget can show a city from GNOME Clocks instead of local time. Pick
+  one when you add the widget or later under City; Local Time is the default.
+- The calendar's weekday bar and date panel now round their corners to match the
+  widget, which they previously did not.
 
 ### Fixes
 
-- Music artwork no longer vanishes if you change settings while something plays.
+- The Open GNOME Clocks button in the world clock and time widget settings did
+  nothing. It now opens GNOME Clocks.
+- Music artwork no longer vanishes if you change settings while something plays,
+  and it now reloads when the player changes track.
 - The elapsed time labels no longer go back to full brightness after a resize.
 - The music progress bar line is visible against the background again.
 - The small music player can be read on light themes, which dark text on a dark
@@ -104,6 +123,10 @@ widget appears at.
   briefly showing nothing.
 - The clipboard widget now works out its card and highlight colours once instead
   of twice.
+- Music keeps its position and cover when the grid is rebuilt.
+- The todo widget no longer starts with three made-up tasks in it. Widgets you
+  already had keep the tasks they were given, so delete those yourself if you
+  do not want them.
 
 Two known problems from `v0.9.4-beta` are fixed here: some widgets scaled their
 text wrongly, and music artwork could disappear.
