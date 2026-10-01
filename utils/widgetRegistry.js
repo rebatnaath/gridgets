@@ -144,6 +144,19 @@ export function getTopStoryGenreLabel(genre) {
     return TOP_STORY_GENRE_LABELS[genre] || TOP_STORY_GENRE_LABELS.top;
 }
 
+/** Heading icon per genre, all of them Adwaita so no extra icon theme is needed. */
+export const TOP_STORY_GENRE_ICONS = Object.freeze({
+    'top': 'application-rss+xml-symbolic',
+    'business': 'system-users-symbolic',
+    'sports': 'applications-games-symbolic',
+    'technology': 'computer-symbolic',
+    'science': 'applications-science-symbolic',
+});
+
+export function getTopStoryGenreIcon(genre) {
+    return TOP_STORY_GENRE_ICONS[genre] || TOP_STORY_GENRE_ICONS.top;
+}
+
 /** Feed set for a genre, falling back to the mixed top-stories set for anything unknown. */
 export function getTopStoryFeeds(genre) {
     return TOP_STORY_FEEDS[genre] || TOP_STORY_FEEDS.top;

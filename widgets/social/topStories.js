@@ -3,7 +3,7 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { cssColorToRgba, resolveAccentColor, resolveExplicitFontFamily, resolveWidgetColors } from '../../utils/widgetUtils.js';
-import { getTopStoryFeeds, getTopStoryGenreLabel } from '../../utils/widgetRegistry.js';
+import { getTopStoryFeeds, getTopStoryGenreIcon, getTopStoryGenreLabel } from '../../utils/widgetRegistry.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { subscribeToFeed } from '../../utils/rssEngine.js';
@@ -26,6 +26,9 @@ const REF_WIDTH_PX = 369;
 const REF_HEIGHT_PX = 305;
 
 const HEADER_PADDING_V_PX = 9;
+// Sits on top of the list's own top padding, so it is trimmed apart from the top margin:
+// trimming the list's padding instead would move the horizontal insets as well.
+const HEADER_PADDING_BOTTOM_PX = 4;
 const LIST_PADDING_PX = 8;
 const CARD_PADDING_X_PX = 9;
 const CARD_PADDING_Y_PX = 5;
@@ -57,8 +60,6 @@ const HEADER_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconMd;
 const SOURCE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
 const TITLE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.label;
 const MONOGRAM_SIZE_RATIO = 0.44;
-
-const HEADER_ICON_NAME = 'application-rss+xml-symbolic';
 
 const REFRESH_MINUTES = 20;
 const MIN_REFRESH_MINUTES = 5;
@@ -111,7 +112,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         y_align: Clutter.ActorAlign.CENTER,
     });
     const headerIcon = new St.Icon({
-        icon_name: HEADER_ICON_NAME,
+        icon_name: getTopStoryGenreIcon(config.genre),
         y_align: Clutter.ActorAlign.CENTER,
     });
     const headerBox = new St.BoxLayout({
@@ -442,7 +443,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         }
         scale = Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX);
         const headerIconPx = px(HEADER_ICON_SIZE_PX);
-        headerBox.style = `padding: ${px(HEADER_PADDING_V_PX)}px ${px(CONTENT_INSET_PX)}px;`;
+        headerBox.style = `padding: ${px(HEADER_PADDING_V_PX)}px ${px(CONTENT_INSET_PX)}px ${px(HEADER_PADDING_BOTTOM_PX)}px;`;
         headerLabel.style = `${fontCss}font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${accentColor};`;
         headerIcon.style = `color: ${accentColor}; width: ${headerIconPx}px; height: ${headerIconPx}px;`;

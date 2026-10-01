@@ -177,7 +177,7 @@ export const STORE_WIDGETS = Object.freeze({
         fallbackIconName: 'application-rss+xml-symbolic',
     },
     topStoriesWidget: {
-        title: 'Top Stories',
+        title: 'News',
         description: 'A scrolling list of headlines from many publishers, each with its thumbnail.',
         gridSize: '12x10',
         fallbackIconName: 'application-rss+xml-symbolic',

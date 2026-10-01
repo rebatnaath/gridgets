@@ -129,7 +129,7 @@ export function openAddImageDialog(parentWindow, settings) {
 }
 
 export function openAddTopStoriesDialog(parentWindow, settings) {
-    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Top Stories Widget');
+    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure News Widget');
 
     const genreLabel = new Gtk.Label({ label: 'Genre:', xalign: 0 });
     const genreList = new Gtk.StringList();

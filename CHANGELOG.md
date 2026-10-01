@@ -74,7 +74,7 @@ widget appears at.
 
 ### New widgets
 
-- **Top Stories** - a scrolling list of headlines from many publishers, each with
+- **News** - a scrolling list of headlines from many publishers, each with
   its thumbnail. Pick a genre when you add it.
 - **Calendar Events** - a month grid with the selected day's events listed
   beside it. Double-click a day in the grid to switch to it, scroll the list for the
@@ -84,6 +84,10 @@ widget appears at.
 
 - The calendar shows events as dots and has arrow buttons to move between months.
   Clicking it opens GNOME Calendar.
+- The Top Stories widget is now called **News**, and sits its first headline closer
+  to the heading whichever genre it is showing. The genres keep their own names, so
+  the default one is still called Top Stories inside it. Its heading icon now follows
+  the genre too, so each one is recognisable at a glance.
 - Clicking the time or world clock widget opens GNOME Clock. World clock cities
   now come from GNOME Shell, so you add them in GNOME Clocks rather than in
   Gridgets.
