@@ -28,6 +28,16 @@ widget appears at.
   than their small option.
 - **The time widget is now square** at 4x4, 5x5 and 6x6. A time widget you already
   have keeps the size it was until you pick small, medium or large again.
+- **The world clock is a flat list of cities.** It was one large city above two
+  smaller ones; it is now one row per city, every row the same size, with the
+  city name on the left and the time on the right. The GMT offset is gone, and
+  there is no primary city any more. A world clock you already have keeps its
+  cities, but pick them again if you want to change the list.
+  Small is 4x3 rather than square, since a list of cities needs less height than
+  width, and two cities stop there: a pair fills that cell on its own, while three
+  or four can still grow through 5x5 to 6x6. The size menu only offers the sizes a
+  world clock can reach, so a pair just lists Small. One already saved at a larger
+  size keeps the size it has until you pick a new one.
 
 ### Weather
 
@@ -77,6 +87,15 @@ widget appears at.
 - Clicking the time or world clock widget opens GNOME Clock. World clock cities
   now come from GNOME Shell, so you add them in GNOME Clocks rather than in
   Gridgets.
+- The world clock now takes between 2 and 4 cities and draws one row for each, so
+  you choose how many to show instead of being fixed at three. Add and remove
+  them from the widget settings.
+  The list starts at two cities, and the city rows no longer report a city that
+  has been deleted from GNOME Clocks: the dropdown has already fallen back, so
+  naming the absent city read as an error where nothing had failed.
+  Refreshing the city list no longer clears what you have chosen. It used to
+  reselect the city the row was opened with, so a refresh, or opening GNOME
+  Clocks to add a city, threw away your other picks.
 - Screen time is now counted when no app is focused. Before, those gaps never
   reached your digital wellbeing total. Clicking the screen time widget opens
   that page in Settings.
@@ -116,6 +135,20 @@ widget appears at.
   timer they used checked a 60 second interval rather than the clock.
 - The Open GNOME Clocks button in the world clock and time widget settings did
   nothing. It now opens GNOME Clocks.
+- The world clock no longer prints a city's name beside the wrong time. A city
+  saved without a timezone was drawn as if it were your local time; it is now left
+  out and the row is filled from the defaults instead.
+  Its cities are also read from a single clock reading now, so two rows can no
+  longer straddle a minute boundary and show different minutes.
+- The world clock's type is larger at every size, because it was being scaled
+  against a reference box wider than the square face it draws into.
+  The Time & Date widget is now called **Clock**, since it shows no date.
+  The rows no longer run into the edge of the cell: the face is now inset by a
+  padding that scales with the type, and the padding was a fixed 20px that never
+  moved with the widget.
+  Four cities on the small cell now step the time down instead of running the rows
+  together. The city name keeps its minimum size, so the smaller time is the only
+  thing that gives.
 - Music artwork no longer vanishes if you change settings while something plays,
   and it now reloads when the player changes track.
 - The elapsed time labels no longer go back to full brightness after a resize.

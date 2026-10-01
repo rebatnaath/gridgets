@@ -68,17 +68,15 @@ function cityLabelStyle({ fontCss, textColor, cityFontSize }) {
         + ` opacity: ${TEXT_OPACITY.metadata}; margin-top: ${CITY_MARGIN_TOP_PX}px;`;
 }
 
-/** A point on a corner arc at `angle`, with the unit normal pointing at its centre. */
+// A point on a corner arc, with the unit normal pointing at its centre.
 function arcPoint(centerX, centerY, radius, angle) {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     return [centerX + radius * cos, centerY + radius * sin, -cos, -sin];
 }
 
-/**
- * The face outline as eight pieces, each reporting a point and its inward normal at any
- * fraction of its own length.
- */
+// The face outline as eight pieces, each giving a point and its inward normal at any
+// fraction of its own length.
 function faceOutline(x, y, width, height, radius) {
     const across = width - 2 * radius;
     const down = height - 2 * radius;

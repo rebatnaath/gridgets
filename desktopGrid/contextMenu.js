@@ -8,7 +8,7 @@ import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { toggleWidgetResizeHandle } from './widgetEditUtils.js';
 import { onWidgetResized, onWidgetDeleted } from './dragDrop.js';
 import { COLUMNS_COUNT, getWidgets } from '../utils/widgetUtils.js';
-import { DEFAULT_TOP_STORY_GENRE, SIZE_PRESET_TIERS, TOP_STORY_GENRE_LABELS, TOP_STORY_GENRE_NAMES, supportsSizePresets } from '../utils/widgetRegistry.js';
+import { DEFAULT_TOP_STORY_GENRE, SIZE_PRESET_TIERS, TOP_STORY_GENRE_LABELS, TOP_STORY_GENRE_NAMES, sizePresetTierCount, supportsSizePresets } from '../utils/widgetRegistry.js';
 
 export function createPopupMenuAt(grid, event) {
     if (grid._contextMenuCloseIdleId) {
@@ -104,9 +104,10 @@ export function openWidgetContextMenu(grid, event, node, widgetData) {
         menu.addMenuItem(genreMenu);
     }
 
-    if (supportsSizePresets(widgetData)) {
+    const sizeTiers = supportsSizePresets(widgetData) ? sizePresetTierCount(widgetData) : 0;
+    if (sizeTiers > 0) {
         const sizeMenu = new PopupMenu.PopupSubMenuMenuItem('Size');
-        SIZE_PRESET_TIERS.forEach((label, sizeIndex) => {
+        SIZE_PRESET_TIERS.slice(0, sizeTiers).forEach((label, sizeIndex) => {
             const item = new PopupMenu.PopupMenuItem(label);
             item.connect('activate', () => grid.applySizePreset(widgetData.id, sizeIndex));
             sizeMenu.menu.addMenuItem(item);

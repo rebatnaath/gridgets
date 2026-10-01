@@ -106,7 +106,7 @@ Powered by GLib.DateTime (system clock). No external API needed.
 
 | Widget | Thumbnail | Description |
 |--------|-----------|-------------|
-| **Time & Date** | <img src="../../thumbnails/date-and-time/date-and-time.svg" width="50%"> | Digital clock with current date. Supports 12h/24h format. Updates every minute, aligned to the minute boundary. |
+| **Clock** | <img src="../../thumbnails/date-and-time/date-and-time.svg" width="50%"> | Digital clock, time only. Supports 12h/24h format. Updates every minute, aligned to the minute boundary. |
 | **World Clock** | <img src="../../thumbnails/date-and-time/world-clock.svg" width="50%"> | Multi-city clock showing up to three timezones (primary large + two secondary). Supports 12h/24h format. |
 | **Calendar** | <img src="../../thumbnails/calendar/calendar.svg" width="50%"> | A monthly calendar with today highlighted and month navigation. |
 

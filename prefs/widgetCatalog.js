@@ -37,8 +37,8 @@ export const STORE_WIDGETS = Object.freeze({
         fallbackIconName: 'audio-x-generic-symbolic',
     },
     timeAndDate: {
-        title: 'Time & Date',
-        description: 'A clean digital clock with the current date.',
+        title: 'Clock',
+        description: 'A clean digital clock. No date, no seconds.',
         gridSize: '3x2',
         thumbnail: 'date-and-time/date-and-time.svg',
         fallbackIconName: 'preferences-system-time-symbolic',

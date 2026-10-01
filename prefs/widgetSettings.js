@@ -8,6 +8,7 @@ import { createNormalizedFontDescription } from './aestheticControls.js';
 import { DEFAULT_RSS_REFRESH_MINUTES } from './widgetAdders.js';
 import { createGnomeWeatherLocationPicker } from './gnomeWeatherLocations.js';
 import { createGnomeClocksLocationPicker } from './gnomeClocksLocations.js';
+import { createCityListEditor } from './cityListEditor.js';
 import { createAppSelectionControls } from './appSelection.js';
 import { buildCaptionControls } from './captionControls.js';
 import { getConnectedMonitorsCount, buildMonitorEntries } from './displayUtils.js';
@@ -290,11 +291,11 @@ export function buildTimeSettings(grid, rowIdx, widget, settings, saveHandlers) 
     grid.attach(formatSwitch, 1, rowIdx, 1, 1);
     rowIdx++;
 
-    let primaryPicker, sec1Picker, sec2Picker;
+    let cityListEditor = null;
     if (widget.layout !== 'world') {
         // Local time is the first entry, so a widget that never picked a city keeps
         // reading local time and saving simply leaves location unset.
-        const locationPicker = createGnomeClocksLocationPicker(widget.location ?? null, 0, null, true);
+        const locationPicker = createGnomeClocksLocationPicker(widget.location ?? null, null, true);
         const locationBox = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL,
             spacing: 4,
@@ -324,45 +325,22 @@ export function buildTimeSettings(grid, rowIdx, widget, settings, saveHandlers) 
     }
 
     if (widget.layout === 'world' || widget.cities) {
-        const createPicker = (label, row, initialIndex) => {
-            // A widget saved before the GNOME Clocks integration has no cities,
-            // so the picker starts unset and asks the user to pick one.
-            const picker = createGnomeClocksLocationPicker(widget.cities?.[initialIndex] ?? null, initialIndex);
-            const pickerBox = new Gtk.Box({
-                orientation: Gtk.Orientation.VERTICAL,
-                spacing: 4,
-                hexpand: true,
-            });
-            const pickerRow = new Gtk.Box({
-                orientation: Gtk.Orientation.HORIZONTAL,
-                spacing: 12,
-                hexpand: true,
-            });
-            const labelWidget = new Gtk.Label({ label, xalign: 0, valign: Gtk.Align.CENTER });
-            pickerRow.append(labelWidget);
-            pickerRow.append(picker.locationWidget);
-            pickerBox.append(pickerRow);
-            pickerBox.append(picker.supportingWidget);
-            grid.attach(pickerBox, 0, row, 2, 1);
-            return picker;
-        };
-
-        primaryPicker = createPicker('Primary City (Top):', rowIdx, 0);
-        sec1Picker = createPicker('Secondary City (Bottom Left):', rowIdx + 2, 1);
-        sec2Picker = createPicker('Secondary City (Bottom Right):', rowIdx + 4, 2);
-        grid.attach(primaryPicker.actionWidget, 0, rowIdx + 6, 2, 1);
-        rowIdx += 7;
+        const editor = createCityListEditor(widget.cities ?? null);
+        grid.attach(editor.widget, 0, rowIdx, 2, 1);
+        rowIdx++;
+        grid.attach(editor.actionWidget, 0, rowIdx, 2, 1);
+        rowIdx++;
+        cityListEditor = editor;
     }
 
     saveHandlers.push((target) => {
         target.use24h = formatSwitch.get_active();
-        if (primaryPicker && sec1Picker && sec2Picker) {
-            const cities = [
-                primaryPicker.getSelectedLocation(),
-                sec1Picker.getSelectedLocation(),
-                sec2Picker.getSelectedLocation()
-            ];
-            if (cities.every(Boolean)) target.cities = cities;
+        if (cityListEditor) {
+            const cities = cityListEditor.getCities();
+            // A list the user has not finished choosing is left as it was rather than
+            // saved short, so opening the page cannot quietly drop a city.
+            if (cityListEditor.isComplete())
+                target.cities = cities;
         }
     });
 

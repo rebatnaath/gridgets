@@ -5,11 +5,14 @@
 // not reach for St, Clutter, Meta, Gtk, Gdk or Adw. Anything that varies per process
 // (descriptions, thumbnails) belongs to the preferences side instead.
 
+import { MIN_CITY_COUNT, resolveCityList } from './worldClockCities.js';
+
 const WIDE_MUSIC_LAYOUT_ASPECT_RATIO = 1.5;
 
 const TIME_LAYOUTS = Object.freeze({
     default: 'time',
     world: 'worldClock',
+    worldPair: 'worldClockPair',
 });
 
 const WEATHER_LAYOUTS = Object.freeze({
@@ -26,7 +29,8 @@ const MUSIC_LAYOUTS = Object.freeze({
 // Small/Medium/Large footprints on the fixed grid, indexed 0-2.
 const SIZE_PRESETS = Object.freeze({
     'time': [[4, 4], [5, 5], [6, 6]],
-    'worldClock': [[4, 4], [5, 5], [6, 6]],
+    'worldClock': [[4, 3], [5, 5], [6, 6]],
+    'worldClockPair': [[4, 3]],
     'weatherStandard': [[4, 4], [5, 5], [6, 6]],
     'weatherSimple': [[4, 4], [5, 5], [6, 5]],
     'weatherForecast': [[6, 4], [8, 5], [10, 6]],
@@ -168,7 +172,14 @@ export function isWideMusicLayout(widget) {
 export function resolveWidgetSizeTableKey(widgetData) {
     switch (widgetData.type) {
         case 'time':
-            return (widgetData.layout === 'world') ? TIME_LAYOUTS.world : TIME_LAYOUTS.default;
+            if (widgetData.layout !== 'world')
+                return TIME_LAYOUTS.default;
+            // Two cities fill the smallest cell on their own, so a pair stops at 4x4 and
+            // has no tiers above it. resolveCityList is what the widget itself renders, so
+            // the cap cannot disagree with the number of rows on the face.
+            return resolveCityList(widgetData.cities).length <= MIN_CITY_COUNT
+                ? TIME_LAYOUTS.worldPair
+                : TIME_LAYOUTS.world;
         case 'weather': {
             const layout = widgetData.layout || 'standard';
             return WEATHER_LAYOUTS[layout] || WEATHER_LAYOUTS.standard;
@@ -211,9 +222,24 @@ export function resolveWidgetSizePreset(widgetData, sizeIndex) {
         return resolveAppLauncherPreset(widgetData, sizeIndex);
     const tableKey = resolveWidgetSizeTableKey(widgetData);
     const table = tableKey ? SIZE_PRESETS[tableKey] : null;
-    if (!table || !table[sizeIndex])
+    if (!table || !table.length)
         return null;
-    return { width: table[sizeIndex][0], height: table[sizeIndex][1] };
+    // A tier past the end of a short table resolves to its largest size rather than to
+    // nothing, so a widget whose table shrank keeps a real footprint.
+    const tier = table[Math.min(sizeIndex, table.length - 1)];
+    return { width: tier[0], height: tier[1] };
+}
+
+/**
+ * How many size tiers this widget actually offers. A world clock with two cities has a
+ * one-entry table, so offering Medium and Large would list choices that do nothing.
+ */
+export function sizePresetTierCount(widgetData) {
+    if (widgetData.type === 'app-launcher')
+        return SIZE_PRESET_TIERS.length;
+    const tableKey = resolveWidgetSizeTableKey(widgetData);
+    const table = tableKey ? SIZE_PRESETS[tableKey] : null;
+    return table ? Math.min(table.length, SIZE_PRESET_TIERS.length) : 0;
 }
 
 /** The folder a widget type keeps its data in, or null when it persists nothing. */

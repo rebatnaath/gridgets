@@ -13,6 +13,7 @@ import {
 } from './widgetAdders.js';
 import { createAppSelectionControls } from './appSelection.js';
 import { createGnomeClocksLocationPicker } from './gnomeClocksLocations.js';
+import { createCityListEditor } from './cityListEditor.js';
 import { createGnomeWeatherLocationPicker } from './gnomeWeatherLocations.js';
 import { buildCaptionRows } from './captionControls.js';
 import { STORE_WIDGETS, parseStoreGridSize } from './widgetCatalog.js';
@@ -226,9 +227,9 @@ export function openAddSlideshowDialog(parentWindow, settings) {
 }
 
 export function openAddTimeDialog(parentWindow, settings) {
-    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Time & Date Widget');
+    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure Clock Widget');
 
-    const picker = createGnomeClocksLocationPicker(null, 0, null, true);
+    const picker = createGnomeClocksLocationPicker(null, null, true);
     const pickerBox = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 4,
@@ -261,52 +262,23 @@ export function openAddWorldClockDialog(parentWindow, settings) {
     const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure World Clock Widget');
     let addButton = null;
 
-    const createPicker = (label, row, initialIndex) => {
-        const picker = createGnomeClocksLocationPicker(null, initialIndex);
-        const pickerBox = new Gtk.Box({
-            orientation: Gtk.Orientation.VERTICAL,
-            spacing: 4,
-            hexpand: true,
-        });
-        const pickerRow = new Gtk.Box({
-            orientation: Gtk.Orientation.HORIZONTAL,
-            spacing: 12,
-            hexpand: true,
-        });
-        const labelWidget = new Gtk.Label({ label, xalign: 0, valign: Gtk.Align.CENTER });
-        pickerRow.append(labelWidget);
-        pickerRow.append(picker.locationWidget);
-        pickerBox.append(pickerRow);
-        pickerBox.append(picker.supportingWidget);
-        grid.attach(pickerBox, 0, row, 2, 1);
-        return picker;
-    };
-
-    const primaryPicker = createPicker('Primary City (Top):', 0, 0);
-    const sec1Picker = createPicker('Secondary City (Bottom Left):', 2, 1);
-    const sec2Picker = createPicker('Secondary City (Bottom Right):', 4, 2);
-    grid.attach(primaryPicker.actionWidget, 0, 6, 2, 1);
-
-    // All three cities are required, so the button follows the selection rather than
-    // the locations merely having loaded.
-    const pickers = [primaryPicker, sec1Picker, sec2Picker];
-    const syncAddButton = () => {
+    const editor = createCityListEditor(null, () => {
         if (addButton)
-            addButton.set_sensitive(pickers.every(p => p.getSelectedLocation() !== null));
-    };
+            addButton.set_sensitive(editor.isComplete());
+    });
+    grid.attach(editor.widget, 0, 0, 2, 1);
+    grid.attach(editor.actionWidget, 0, 1, 2, 1);
+
+    // The widget renders a row per city, so the button follows the list being complete
+    // rather than the locations merely having loaded.
     addButton = dialog.get_widget_for_response(Gtk.ResponseType.OK);
-    syncAddButton();
-    for (const picker of pickers)
-        picker.connectSelectionChanged(syncAddButton);
+    addButton.set_sensitive(editor.isComplete());
 
     dialog.connect('response', (dialogWindow, responseId) => {
         if (responseId === Gtk.ResponseType.OK) {
-            const primaryCity = primaryPicker.getSelectedLocation();
-            const sec1City = sec1Picker.getSelectedLocation();
-            const sec2City = sec2Picker.getSelectedLocation();
-            if (primaryCity && sec1City && sec2City) {
-                addTimeWidget(settings, 'world', [primaryCity, sec1City, sec2City]);
-            }
+            const cities = editor.getCities();
+            if (editor.isComplete())
+                addTimeWidget(settings, 'world', cities);
         }
         dialogWindow.destroy();
     });

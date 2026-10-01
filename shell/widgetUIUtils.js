@@ -163,16 +163,12 @@ const MINUTE_TIMER_MARGIN_MS = 100;
 /**
  * Fires `updateCallback` once per wall-clock minute, aimed just after each boundary.
  *
- * A timer is armed from a wall-clock reading but scheduled on the monotonic clock, so a
- * fire can land before or after the boundary it was aimed at. The callback therefore
- * compares the minute it is about to render against the last one it rendered, and only
- * updates when it actually changed. That is what makes a mis-timed fire harmless: it can
- * neither render a minute that has not started nor skip one that has.
- *
- * The delay is recomputed from the current time on each tick rather than chained at a
- * fixed interval, so a fire that lands early does not accumulate into a permanently
- * late one, and a coarse seconds timer is not used because it rounds its expiry up to
- * the next whole second and can step over a boundary.
+ * A timer armed from a wall-clock reading runs on the monotonic clock, so a fire can land
+ * either side of the boundary. The callback therefore only updates when the minute it
+ * would render differs from the last one, which makes a mis-timed fire harmless: it can
+ * neither render a minute that has not started nor skip one that has. The delay is
+ * recomputed each tick rather than chained, so an early fire cannot accumulate into a
+ * permanently late one.
  */
 export function startMinuteAlignedTimer(state, widgetNode, updateCallback) {
     if (state.timerId) {
