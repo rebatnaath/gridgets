@@ -25,7 +25,7 @@ const MUSIC_LAYOUTS = Object.freeze({
 
 // Small/Medium/Large footprints on the fixed grid, indexed 0-2.
 const SIZE_PRESETS = Object.freeze({
-    'time': [[4, 3], [5, 4], [6, 5]],
+    'time': [[4, 4], [5, 5], [6, 6]],
     'worldClock': [[4, 4], [5, 5], [6, 6]],
     'weatherStandard': [[4, 4], [5, 5], [6, 6]],
     'weatherSimple': [[4, 4], [5, 5], [6, 5]],

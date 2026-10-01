@@ -157,34 +157,57 @@ export function startPollingTimer(pollFunction, intervalMs, state) {
     });
 }
 
+// Aimed past the boundary rather than at it, so an ordinary fire lands on the new minute.
+const MINUTE_TIMER_MARGIN_MS = 100;
+
+/**
+ * Fires `updateCallback` once per wall-clock minute, aimed just after each boundary.
+ *
+ * A timer is armed from a wall-clock reading but scheduled on the monotonic clock, so a
+ * fire can land before or after the boundary it was aimed at. The callback therefore
+ * compares the minute it is about to render against the last one it rendered, and only
+ * updates when it actually changed. That is what makes a mis-timed fire harmless: it can
+ * neither render a minute that has not started nor skip one that has.
+ *
+ * The delay is recomputed from the current time on each tick rather than chained at a
+ * fixed interval, so a fire that lands early does not accumulate into a permanently
+ * late one, and a coarse seconds timer is not used because it rounds its expiry up to
+ * the next whole second and can step over a boundary.
+ */
 export function startMinuteAlignedTimer(state, widgetNode, updateCallback) {
     if (state.timerId) {
         GLib.Source.remove(state.timerId);
         state.timerId = null;
     }
 
-    const now = GLib.DateTime.new_now_local();
-    const remainingMilliseconds = (SECONDS_IN_MINUTE - now.get_seconds()) * MILLISECONDS_IN_SECOND
-        - (now.get_microsecond() / MILLISECONDS_IN_SECOND);
-    const millisecondsUntilNextMinute = Math.max(100, Math.floor(remainingMilliseconds));
+    // Seeded from the clock, not left null, so a first fire that lands inside the minute
+    // the caller already painted does not re-render the same time.
+    const initial = GLib.DateTime.new_now_local();
+    let lastRenderedMinute = `${initial.get_hour()}:${initial.get_minute()}`;
 
-    state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, millisecondsUntilNextMinute, () => {
-        if (isActorDestroyed(widgetNode)) {
-            state.timerId = null;
-            return GLib.SOURCE_REMOVE;
-        }
-
-        updateCallback();
-        state.timerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, SECONDS_IN_MINUTE, () => {
-            if (isActorDestroyed(widgetNode)) {
-                state.timerId = null;
+    const arm = () => {
+        const now = GLib.DateTime.new_now_local();
+        const millisecondsUntilNextMinute = (SECONDS_IN_MINUTE - now.get_seconds()) * MILLISECONDS_IN_SECOND
+            - (now.get_microsecond() / MILLISECONDS_IN_SECOND)
+            + MINUTE_TIMER_MARGIN_MS;
+        state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
+            Math.max(MINUTE_TIMER_MARGIN_MS, Math.ceil(millisecondsUntilNextMinute)), () => {
+                if (isActorDestroyed(widgetNode)) {
+                    state.timerId = null;
+                    return GLib.SOURCE_REMOVE;
+                }
+                const current = GLib.DateTime.new_now_local();
+                const minute = `${current.get_hour()}:${current.get_minute()}`;
+                if (minute !== lastRenderedMinute) {
+                    lastRenderedMinute = minute;
+                    updateCallback();
+                }
+                arm();
                 return GLib.SOURCE_REMOVE;
-            }
-            updateCallback();
-            return GLib.SOURCE_CONTINUE;
-        });
-        return GLib.SOURCE_REMOVE;
-    });
+            });
+    };
+
+    arm();
 }
 
 export function createCaptionOverlay(config, caption) {

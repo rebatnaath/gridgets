@@ -294,8 +294,6 @@ function buildWorldClockUI(layoutBox, fontCss, scale, cities) {
 }
 
 function updateWorldTimes(ui, is24h) {
-    if (!ui) return;
-
     const primaryData = getFormattedTimeAndGmt(ui.primaryCity.timezone, is24h);
     ui.topTimeLabel.set_text(primaryData.timeStr);
     ui.topAmpmLabel.set_text(primaryData.ampmStr);
@@ -332,11 +330,10 @@ export function createWorldTimeNode(widgetData, width, height, xPosition, yPosit
         timerId: null,
     };
 
-    const updateDisplay = () => {
-        // Re-evaluated per tick so toggling 24h takes effect without a rebuild.
-        const is24h = resolveUse24h(widgetData);
-        updateWorldTimes(ui, is24h);
-    };
+    // Read once, not per tick: widgetData is fixed for the node's lifetime, and a global
+    // 12/24h change reaches this widget by rebuilding the grid rather than by re-reading.
+    const is24h = resolveUse24h(widgetData);
+    const updateDisplay = () => updateWorldTimes(ui, is24h);
 
     updateDisplay();
     startMinuteAlignedTimer(state, widgetNode, updateDisplay);

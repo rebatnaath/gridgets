@@ -26,6 +26,8 @@ widget appears at.
 - **Six widget types now have a smallest size** (system dashboard, pomodoro focus,
   todo, github, rss headlines, sun schedule). You can no longer drag them smaller
   than their small option.
+- **The time widget is now square** at 4x4, 5x5 and 6x6. A time widget you already
+  have keeps the size it was until you pick small, medium or large again.
 
 ### Weather
 
@@ -101,11 +103,17 @@ widget appears at.
   without opening the settings.
 - The time widget can show a city from GNOME Clocks instead of local time. Pick
   one when you add the widget or later under City; Local Time is the default.
+- The time widget has a new look: a ring of tick marks around the edge with a
+  bright one marking the current second, and the time in large type in the middle.
+  The date is gone; AM and PM now sits above the time.
 - The calendar's weekday bar and date panel now round their corners to match the
   widget, which they previously did not.
 
 ### Fixes
 
+- The time and world clock widgets no longer leave the displayed minute behind.
+  They could update half a minute late, or skip a minute entirely, because the
+  timer they used checked a 60 second interval rather than the clock.
 - The Open GNOME Clocks button in the world clock and time widget settings did
   nothing. It now opens GNOME Clocks.
 - Music artwork no longer vanishes if you change settings while something plays,
@@ -141,6 +149,9 @@ text wrongly, and music artwork could disappear.
   an old fixed number, and it redraws when the new colour settings change.
 - Removed the fake mood and fake screen time data generators.
 - Removed unused code and a few settings that were read but never used.
+- The minute timer both clock widgets use now checks the clock instead of
+  counting 60 seconds, and its tick lands just after the minute rather than on it.
+- Removed two exports from the time widget's index that nothing imported.
 
 ### Documentation
 
