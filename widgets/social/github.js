@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Soup from 'gi://Soup?version=3.0';
-import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, DEFAULT_CHILD_CORNER_RADIUS_PX, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveChildCornerRadius, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, cssColorToRgba, saveJsonToFile, resolveAccentColor } from '../../utils/widgetUtils.js';
+import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, cssColorToRgba, saveJsonToFile, resolveAccentColor } from '../../utils/widgetUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, traceRoundedRect, MONTH_NAMES_ABBREVIATED as MONTH_NAMES, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { HTTP_STATUS_OK, createGetMessage } from '../../utils/httpClient.js';
@@ -12,20 +12,25 @@ import { isNetworkAvailable, subscribeToSettledConnectivity } from '../../utils/
 import { cachedImageUri, writeCachedImageBytes } from '../../utils/lastGoodCache.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
-const REF_WIDTH_PX = 420;
-const REF_HEIGHT_PX = 200;
+const REF_WIDTH_PX = 520;
+const REF_HEIGHT_PX = 250;
 const CONTAINER_PADDING_V_PX = 16;
 const CONTAINER_PADDING_H_PX = 20;
 const AVATAR_SIZE_PX = 34;
 const USERNAME_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
-const BADGE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
 const LABEL_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
 const FOOTER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
+const TOTAL_FONT_SIZE_PX = 42;
+const STAT_VALUE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
+const LEFT_COLUMN_WIDTH_PX = 200;
+const COLUMNS_SPACING_PX = 22;
+const DIVIDER_THICKNESS_PX = 1;
+const CHART_HEIGHT_PX = 34;
 const CELL_SIZE_PX = 12;
 const CELL_GAP_RATIO = 0.27;
-const DAY_LABELS_WIDTH_PX = 24;
-const DAY_LABEL_ROWS = { 1: 'Mon', 3: 'Wed', 5: 'Fri' };
 const MAIN_BOX_SPACING_PX = 10;
+const STAT_LABELS = ['Current streak', 'Longest streak', 'Busiest day'];
+const TOTAL_CAPTION_MONTHS = 6;
 const CONTRIBUTION_LEVEL_ALPHAS = [0, 0.28, 0.48, 0.72, 1];
 const MIN_CONTRIBUTION_WEEKS = 8;
 const MAX_CONTRIBUTION_WEEKS = 30;
@@ -60,7 +65,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     let username = typeof config.username === 'string' ? config.username : '';
     let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
     const px = (v) => scaleFontSize(v, scale);
-    let lastSyncTime = null;
     let latestByDate = new Map();
     /** file:// URI of the stored avatar, empty until one has been fetched. */
     let avatarImageUri = '';
@@ -81,10 +85,27 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     });
     container.add_child(mainBox);
 
+    // Two columns: figures on the left, graph on the right. In one column the count and the
+    // grid end up so far apart that neither reads as the other's caption.
+    const columnsRow = new St.BoxLayout({
+        orientation: Clutter.Orientation.HORIZONTAL,
+        x_expand: true,
+        y_expand: true,
+        style: `spacing: ${px(COLUMNS_SPACING_PX)}px;`,
+    });
+    mainBox.add_child(columnsRow);
+
+    const leftColumn = new St.BoxLayout({
+        orientation: Clutter.Orientation.VERTICAL,
+        x_align: Clutter.ActorAlign.START,
+    });
+    columnsRow.add_child(leftColumn);
+
     const headerBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         x_align: Clutter.ActorAlign.FILL,
     });
+    leftColumn.add_child(headerBox);
 
     // A plain widget with the picture as its background: border-radius then clips the
     // image itself, so the avatar is round without any pixel masking. Masking the pixels
@@ -112,11 +133,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         y_align: Clutter.ActorAlign.CENTER,
     });
 
-    const badgeLabel = new St.Label({
-        text: '',
-        y_align: Clutter.ActorAlign.CENTER,
-    });
-
     const usernameEntry = new St.Entry({
         text: username,
         can_focus: true,
@@ -129,15 +145,55 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     headerBox.add_child(usernameEntry);
     const headerSpacer = new St.Widget({ x_expand: true });
     headerBox.add_child(headerSpacer);
-    headerBox.add_child(badgeLabel);
-    mainBox.add_child(headerBox);
 
-    const matrixBox = new St.BoxLayout({
+    const totalLabel = new St.Label({
+        text: '0',
+        x_align: Clutter.ActorAlign.START,
+        y_align: Clutter.ActorAlign.START,
+    });
+    leftColumn.add_child(totalLabel);
+
+    // FILL plus wrapping, so the caption takes the column's width and breaks onto a second
+    // line instead of being ellipsised, or forcing the column wider than its set width.
+    const totalCaptionLabel = new St.Label({
+        text: `contributions · ${TOTAL_CAPTION_MONTHS} months`,
+        x_align: Clutter.ActorAlign.FILL,
+        y_align: Clutter.ActorAlign.START,
+    });
+    // A ClutterText property: passing line_wrap to the St.Label constructor throws and the
+    // widget is never built.
+    totalCaptionLabel.clutter_text.line_wrap = true;
+    leftColumn.add_child(totalCaptionLabel);
+
+    const divider = new St.Widget({ x_align: Clutter.ActorAlign.FILL });
+    leftColumn.add_child(divider);
+
+    const statRows = STAT_LABELS.map(() => {
+        const name = new St.Label({ text: '', x_align: Clutter.ActorAlign.START });
+        const value = new St.Label({ text: '', x_align: Clutter.ActorAlign.END });
+        const row = new St.BoxLayout({
+            orientation: Clutter.Orientation.HORIZONTAL,
+            x_align: Clutter.ActorAlign.FILL,
+        });
+        row.add_child(name);
+        row.add_child(new St.Widget({ x_expand: true }));
+        row.add_child(value);
+        leftColumn.add_child(row);
+        return { name, value };
+    });
+
+    const rightColumn = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
     });
-    mainBox.add_child(matrixBox);
+    columnsRow.add_child(rightColumn);
+
+    const matrixBox = new St.BoxLayout({
+        orientation: Clutter.Orientation.VERTICAL,
+        x_expand: true,
+    });
+    rightColumn.add_child(matrixBox);
 
     const monthLabelsRow = new St.Widget({
         layout_manager: new Clutter.BinLayout(),
@@ -170,11 +226,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         mainBox.show();
     }
 
-    const dayLabelsColumn = new St.BoxLayout({
-        orientation: Clutter.Orientation.VERTICAL,
-    });
-    matrixBody.add_child(dayLabelsColumn);
-
     const gridCanvas = new St.DrawingArea({ x_expand: true });
     gridCanvas.connect('repaint', drawMatrixCanvas);
     matrixBody.add_child(gridCanvas);
@@ -191,7 +242,32 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
             + `color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`,
     });
 
+    // The bar chart sits under the grid rather than beside it: the two share a week axis, so
+    // stacking them lets a bar be read against the column of days above it.
+    const chartBox = new St.BoxLayout({
+        orientation: Clutter.Orientation.VERTICAL,
+        x_expand: true,
+        style: `spacing: ${px(2)}px;`,
+    });
+    rightColumn.add_child(chartBox);
+
+    const weeklyChart = new St.DrawingArea({ x_expand: true });
+    weeklyChart.connect('repaint', drawWeeklyChart);
+    chartBox.add_child(weeklyChart);
+
     footerBox.add_child(statusLabel);
+    rightColumn.add_child(footerBox);
+
+    const chartCaptionRow = new St.BoxLayout({
+        orientation: Clutter.Orientation.HORIZONTAL,
+        x_align: Clutter.ActorAlign.FILL,
+    });
+    const weeklyCaption = new St.Label({ text: 'Weekly total', x_align: Clutter.ActorAlign.START });
+    const thisWeekCaption = new St.Label({ text: '', x_align: Clutter.ActorAlign.END });
+    chartCaptionRow.add_child(weeklyCaption);
+    chartCaptionRow.add_child(new St.Widget({ x_expand: true }));
+    chartCaptionRow.add_child(thisWeekCaption);
+    chartBox.add_child(chartCaptionRow);
 
     const persistUsername = () => saveJsonToFile(dataFilePath, { username });
 
@@ -212,12 +288,23 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-left: ${px(8)}px;`;
         usernameEntry.style = `${fontCss}font-size: ${scaleFontSize(USERNAME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
             + `color: ${textColor}; width: ${px(150)}px;`;
-        badgeLabel.style = `${fontCss}font-size: ${scaleFontSize(BADGE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`
-            + `background-color: ${card}; border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
-            + `border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px; padding: ${px(3)}px ${px(8)}px;`;
+        totalLabel.style = `${fontCss}font-size: ${scaleFontSize(TOTAL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px;`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${accentColor};`;
+        totalCaptionLabel.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+        statRows.forEach((row, index) => {
+            row.name.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+                + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            row.value.style = `${fontCss}font-size: ${scaleFontSize(STAT_VALUE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+                + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
+        });
+        weeklyCaption.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+        thisWeekCaption.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
 
         renderMatrix();
+        applySummary();
     }
 
     function updateHeader() {
@@ -232,8 +319,8 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         // labels track the matrix through any resize.
         const columnPitch = cellSize() + cellGap();
         monthLabelsRow.destroy_all_children();
-        monthLabelsRow.style = `margin-left: ${px(DAY_LABELS_WIDTH_PX + 4)}px; margin-top: ${px(4)}px;`
-            + `margin-bottom: ${px(3)}px; height: ${px(12)}px;`;
+        monthLabelsRow.style = `margin-top: ${px(4)}px;`
+            + `margin-bottom: ${px(2)}px;`;
 
         let currentMonth = -1;
         let lastLabelEnd = -Infinity;
@@ -264,28 +351,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         }
     }
 
-    function renderDayLabels() {
-        dayLabelsColumn.destroy_all_children();
-        dayLabelsColumn.style = `width: ${px(DAY_LABELS_WIDTH_PX)}px; spacing: ${cellGap()}px;`
-            + `padding-right: ${px(4)}px;`;
-
-        for (let row = 0; row < 7; row++) {
-            const label = new St.Label({
-                text: DAY_LABEL_ROWS[row] || '',
-                y_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-                    + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`,
-            });
-            const slot = new St.Widget({
-                layout_manager: new Clutter.BinLayout(),
-                width: px(DAY_LABELS_WIDTH_PX),
-                height: cellSize(),
-            });
-            slot.add_child(label);
-            dayLabelsColumn.add_child(slot);
-        }
-    }
-
     function cellSize() {
         return scaleFontSize(CELL_SIZE_PX, scale);
     }
@@ -295,6 +360,10 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     }
 
     const matrixGeometry = { size: 0, dataKey: '', cells: [] };
+    // What the grid decided to show. The figures on the left are computed from this rather
+    // than from the whole response, or the caption would claim a window the grid is not
+    // showing.
+    let shownRange = { startUnix: 0, days: 0, weeks: 0, weeklyTotals: [], thisWeek: 0 };
 
 
     function drawMatrixCanvas(canvas) {
@@ -322,6 +391,138 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         return level === 0 ? emptyCellColor : contributionColors[level];
     }
 
+    /** Totals, streaks and weekly bars for exactly the days the grid is showing. */
+    function summariseRange(byDate, alignedStart, daysInGrid) {
+        const weeklyTotals = [];
+        let total = 0;
+        let busiestDay = 0;
+        let longestStreak = 0;
+        let running = 0;
+        const keys = [];
+
+        for (let day = 0; day < daysInGrid; day++) {
+            const key = alignedStart.add_days(day).format('%Y-%m-%d');
+            keys.push(key);
+            const count = byDate.get(key) || 0;
+            total += count;
+            if (count > busiestDay)
+                busiestDay = count;
+            if (count > 0) {
+                running++;
+                if (running > longestStreak)
+                    longestStreak = running;
+            } else {
+                running = 0;
+            }
+        }
+
+        // Sundays close a column, so a week is the seven days from one Sunday to the next.
+        // The weekday is taken modulo the grid so it wraps back to Sunday every seven days:
+        // deriving it from the index only ever equalled 6 once, which collapsed the whole
+        // series into a single bar and dropped every other week into the leftover.
+        const firstWeekday = alignedStart.get_day_of_week() % 7;
+        let week = [];
+        let started = false;
+        for (let day = 0; day < keys.length; day++) {
+            const weekday = (firstWeekday + day) % 7;
+            if (weekday === 0) {
+                week = [];
+                started = true;
+            }
+            // The grid opens part-way through a week, so those leading days have no column.
+            if (!started)
+                continue;
+            week[weekday] = byDate.get(keys[day]) || 0;
+            if (weekday === 6) {
+                weeklyTotals.push(week.reduce((sum, count) => sum + count, 0));
+                // Cleared here, not only when the next Sunday arrives: otherwise the
+                // trailing check below finds the last week still in place and counts it twice.
+                week = [];
+            }
+        }
+        if (started && week.length > 0 && week.some(count => count > 0))
+            weeklyTotals.push(week.reduce((sum, count) => sum + count, 0));
+
+        // The streak is measured to today, not to the end of the grid: the grid ends on
+        // Saturday, so days after today in the same column would read as a broken streak.
+        let currentStreak = 0;
+        const today = GLib.DateTime.new_now_local();
+        for (let back = 0; back < daysInGrid; back++) {
+            if (today.add_days(-back).format('%Y-%m-%d') > (byDate instanceof Map ? [...byDate.keys()].sort().pop() : ''))
+                continue;
+            if ((byDate.get(today.add_days(-back).format('%Y-%m-%d')) || 0) > 0)
+                currentStreak++;
+            else
+                break;
+        }
+
+        return {
+            startUnix: alignedStart.to_unix(),
+            days: daysInGrid,
+            weeks: weeklyTotals.length,
+            weeklyTotals,
+            thisWeek: weeklyTotals.length > 0 ? weeklyTotals[weeklyTotals.length - 1] : 0,
+            total,
+            currentStreak,
+            longestStreak,
+            busiestDay,
+        };
+    }
+
+    function drawWeeklyChart(canvas) {
+        const ctx = canvas.get_context();
+        const [canvasWidth, canvasHeight] = canvas.get_surface_size();
+        ctx.setOperator(CAIRO_OPERATOR_CLEAR);
+        ctx.paint();
+        ctx.setOperator(CAIRO_OPERATOR_OVER);
+
+        const totals = shownRange.weeklyTotals;
+        if (totals.length === 0 || canvasWidth <= 0)
+            return;
+
+        const highest = Math.max(1, ...totals);
+        // The grid's column pitch, not a share of the surface: dividing the width by the
+        // week count made each bar as wide as its slot, which drew a single block whenever
+        // the surface was wider than the weeks needed.
+        const pitch = cellSize() + cellGap();
+        const barWidth = Math.max(2, Math.round(pitch * 0.62));
+        const radius = Math.min(3 * scale, barWidth / 2);
+        const accent = parseCssColor(accentColor);
+
+        totals.forEach((total, index) => {
+            const barHeight = Math.max(2, Math.round((total / highest) * (canvasHeight - 3)));
+            const x = Math.round(index * pitch + (pitch - barWidth) / 2);
+            if (x + barWidth > canvasWidth)
+                return;
+            const isCurrent = index === totals.length - 1;
+            // The current week is the only one still moving, so it is the only one drawn
+            // at full strength; the rest step down so it does not read as a peak.
+            ctx.setSourceRGBA(accent.r, accent.g, accent.b, isCurrent ? 0.95 : 0.45);
+            traceRoundedRect(ctx, x, canvasHeight - barHeight, barWidth, barHeight, radius);
+            ctx.fill();
+        });
+    }
+
+    function applySummary() {
+        totalLabel.text = shownRange.total.toLocaleString();
+        const values = [
+            `${shownRange.currentStreak}d`,
+            `${shownRange.longestStreak}d`,
+            String(shownRange.busiestDay),
+        ];
+        statRows.forEach((row, index) => {
+            row.name.text = STAT_LABELS[index];
+            row.value.text = values[index];
+        });
+        thisWeekCaption.text = `this week ${shownRange.thisWeek}`;
+
+        const width_ = px(LEFT_COLUMN_WIDTH_PX);
+        leftColumn.style = `width: ${width_}px; spacing: ${px(4)}px;`;
+        divider.style = `height: ${px(DIVIDER_THICKNESS_PX)}px; background-color: ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)}; margin: ${px(6)}px 0;`;
+        weeklyChart.set_height(px(CHART_HEIGHT_PX));
+        weeklyChart.queue_repaint();
+    }
+
     function renderMatrix(contributionsByDate) {
         const byDate = contributionsByDate || latestByDate;
 
@@ -329,8 +530,13 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         const gap = cellGap();
         // matrixBody spans the label column + canvas; only the remainder
         // after the labels can hold week columns, or the tail gets clipped
-        const bodyWidth = matrixBody.width || (width - px(CONTAINER_PADDING_H_PX) * 2);
-        const availableWidth = bodyWidth - px(DAY_LABELS_WIDTH_PX + 4);
+        // Before the first allocation the right column has no measured width, so it is
+        // derived from the widget. The left column and the gap are not available to the
+        // grid, and counting them here is what kept the tail from spilling past the card.
+        const outerWidth = width - px(CONTAINER_PADDING_H_PX) * 2;
+        const reserved = px(LEFT_COLUMN_WIDTH_PX + COLUMNS_SPACING_PX);
+        const bodyWidth = matrixBody.width > 0 ? matrixBody.width : Math.max(size, outerWidth - reserved);
+        const availableWidth = Math.max(size, bodyWidth);
         const weeks = Math.max(MIN_CONTRIBUTION_WEEKS, Math.min(MAX_CONTRIBUTION_WEEKS, Math.floor((availableWidth + gap) / (size + gap))));
 
         // Rebuilding the matrix is only needed when geometry or data changed;
@@ -339,7 +545,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         if (dataKey === matrixGeometry.dataKey && contributionsByDate === undefined)
             return;
 
-        renderDayLabels();
 
         const today = GLib.DateTime.new_now_local();
         const daysInGrid = weeks * 7;
@@ -350,6 +555,10 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         const alignedStart = gridEnd.add_days(-(daysInGrid - 1));
 
         renderMonthLabels(weeks + 1, alignedStart.to_unix());
+        shownRange = summariseRange(byDate, alignedStart, daysInGrid);
+        // Fetched data renders without going through applyLayout, so the figures and the
+        // bars are refreshed here too; otherwise they would wait for a resize to update.
+        applySummary();
 
         const cells = [];
         for (let index = 0; index < daysInGrid; index++) {
@@ -377,8 +586,14 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         gridCanvas.queue_repaint();
     }
 
+    // An empty message hides the row rather than showing a blank line: a successful sync has
+    // nothing worth saying, but a failure still has to be visible.
     function updateStatus(text) {
         statusLabel.text = text;
+        if (text)
+            statusLabel.show();
+        else
+            statusLabel.hide();
     }
 
     function fetchJson(url, callback) {
@@ -466,16 +681,9 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
             }
 
             const byDate = new Map();
-            let latestYear = null;
-            const yearKeys = Object.keys(data.total || {});
-            if (yearKeys.length > 0)
-                latestYear = yearKeys[yearKeys.length - 1];
-
             data.contributions.forEach(day => byDate.set(day.date, day.count || 0));
 
-            badgeLabel.text = `${(latestYear ? data.total[latestYear] : 0).toLocaleString()} contributions`;
-            lastSyncTime = GLib.DateTime.new_now_local();
-            updateStatus(`Synced ${lastSyncTime.format('%H:%M')}`);
+            updateStatus('');
 
             latestByDate = byDate;
             showContentState();

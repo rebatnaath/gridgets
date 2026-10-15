@@ -50,7 +50,7 @@ const SIZE_PRESETS = Object.freeze({
     // into a footprint that has nothing to put in it. It is not in the store: entries
     // appear and disappear with the files in the desktop folder.
     'desktop-icon': [[3, 3]],
-    'github': [[8, 4], [10, 5], [12, 6]],
+    'github': [[12, 6], [14, 7], [16, 8]],
     'mood': [[6, 3], [8, 4], [10, 5]],
     'rss-headlines': [[4, 4], [5, 5], [6, 6]],
     'top-stories': [[10, 8], [11, 9], [12, 10]],
