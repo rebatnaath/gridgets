@@ -5,6 +5,7 @@ import { buildStorePage } from './prefs/storePage.js';
 import { buildGlobalSettingsPage } from './prefs/globalSettingsPage.js';
 import { buildIndividualSettingsPage } from './prefs/individualSettingsPage.js';
 import { buildInsightsPage } from './prefs/insightsPage.js';
+import { buildShortcutsPage } from './prefs/shortcutsPage.js';
 
 /** Returns a window size that always fits the primary monitor with margins. */
 function fitWindowToMonitor() {
@@ -56,6 +57,7 @@ export default class GridgetsPreferences extends ExtensionPreferences {
             ['Global', buildGlobalSettingsPage(settings)],
             ['Individual', buildIndividualSettingsPage(window, settings)],
             ['Insights', buildInsightsPage(settings)],
+            ['Shortcuts', buildShortcutsPage(settings)],
         ];
 
         for (const [name, page] of pages) {

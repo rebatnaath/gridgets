@@ -132,14 +132,14 @@
       <description>Names of desktop folder entries hidden from the grid. The files themselves are never touched and each entry keeps its place, so clearing this list brings every one of them back where it was.</description>
     </key>
     <key name="cut-selected-icon" type="as">
-      <default>['&lt;Control&gt;x']</default>
+      <default>[]</default>
       <summary>Cut Selected Desktop Icon</summary>
-      <description>Keyboard shortcut that puts the selected desktop icon on the clipboard as a cut, the way a file manager does. Has no effect until an icon is selected.</description>
+      <description>Keyboard shortcut that puts the selected desktop icon on the clipboard as a cut, the way a file manager does. Unbound by default: extensions.gnome.org does not allow an extension to ship a default shortcut that touches the clipboard. Has no effect until an icon is selected.</description>
     </key>
     <key name="copy-selected-icon" type="as">
-      <default>['&lt;Control&gt;c']</default>
+      <default>[]</default>
       <summary>Copy Selected Desktop Icon</summary>
-      <description>Keyboard shortcut that puts the selected desktop icon on the clipboard as a copy, the way a file manager does. Has no effect until an icon is selected.</description>
+      <description>Keyboard shortcut that puts the selected desktop icon on the clipboard as a copy, the way a file manager does. Unbound by default: extensions.gnome.org does not allow an extension to ship a default shortcut that touches the clipboard. Has no effect until an icon is selected.</description>
     </key>
     <key name="rename-selected-icon" type="as">
       <default>['F2']</default>

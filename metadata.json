@@ -1,7 +1,7 @@
 {
   "uuid": "gridgets@rebatnaath.github.com",
   "name": "Gridgets",
-  "description": "GNOME widgets for your desktop.\n* Place clock, weather, notes, music, system monitor, clipboard and image widgets on a desktop grid.\n* Local clipboard history widget.\n* Drag, resize, and customise each widget independently.",
+  "description": "GNOME widgets for your desktop.\n* Place clock, weather, notes, music, system monitor, clipboard and image widgets on a desktop grid.\n* Local clipboard history widget.\n* Drag, resize, and customise each widget independently.\n* Reads the clipboard for the clipboard history widget, and writes to it only when you invoke Cut, Copy or Paste on a desktop icon. Those shortcuts are unbound by default, because extensions.gnome.org does not allow an extension to ship default clipboard shortcuts; bind them yourself with dconf Editor under /org/gnome/shell/extensions/gridgets/.",
   "shell-version": [
     "45",
     "46",
