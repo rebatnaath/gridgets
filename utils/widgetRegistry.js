@@ -5,14 +5,11 @@
 // not reach for St, Clutter, Meta, Gtk, Gdk or Adw. Anything that varies per process
 // (descriptions, thumbnails) belongs to the preferences side instead.
 
-import { MIN_CITY_COUNT, resolveCityList } from './worldClockCities.js';
-
 const WIDE_MUSIC_LAYOUT_ASPECT_RATIO = 1.5;
 
 const TIME_LAYOUTS = Object.freeze({
     default: 'time',
     world: 'worldClock',
-    worldPair: 'worldClockPair',
 });
 
 const WEATHER_LAYOUTS = Object.freeze({
@@ -29,8 +26,7 @@ const MUSIC_LAYOUTS = Object.freeze({
 // Small/Medium/Large footprints on the fixed grid, indexed 0-2.
 const SIZE_PRESETS = Object.freeze({
     'time': [[4, 4], [5, 5], [6, 6]],
-    'worldClock': [[4, 3], [5, 5], [6, 6]],
-    'worldClockPair': [[4, 3]],
+    'worldClock': [[6, 4], [7, 5], [8, 6]],
     'weatherStandard': [[4, 4], [5, 5], [6, 6]],
     'weatherSimple': [[4, 4], [5, 5], [6, 5]],
     'weatherForecast': [[6, 4], [8, 5], [10, 6]],
@@ -185,14 +181,10 @@ export function isWideMusicLayout(widget) {
 export function resolveWidgetSizeTableKey(widgetData) {
     switch (widgetData.type) {
         case 'time':
-            if (widgetData.layout !== 'world')
-                return TIME_LAYOUTS.default;
-            // Two cities fill the smallest cell on their own, so a pair stops at 4x4 and
-            // has no tiers above it. resolveCityList is what the widget itself renders, so
-            // the cap cannot disagree with the number of rows on the face.
-            return resolveCityList(widgetData.cities).length <= MIN_CITY_COUNT
-                ? TIME_LAYOUTS.worldPair
-                : TIME_LAYOUTS.world;
+            // A pair used to resolve to its own single-size table, which left it with no
+            // tiers at all. It follows the same table now, so the city count decides how
+            // many rows the face has to hold but not how big the face may be.
+            return widgetData.layout === 'world' ? TIME_LAYOUTS.world : TIME_LAYOUTS.default;
         case 'weather': {
             const layout = widgetData.layout || 'standard';
             return WEATHER_LAYOUTS[layout] || WEATHER_LAYOUTS.standard;
