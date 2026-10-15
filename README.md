@@ -2,11 +2,12 @@
 
 ![Gridgets Showcase](github/showcase.png)
 
-| | | |
-|---|---|---|
-| ![Showcase 1](github/showcase1.png) | ![Showcase 2](github/showcase2.png) | ![Showcase 3](github/showcase3.png) |
+| ![](github/showcase1.png) | ![](github/showcase2.png) | ![](github/showcase3.png) |
+| :---: | :---: | :---: |
 
-Gridgets is a GNOME Shell extension that places widgets directly on your desktop using a responsive grid layout. Add clocks, system monitors, weather forecasts, sticky notes, media controls, animated images, and more, then move, resize, and style each widget independently to match your setup.
+Gridgets is a GNOME Shell extension that puts widgets on your desktop on a responsive
+grid. Add a clock, weather, notes, music, a system monitor or an image, then move, resize
+and style each one on its own. It runs on GNOME Shell 45 to 50.
 
 <!-- ## User Guide
 
@@ -14,19 +15,37 @@ For a detailed walkthrough of all widgets, customization options, and desktop in
 
 ## Features
 
-- **Grid Alignment:** Snap widgets cleanly to a responsive 60-column desktop grid.
-- **24+ Built-in Widgets:** Weather, Time, Calendar, Music, System Monitor, Notes, Clipboard, Pomodoro, Tasks, GitHub, RSS, Mood, Images, and more.
-- **Individual Styling:** Customize colors, fonts, border radii, and sizes for every widget.
-- **Size Presets:** Quick S/M/L sizing from the right-click context menu.
-- **Drag & Resize:** Move widgets by dragging, resize with the corner handle.
-- **Desktop Icons:** Optionally draw your desktop folder on the grid; entries follow the folder as you add and remove files.
-- **Multi-Monitor:** Show widgets on primary, all, or each monitor independently.
-- **Follow System Theme:** Automatically switch between light and dark mode.
+Widgets sit on a 60-column grid, snap to the cell you drop them on, and resize from the
+corner handle. Each one keeps its own colours, fonts, corner radius and size, and
+follows the system light and dark theme. Show the grid on one monitor or on all of them.
+
+29 widgets ship with it: weather, time, calendar, music, system monitor, notes,
+clipboard, pomodoro, tasks, GitHub, RSS, mood and images.
+
+The right-click menu carries **Small**, **Medium** and **Large** presets. **Show Desktop
+Icons** draws your desktop folder on the grid alongside the widgets, so a file added there
+shows up on the desktop.
+
+> [!IMPORTANT]
+> **DING and desktop icons**
+>
+> DING draws its icons into its own layer, above the wallpaper and above the grid, and
+> that layer takes the desktop right-click menu. With DING enabled you cannot click a
+> widget to move or resize it, or open its own menu. The Gridgets settings still work, so
+> the grid runs underneath, just not to clicks.
+>
+> Gridgets draws its desktop icons itself instead. Turn on **Show Desktop Icons** in the
+> **Desktop** group on the Global Settings page, and every file and folder in `~/Desktop`
+> appears on the grid, following the folder as you add and remove things. If that folder
+> does not exist yet, the extension asks to create it. Each icon is a 3x3 widget like any
+> other, so you can drag it, and the grid saves and rebuilds it. **Show Application
+> Launchers** adds entries from your application menu. Each icon takes a right-click menu
+> of its own: **Open**, **Open With…**, **Show in Files**, **Rename…**, **Move to
+> Trash**, and the rest.
 
 ## Widget Requirements
 
-Most widgets need nothing beyond GNOME Shell. A few read data from other
-applications:
+Most widgets need nothing beyond GNOME Shell. A few read data from another application:
 
 | Widget | Needs | If missing |
 | --- | --- | --- |
@@ -34,74 +53,75 @@ applications:
 | World Clock | GNOME Clocks | can be added; picker reports if unreachable |
 | Calendar grid (event dots) | Evolution Data Server | adds fine, no events shown |
 
-A widget that cannot be added is disabled in the store with a tooltip saying
-what to install. Install the listed applications for those widgets to work
-correctly.
+A widget that cannot be added is greyed out in the store with a tooltip saying what to
+install.
 
 ## Known Limitations
 
-- **Music and browsers:** a browser registers itself as an MPRIS player and
-  publishes `MetadataChanged` for whatever it considers active. Most browsers do
-  not implement `Next` and `Previous`, so the skip buttons do nothing while the
-  browser is the active player. Hovering a video thumbnail also makes the
-  browser publish that preview's metadata, which can replace the currently
-  playing track in the widget until real playback metadata arrives again.
-  Gridgets ranks a player reporting `Playing` above one that only has metadata,
-  but a hovered preview can still win briefly.
-- **Flatpak-only GNOME Weather is not detected**, since Gridgets looks for the
-  executable on `PATH`.
+**Music and browsers.** A browser registers itself as an MPRIS player and publishes
+`MetadataChanged` for whatever it considers active. Most browsers do not implement `Next`
+and `Previous`, so the skip buttons do nothing while the browser is the active player.
+Hovering a video preview makes the browser publish that preview's metadata, which can
+replace the playing track in the widget until real playback metadata arrives again.
+
+**Flatpak-only GNOME Weather.** Gridgets looks for the executable on `PATH`, so a
+Flatpak install is not found.
 
 ## Installation
 
+Option A installs a tagged release, which is the stable build. Options B and C install
+the current code from this repository, so they may have bugs a release does not.
 
-### Option A: From GitHub Releases
+<details>
+<summary><b>Option A: From GitHub Releases</b> [stable release]</summary>
 
-1. Download the latest `.zip` file from the [Releases](https://github.com/rebatnaath/gridgets/releases) page.
-   This is the latest tagged release, so it is the stable build.
+1. Download the latest `.zip` from the
+   [Releases](https://github.com/rebatnaath/gridgets/releases) page.
 2. Install it:
    ```bash
    gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
    ```
-3. Restart GNOME Shell:
-   Log out and log back in.
+3. Restart GNOME Shell: log out and log back in.
 4. Enable the extension:
    ```bash
    gnome-extensions enable gridgets@rebatnaath.github.com
    ```
 
----
+</details>
 
-### Option B: Manual Directory Copy (From Source)
+<details>
+<summary><b>Option B: Copy the files by hand</b> [latest code, may have bugs]</summary>
 
 1. Disable the extension and remove any previous installation:
    ```bash
    gnome-extensions disable gridgets@rebatnaath.github.com
    rm -rf ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    ```
-   Disabling first stops GNOME Shell logging errors while the files are gone.
-   Your settings and widget data are not affected, since they are stored in dconf
-   and under `~/.local/share/gridgets` rather than in the extension directory.
+   Disabling first stops GNOME Shell logging errors while the files are gone. Your
+   settings and widget data are unaffected, since they live in dconf and under
+   `~/.local/share/gridgets` rather than in the extension directory.
 2. Copy the extension files:
    ```bash
    mkdir -p ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    cp -r . ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com
    ```
-   You get the latest code rather than a tagged release, so it may have bugs a release does not.
-3. Compile the settings schema. `gschemas.compiled` is a build artifact and is
-   not committed, so a fresh clone has only the `.gschema.xml`. Without this
-   step the extension loads but every setting silently falls back to its default:
+3. Compile the settings schema. `gschemas.compiled` is a build artifact and is not
+   committed, so a fresh clone has only the `.gschema.xml`. Without this step the
+   extension loads but every setting silently falls back to its default:
    ```bash
    glib-compile-schemas ~/.local/share/gnome-shell/extensions/gridgets@rebatnaath.github.com/schemas
    ```
-4. Restart GNOME Shell (log out/in on Wayland, or `Alt+F2` → `r` on X11).
+4. Restart GNOME Shell: log out and log back in on Wayland, or press `Alt+F2` and then `r`
+   on X11.
 5. Enable:
    ```bash
    gnome-extensions enable gridgets@rebatnaath.github.com
    ```
 
----
+</details>
 
-### Option C: Build Zip Package
+<details>
+<summary><b>Option C: Build a zip</b> [latest code, may have bugs]</summary>
 
 1. From the project directory:
    ```bash
@@ -115,7 +135,6 @@ correctly.
      --extra-source=prefs \
      --force
    ```
-   You get the latest code rather than a tagged release, so it may have bugs a release does not.
 2. Install:
    ```bash
    gnome-extensions install --force gridgets@rebatnaath.github.com.shell-extension.zip
@@ -125,10 +144,12 @@ correctly.
    gnome-extensions enable gridgets@rebatnaath.github.com
    ```
 
-### NixOS: Installing the Requirements
+</details>
 
-For the applications listed under Widget Requirements, install the packages and
-expose their GSettings schemas:
+## NixOS
+
+Gridgets reads data from three applications. Install the packages, and export
+`gnome-weather`'s GSettings schema:
 
 ```nix
 {
@@ -146,15 +167,14 @@ expose their GSettings schemas:
 }
 ```
 
-The variable is needed because neither Home Manager's `home.packages` nor NixOS
-puts package schemas on `XDG_DATA_DIRS`. If you configure NixOS itself, you can
-drop it and use
+The variable is needed because neither Home Manager's `home.packages` nor NixOS puts
+package schemas on `XDG_DATA_DIRS`. Configuring NixOS itself, drop it and use
 `services.xserver.desktopManager.gnome.extraGSettingsOverridePackages` instead.
 
-`gnome-weather` also supplies the `GWeather` typelib that Gridgets imports. World
-clock cities are not read from a schema at all: Gridgets asks GNOME Shell for
-them over D-Bus, and GNOME Shell resolves the `gnome-clocks` schema itself, so
-only the weather schema needs exporting.
+`gnome-weather` also supplies the `GWeather` typelib that Gridgets imports. World clock
+cities are not read from a schema: Gridgets asks GNOME Shell for them over D-Bus, and
+GNOME Shell resolves the `gnome-clocks` schema itself, so only the weather schema has to
+be exported.
 
 Rebuild, log out and back in, then check:
 
@@ -168,91 +188,14 @@ That should list `org.gnome.Weather`.
 
 ## Configuration
 
-Open the **Extensions** app (or Extension Manager) and click the gear icon next to Gridgets to configure your grid settings and customize your widgets.
+Open the **Extensions** app, or Extension Manager, and click the gear icon next to
+Gridgets to change grid settings and style individual widgets.
 
-## Compatibility
+## Links
 
-Supported GNOME Shell versions: `45`, `46`, `47`, `48`, `49`, `50`.
-
-### Desktop Icons
-
-Gridgets can draw the contents of your desktop folder on the grid, next to
-everything else. Turn it on with **Show Desktop Icons** on the Global Settings
-page.
-
-- Entries appear and disappear as you add and remove files, and each one keeps
-  the position you drag it to.
-- Double-click an icon to open it. A `.desktop` launcher is run rather than
-  opened in a text editor.
-- Right-click an icon for the usual items, in this order: **Open in Files**,
-  **Open With…**, **Open**, **Cut**, **Copy**, **Move to…**, **Copy to…**,
-  **Show in Files**, **Open in Console**, **Rename…**, **Move to Trash**,
-  **Properties**, **Remove from Desktop**. Renaming keeps the icon where it is;
-  nothing is overwritten, and a name that is already taken is refused and asked
-  again with the reason attached. **Open With…** opens a dialog of every installed
-  application with the file's current one first and a box to filter by name —
-  a submenu could only list the applications registered for that file type, which
-  is just a slower way of opening it. **Cut** and **Copy** put the file on the
-  clipboard the standard way so it can be pasted into Files, and the icon dims
-  while it is there, more for a cut than a copy. **Move to…** and **Copy to…** pick
-  a folder and never replace what is already there — a taken name is counted up
-  instead. **Open in Files** opens the containing folder, **Show in Files** puts the
-  file itself under the cursor, and **Open in Console** starts a terminal in the
-  containing folder, trying GNOME Terminal, GNOME Console and the other common
-  terminals in turn. The name prompts take Return to confirm and Escape to cancel.
-- **Properties** asks the file manager over the freedesktop `FileManager1` bus
-  interface to open its own properties window for the file, which is how Desktop
-  Icons NG does it and needs no window to appear first. GNOME 43 moved that dialog
-  into Files and stopped shipping the standalone `nautilus-properties` program, so
-  there is no other way to reach it. On a desktop with no file manager on the bus,
-  Gridgets draws the dialog itself instead: icon, name, kind, free space, folder,
-  modified and created times, size, and Owner/Group/Others read-write-execute
-  toggles that take effect immediately.
-- Right-clicking the empty desktop adds **New Folder**, **Paste** and **Show
-  Hidden Files**, which appear only while desktop icons are switched on. Paste
-  reads the shell clipboard, so files copied or cut in Files land here — a cut
-  moves them, a copy duplicates them.
-- **Remove from Desktop** only takes an icon off the grid; the file on disk is
-  untouched, and the icon comes back where it was from **Restore Hidden
-  Icons** on the Global Settings page.
-- Dotfiles are hidden unless **Show Hidden Files** is used, and the icon has no
-  size options of its own.
-
-Because Gridgets draws these itself, an extension that also draws desktop icons
-will paint a second set over the first. See below.
-
-### Desktop Icons NG
-
-Gridgets and [Desktop Icons NG](https://gitlab.com/smedius/desktop-icons-ng) can be
-enabled at the same time and both keep working, but they draw into the same part
-of the screen, so there are a few things to be aware of.
-
-- **If you turn on Show Desktop Icons, turn Desktop Icons NG off.** Both draw
-  icons into the same area, so you get two sets on top of each other. Gridgets
-  logs a warning naming the other extension when it finds one enabled.
-- **Desktop Icons NG takes over the desktop right-click menu.** Right-clicking
-  the empty desktop opens its menu instead of Gridgets'. 
-- **Icons are drawn over the widgets.** Gridgets draws into the layer above the
-  wallpaper and below every window, and the Desktop Icons NG icon layer ends up
-  above that, so an icon that overlaps a widget covers it.
-- **Nothing moves out of the way for you.** Gridgets does keep its own widgets
-  from overlapping each other, but it only knows about its own widgets and has no
-  way to know where the desktop icons are, so it will not step around them. Drag
-  the icons to the areas your widgets do not cover, or move the widgets.
-
-## Changelog
-
-See the [Changelog](CHANGELOG.md) for what changed in each release.
-
-## Contributing
-
-Contributions are welcome. Please read the [Contributing Guide](CONTRIBUTING.md) before opening an issue or pull request.
-
-## License
-
-Gridgets is free software, released under the [GNU General Public License v3.0](LICENSE).
-
-## Acknowledgements
+- [Changelog](CHANGELOG.md) - what changed in each release.
+- [Contributing guide](CONTRIBUTING.md) - read it before opening an issue or pull request.
+- [GPL-3.0 licence](LICENSE).
 
 Thanks to everyone who has contributed to Gridgets through code, bug reports and
 suggestions.
