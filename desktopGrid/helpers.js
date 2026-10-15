@@ -33,7 +33,9 @@ export function getPanelHeight() {
 }
 
 function resolveMonitorIndex(targetMonitorIndex, settings) {
-    if (targetMonitorIndex !== null && typeof targetMonitorIndex === 'number') {
+    // The typeof is load-bearing, not a redundant check: null would otherwise satisfy
+    // `>= 0 && < nMonitors` and win over the setting below.
+    if (typeof targetMonitorIndex === 'number') {
         const nMonitors = global.display.get_n_monitors();
         if (targetMonitorIndex >= 0 && targetMonitorIndex < nMonitors) {
             return targetMonitorIndex;

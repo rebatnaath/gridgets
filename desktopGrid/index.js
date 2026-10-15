@@ -2,54 +2,29 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import Meta from 'gi://Meta';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import Shell from 'gi://Shell';
-import {
-    COLUMNS_COUNT,
-    GRID_GAP_PX,
-    GRID_MARGIN_PX,
-    checkOverlap,
-    findEmptySpot,
-    getWidgets,
-    saveWidgets,
-    serializeWidgets,
-    resolveWidgetOverrides,
-    readGlobalSettings,
-    calculateGridDimensions,
-    parseCssColor,
-} from '../utils/widgetUtils.js';
-import { resolveWidgetSizePreset } from '../utils/widgetRegistry.js';
-import { openPortalFileChooser } from '../utils/fileChooser.js';
+import { readGlobalSettings, parseCssColor } from '../utils/widgetUtils.js';
 import { clearIconSelection, selectIcon, setIconHovered } from '../desktopIcons/desktopIconWidget.js';
-import { copyDesktopIcon, cutDesktopIcon, startIconRename } from './contextMenu.js';
 import {
     DEFAULT_STAGE_WIDTH,
     DEFAULT_STAGE_HEIGHT,
     BUTTON_PRIMARY,
     BUTTON_SECONDARY,
 } from './constants.js';
+import { getPanelHeight, getTargetMonitor } from './helpers.js';
+import { applyGridLayout } from './layout.js';
+import { applyWidgetChanges, rebuildGrid } from './widgetSync.js';
 import {
-    getWidgetsForMonitor,
-    getPanelHeight,
-    getTargetMonitor,
-    getEffectiveMonitorIndex,
-} from './helpers.js';
-import { createGridOverlay } from './gridRenderer.js';
-import { createWidgetNode } from './widgetFactory.js';
+    createGridOverlay,
+    registerGrid,
+    unregisterGrid,
+} from './overlays.js';
+import { DISMISSED_DESKTOP_ICONS_KEY } from '../desktopIcons/desktopIcons.js';
+import { openContextMenu, openWidgetContextMenu } from './contextMenu.js';
 import { attachDragHandlers } from './dragDrop.js';
-import {
-    openContextMenu,
-    removeContextMenu,
-} from './contextMenu.js';
-import { isActorDestroyed, watchActorLifecycle } from '../utils/actorLifecycle.js';
-import { resolveWeatherLayoutVariant } from '../widgets/weather/weatherCommon.js';
-import { DISMISSED_DESKTOP_ICONS_KEY, isDesktopIconVisible } from '../desktopIcons/desktopIcons.js';
+import { removeContextMenu } from './menuPopup.js';
 
 const GRID_LINE_ALPHA = 0.25;
 const EDIT_OVERLAY_ALPHA = 0.3;
-
 
 export const DesktopGrid = GObject.registerClass(
     class DesktopGrid extends St.Widget {
@@ -74,65 +49,43 @@ export const DesktopGrid = GObject.registerClass(
             this._gridLineCanvas = null;
             this.editOverlayCanvases = [];
             this.contextMenu = null;
-            this._menuManager = null;
             this._lastAppliedWidgetsJson = null;
+            this._lastFullGridNotice = '';
 
-            const initialLayout = calculateGridDimensions(this.width, this.height, COLUMNS_COUNT);
-            this.cellSize = initialLayout.cellSize;
-            this.cellTotalWidth = initialLayout.cellTotalWidth;
-            this.cellTotalHeight = initialLayout.cellTotalHeight;
-            this.gridCols = COLUMNS_COUNT;
-            this.gridRows = initialLayout.gridRows;
+            this.cellTotalWidth = 0;
+            this.cellTotalHeight = 0;
+            this.gridMargin = 0;
+            this.gridCols = 0;
+            this.gridRows = 0;
+            this._layout = null;
 
-            if (!DesktopGrid._activeInstances) {
-                DesktopGrid._activeInstances = new Set();
-            }
-            DesktopGrid._activeInstances.add(this);
+            registerGrid(this);
 
-            this._selectedWidgetData = null;
             this._pressOnWidget = false;
             this._setupSettingsListeners();
-            this._addRenameShortcut();
-            this._addClipboardShortcuts();
-            this._rebuildGrid();
+            this._initialLayout();
+            rebuildGrid(this);
 
             this._backgroundPressId = this.connect('button-press-event', (_actor, event) => {
                 if (event.get_button() === BUTTON_SECONDARY) {
                     openContextMenu(this, event);
                     return Clutter.EVENT_STOP;
                 }
-                // A press on an icon bubbles up to here as well as landing on the grid, so
-                // this has to tell the two apart. It asks whether the press was inside a
-                // widget at all: checking that the source is the grid missed the drag
-                // overlay sitting between them, and checking the source against a node
-                // missed the icon's own children, which is what the pointer is over. Both
-                // mistakes read as a background press, so the icon was selected by its own
-                // click and deselected a moment later.
+                // A press on an icon bubbles up here as well as landing on the grid, so the
+                // two have to be told apart. _pressOnWidget is the only reliable
+                // discriminator: the source is the grid for the drag overlay and the icon's
+                // own child for the icon, so matching the source reads as a background press.
                 const wasOnWidget = this._pressOnWidget;
                 this._pressOnWidget = false;
                 if (event.get_button() === BUTTON_PRIMARY && !wasOnWidget) {
-                    clearIconSelection(this);
-                    this._selectedWidgetData = null;
+                    clearIconSelection();
                 }
                 return Clutter.EVENT_PROPAGATE;
             });
         }
 
-        static toggleAllGridOverlays(show) {
-            if (DesktopGrid._activeInstances) {
-                DesktopGrid._activeInstances.forEach(grid => grid._toggleGridOverlay(show));
-            }
-        }
-
         destroy() {
-            if (this._contextMenuCloseIdleId) {
-                GLib.Source.remove(this._contextMenuCloseIdleId);
-                this._contextMenuCloseIdleId = null;
-            }
-
-            if (DesktopGrid._activeInstances) {
-                DesktopGrid._activeInstances.delete(this);
-            }
+            unregisterGrid(this);
 
             if (this.signalIds && this.settings) {
                 this.signalIds.forEach(id => this.settings.disconnect(id));
@@ -141,14 +94,14 @@ export const DesktopGrid = GObject.registerClass(
 
             this.interfaceSettings = null;
 
+            // Releases the open menu, its anchor and the pending close idle, all three of
+            // which that module created.
             removeContextMenu(this);
 
             if (this._backgroundPressId) {
                 this.disconnect(this._backgroundPressId);
                 this._backgroundPressId = 0;
             }
-
-            this._menuManager = null;
 
             this.editOverlayCanvases.forEach(box => box.destroy());
             this.editOverlayCanvases = [];
@@ -157,14 +110,22 @@ export const DesktopGrid = GObject.registerClass(
             this.widgetNodes.clear();
             this._nodeConfigs.clear();
             this._gridLineCanvas = null;
-            // The keybinding is process-wide, so a grid that goes away without removing it
-            // leaves F2 bound to a destroyed grid on the next monitor change.
-            this._removeRenameShortcut();
-            for (const name of ['cut-selected-icon', 'copy-selected-icon'])
-                Main.wm.removeKeybinding(name);
+
             this.destroy_all_children();
 
             super.destroy();
+        }
+
+        /** Seeds the cell metrics from the placeholder stage size, before the first measure. */
+        _initialLayout() {
+            const layout = {
+                cellSize: 0,
+                cellTotalWidth: this.width,
+                cellTotalHeight: this.height,
+                gridCols: 60,
+                gridRows: 1,
+            };
+            applyGridLayout(this, layout);
         }
 
         _setupSettingsListeners() {
@@ -177,32 +138,30 @@ export const DesktopGrid = GObject.registerClass(
                 const widgetsJson = this.settings.get_string('widgets');
                 if (widgetsJson === this._lastAppliedWidgetsJson)
                     return;
-                this._applyWidgetChanges();
+                applyWidgetChanges(this);
             });
-            // Global style keys are baked at construction, so rebuild instead of patching.
-            connectSetting('global-background-color', () => this._rebuildGrid());
-            connectSetting('global-foreground-color', () => this._rebuildGrid());
-            connectSetting('global-card-color', () => this._rebuildGrid());
-            connectSetting('global-highlight-color', () => this._rebuildGrid());
-            connectSetting('global-font-family', () => this._rebuildGrid());
-            connectSetting('global-use-custom-font', () => this._rebuildGrid());
-            // accent-color-override is deliberately absent: the extension watches that one
-            // and rebuilds every grid, so reacting here as well would rebuild the same
-            // widgets twice for a single change.
-            connectSetting('image-animate-gif', () => this._rebuildGrid());
-            connectSetting('image-show-caption', () => this._rebuildGrid());
-            connectSetting('slideshow-show-caption', () => this._rebuildGrid());
-            connectSetting('image-caption-scrim', () => this._rebuildGrid());
-            connectSetting('global-caption-color', () => this._rebuildGrid());
-            connectSetting('weather-use-fahrenheit', () => this._rebuildGrid());
-            connectSetting('time-format-24h', () => this._rebuildGrid());
-            connectSetting('weather-dynamic-color', () => this._rebuildGrid());
-            connectSetting('weather-dynamic-image', () => this._rebuildGrid());
-            connectSetting('show-grid', () => this._toggleGridLines());
-            // Unlike the keys above, this one is written by the preferences window as
-            // well as by the grid's own context menu, and it changes no entry in the
-            // layout, so the widgets signal never arrives to rebuild anything.
-            connectSetting(DISMISSED_DESKTOP_ICONS_KEY, () => this._rebuildGrid());
+            // Global style keys are baked at construction, so a change rebuilds.
+            connectSetting('global-background-color', () => rebuildGrid(this));
+            connectSetting('global-foreground-color', () => rebuildGrid(this));
+            connectSetting('global-card-color', () => rebuildGrid(this));
+            connectSetting('global-highlight-color', () => rebuildGrid(this));
+            connectSetting('global-font-family', () => rebuildGrid(this));
+            connectSetting('global-use-custom-font', () => rebuildGrid(this));
+            // accent-color-override is deliberately absent: the extension watches that
+            // one and rebuilds every grid, so a handler here would rebuild twice.
+            connectSetting('image-animate-gif', () => rebuildGrid(this));
+            connectSetting('image-show-caption', () => rebuildGrid(this));
+            connectSetting('slideshow-show-caption', () => rebuildGrid(this));
+            connectSetting('image-caption-scrim', () => rebuildGrid(this));
+            connectSetting('global-caption-color', () => rebuildGrid(this));
+            connectSetting('weather-use-fahrenheit', () => rebuildGrid(this));
+            connectSetting('time-format-24h', () => rebuildGrid(this));
+            connectSetting('weather-dynamic-color', () => rebuildGrid(this));
+            connectSetting('weather-dynamic-image', () => rebuildGrid(this));
+            connectSetting('show-grid', () => this._syncGridLines());
+            // Written by the preferences window as well as by the grid's own context menu,
+            // and it changes no entry in the layout, so the widgets signal never arrives.
+            connectSetting(DISMISSED_DESKTOP_ICONS_KEY, () => rebuildGrid(this));
         }
 
         _updateStageSize() {
@@ -223,110 +182,6 @@ export const DesktopGrid = GObject.registerClass(
             }
         }
 
-        _repositionNode(widgetId, newCols, newRows, newX, newY) {
-            const node = this.widgetNodes.get(widgetId);
-            if (!node || isActorDestroyed(node)) return;
-
-            const cellSize = this.cellTotalWidth - GRID_GAP_PX;
-            const widgetWidth = (newCols * cellSize) + ((newCols - 1) * GRID_GAP_PX);
-            const widgetHeight = (newRows * cellSize) + ((newRows - 1) * GRID_GAP_PX);
-            const posX = GRID_MARGIN_PX + (newX * this.cellTotalWidth);
-            const posY = GRID_MARGIN_PX + (newY * this.cellTotalHeight);
-
-            node.set_size(widgetWidth, widgetHeight);
-            node.set_position(posX, posY);
-        }
-
-        _resolveGridLayout() {
-            const { cellSize, cellTotalWidth, cellTotalHeight, gridRows } = calculateGridDimensions(this.width, this.height, COLUMNS_COUNT);
-            return { gridCols: COLUMNS_COUNT, gridRows, cellSize, cellTotalWidth, cellTotalHeight };
-        }
-
-        _layoutWidgetsOnGrid(activeWidgets, gridCols, gridRows) {
-            let modified = false;
-            const placedWidgets = [];
-
-            const sortedWidgets = activeWidgets.slice().sort((a, b) => {
-                const posA = ((a.y || 0) * gridCols) + (a.x || 0);
-                const posB = ((b.y || 0) * gridCols) + (b.x || 0);
-                return posA - posB;
-            });
-
-            sortedWidgets.forEach(widgetData => {
-                const effectiveWidth = Math.max(1, Math.min(widgetData.width || 2, gridCols));
-                const effectiveHeight = Math.max(1, Math.min(widgetData.height || 2, gridRows));
-
-                let effectiveX = Math.max(0, Math.min(widgetData.x || 0, gridCols - effectiveWidth));
-                let effectiveY = Math.max(0, Math.min(widgetData.y || 0, gridRows - effectiveHeight));
-
-                if (checkOverlap(effectiveX, effectiveY, effectiveWidth, effectiveHeight, placedWidgets)) {
-                    const freeSpot = findEmptySpot(placedWidgets, effectiveWidth, effectiveHeight, gridCols, gridRows);
-                    if (freeSpot) {
-                        effectiveX = freeSpot.x;
-                        effectiveY = freeSpot.y;
-                    }
-                }
-
-                if (effectiveX !== widgetData.x || effectiveY !== widgetData.y || effectiveWidth !== widgetData.width || effectiveHeight !== widgetData.height) {
-                    widgetData.x = effectiveX;
-                    widgetData.y = effectiveY;
-                    widgetData.width = effectiveWidth;
-                    widgetData.height = effectiveHeight;
-                    modified = true;
-                }
-
-                placedWidgets.push(widgetData);
-            });
-
-            return { sortedWidgets, modified };
-        }
-
-        _createAndAttachWidget(widgetData, cellSize, cellTotalWidth, cellTotalHeight, globalSettings) {
-            const widgetWidth = (widgetData.width * cellSize) + ((widgetData.width - 1) * GRID_GAP_PX);
-            const widgetHeight = (widgetData.height * cellSize) + ((widgetData.height - 1) * GRID_GAP_PX);
-            const posX = GRID_MARGIN_PX + (widgetData.x * cellTotalWidth);
-            const posY = GRID_MARGIN_PX + (widgetData.y * cellTotalHeight);
-
-            const resolvedData = Object.assign({}, resolveWidgetOverrides(widgetData, globalSettings), {
-                globalAnimateGif: globalSettings.globalAnimateGif,
-                globalImageShowCaption: globalSettings.globalImageShowCaption,
-                globalSlideshowShowCaption: globalSettings.globalSlideshowShowCaption,
-                globalCaptionScrim: globalSettings.globalCaptionScrim,
-                globalCaptionColor: globalSettings.globalCaptionColor,
-                globalUseFahrenheit: globalSettings.globalUseFahrenheit,
-                globalWeatherDynamicColor: globalSettings.globalWeatherDynamicColor,
-                globalWeatherDynamicImage: globalSettings.globalWeatherDynamicImage,
-                globalUse24h: globalSettings.globalUse24h,
-                globalAccentColor: globalSettings.globalAccentColor,
-                globalUseCustomFont: globalSettings.globalUseCustomFont,
-                extensionPath: this.extensionPath,
-                settings: this.settings,
-            });
-
-            const node = createWidgetNode(resolvedData, widgetWidth, widgetHeight, posX, posY);
-            if (node) {
-                watchActorLifecycle(node);
-                node.widgetData = widgetData;
-                node.gridOverlayCallback = (showOverlay) => DesktopGrid.toggleAllGridOverlays(showOverlay);
-                // Before the drag handlers: their secondary-press branch returns EVENT_STOP,
-                // and Clutter stops calling further handlers on a signal once one does, so a
-                // selection handler connected after this would never see a right click.
-                this._connectIconSelection(node, widgetData);
-                attachDragHandlers(this, node, widgetData);
-                this.add_child(node);
-                this.widgetNodes.set(widgetData.id, node);
-                this._nodeConfigs.set(widgetData.id, JSON.stringify(widgetData));
-            }
-        }
-
-        /**
-         * Saves a widget layout change made locally by drag/resize so the settings
-         * listener can recognize its own write and skip the redundant rebuild.
-         */
-        applyLocalWidgetLayout(widgets) {
-            this._saveLocalWidgets(widgets);
-        }
-
         _syncGridLines() {
             if (this._gridLineCanvas) {
                 this._gridLineCanvas.destroy();
@@ -337,253 +192,38 @@ export const DesktopGrid = GObject.registerClass(
                 const accentColor = readGlobalSettings(this.settings, this.interfaceSettings).globalAccentColor;
                 const accent = parseCssColor(accentColor);
                 this._gridLineCanvas = createGridOverlay(
-                    this.gridCols || COLUMNS_COUNT,
+                    this.gridCols,
                     this.gridRows,
                     this.cellTotalWidth,
                     this.gridMargin,
                     accent.r, accent.g, accent.b, GRID_LINE_ALPHA
                 );
-                // Keep canvas at bottom so incremental updates don't stack above widgets.
+                // Index 0 paints first, so the lines stay under the widgets.
                 this.insert_child_at_index(this._gridLineCanvas, 0);
             }
         }
 
-        // Saves widget configs and pre-seeds the echo guard so the resulting
-        // settings change is not mistaken for an external one.
-        _saveLocalWidgets(widgets) {
-            this._lastAppliedWidgetsJson = serializeWidgets(widgets);
-            saveWidgets(this.settings, widgets);
-            // Sync node data so next drag/resize uses fresh geometry.
-            this.widgetNodes.forEach((node, widgetId) => {
-                const latest = widgets.find(widget => widget.id === widgetId);
-                if (latest && node.widgetData) {
-                    node.widgetData.x = latest.x;
-                    node.widgetData.y = latest.y;
-                    node.widgetData.width = latest.width;
-                    node.widgetData.height = latest.height;
-                    node.widgetData.monitor = latest.monitor;
-                }
-            });
-        }
-
-        /** Reads widget configs and resolves those active on this grid's monitor. */
-        _resolveActiveWidgets() {
-            const monitorMode = this.settings.get_string('global-monitor') || 'primary';
-            const isEachMode = (monitorMode === 'each');
-
-            const widgets = getWidgets(this.settings);
-            // Hidden icons are filtered out of what is drawn but stay in what is saved:
-            // `widgets` is the whole layout and the next write is the whole layout, so
-            // dropping them here would delete them and lose their positions.
-            const rendered = widgets.filter(widget => isDesktopIconVisible(widget, this.settings));
-            const activeWidgets = getWidgetsForMonitor(rendered, getEffectiveMonitorIndex(this.targetMonitorIndex, this.settings), isEachMode);
-            return { widgets, activeWidgets };
-        }
-
         /**
-         * Collision set for a widget: everything sharing a monitor with it, minus
-         * itself. Drop, resize and preset validation all route through here so
-         * they cannot disagree with the layout pass about which widgets a monitor
-         * owns. Pass effectiveMonitorIndex to validate against another monitor
-         * during a cross-monitor drop.
+         * Connects a widget node's three handlers in the order they have to be. Selection
+         * first: the drag handlers' secondary-press branch returns EVENT_STOP, and Clutter
+         * stops calling further handlers on a signal once one does, so a selection handler
+         * connected after them would never see a right click.
          */
-        getOtherWidgets(widgets, widgetId, effectiveMonitorIndex = null) {
-            const monitorMode = this.settings.get_string('global-monitor') || 'primary';
-            const isEachMode = (monitorMode === 'each');
-            const monitorIndex = effectiveMonitorIndex !== null
-                ? effectiveMonitorIndex
-                : getEffectiveMonitorIndex(this.targetMonitorIndex, this.settings);
-            return getWidgetsForMonitor(widgets, monitorIndex, isEachMode)
-                .filter(widget => widget.id !== widgetId);
+        _wireNode(node, widgetData) {
+            this._connectIconSelection(node, widgetData);
+            attachDragHandlers(this, node, widgetData, openWidgetContextMenu);
         }
 
-        /** Stores layout metrics on the grid and refreshes the persistent overlay. */
-        _applyGridLayout(layout) {
-            this.cellTotalWidth = layout.cellTotalWidth;
-            this.cellTotalHeight = layout.cellTotalHeight;
-            this.cellSize = layout.cellSize;
-            this._layout = layout;
-            this.gridMargin = GRID_MARGIN_PX;
-            this.gridCols = layout.gridCols;
-            this.gridRows = layout.gridRows;
-
-            this._syncGridLines();
-        }
-
-        /**
-         * Switches which publisher sections a top-stories widget merges, and rebuilds
-         * only that node rather than the whole grid.
-         */
-        applyWidgetGenre(widgetId, genre) {
-            const { widgets } = this._resolveActiveWidgets();
-            const target = widgets.find(widget => widget.id === widgetId);
-            if (!target)
-                return;
-            target.genre = genre;
-
-            const node = this.widgetNodes.get(widgetId);
-            if (node) {
-                node.destroy();
-                this.widgetNodes.delete(widgetId);
-                this._nodeConfigs.delete(widgetId);
-            }
-            this._saveLocalWidgets(widgets);
-
-            // Recreate only this widget against the settled layout. A full
-            // _rebuildGrid() restages every widget, and the replacement can be
-            // measured before its allocation lands, which leaves the type at the
-            // wrong scale until something triggers a resize.
-            const globalSettings = readGlobalSettings(this.settings, this.interfaceSettings);
-            this._createNodeFactory(this._layout, globalSettings)(target);
-        }
-
-        /**
-         * Picks a new file for an image widget or folder for a slideshow one. The field
-         * written is the one the prefs dialog edits, so individual settings show it too.
-         */
-        pickWidgetSource(widgetId) {
-            const { widgets } = this._resolveActiveWidgets();
-            const target = widgets.find(widget => widget.id === widgetId);
-            if (!target)
-                return;
-            const isSlideshow = target.type === 'slideshow';
-            openPortalFileChooser({
-                title: isSlideshow ? 'Select Image Folder' : 'Select Image',
-                chooseFolder: isSlideshow,
-            }, path => {
-                // Null on cancel or a missing portal backend: leave the widget alone.
-                if (!path)
-                    return;
-                // Re-resolved: the chooser is open for as long as the user takes, and the
-                // widget may have been deleted meanwhile.
-                const currentWidgets = this._resolveActiveWidgets().widgets;
-                const current = currentWidgets.find(widget => widget.id === widgetId);
-                if (!current)
-                    return;
-                if (isSlideshow)
-                    current.slideshowFolder = path;
-                else
-                    current.imagePath = path;
-                this._saveLocalWidgets(currentWidgets);
-                // The picked file may be a different aspect or size, so the node is
-                // rebuilt rather than restyled in place.
-                this._rebuildGrid();
-            });
-        }
-
-        /**
-         * Applies an S/M/L preset: repositions if the new footprint collides,
-         * then destroys and recreates the node so fonts/layout recompute.
-         */
-        applySizePreset(widgetId, sizeIndex) {
-            const { widgets } = this._resolveActiveWidgets();
-            const target = widgets.find(widget => widget.id === widgetId);
-            if (!target)
-                return;
-
-            const size = resolveWidgetSizePreset(target, sizeIndex);
-            if (!size)
-                return;
-
-            const others = this.getOtherWidgets(widgets, widgetId);
-            // Pin weather variant before resize so it doesn't silently flip.
-            if (target.type === 'weather')
-                target.layout = resolveWeatherLayoutVariant(target);
-            target.width = size.width;
-            target.height = size.height;
-            target.x = Math.max(0, Math.min(target.x || 0, this.gridCols - size.width));
-            target.y = Math.max(0, Math.min(target.y || 0, this.gridRows - size.height));
-            if (checkOverlap(target.x, target.y, size.width, size.height, others)) {
-                const spot = findEmptySpot(others, size.width, size.height, this.gridCols, this.gridRows);
-                if (spot) {
-                    target.x = spot.x;
-                    target.y = spot.y;
-                }
-            }
-
-            const node = this.widgetNodes.get(widgetId);
-            if (node) {
-                node.destroy();
-                this.widgetNodes.delete(widgetId);
-                this._nodeConfigs.delete(widgetId);
-            }
-            this._saveLocalWidgets(widgets);
-
-            const globalSettings = readGlobalSettings(this.settings, this.interfaceSettings);
-            this._createNodeFactory(this._layout, globalSettings)(target);
-        }
-
-        /** Node creator that keeps one broken widget constructor from aborting the batch. */
-        _createNodeFactory(layout, globalSettings) {
-            return (widgetData) => {
-                try {
-                    this._createAndAttachWidget(widgetData, layout.cellSize, layout.cellTotalWidth, layout.cellTotalHeight, globalSettings);
-                } catch (error) {
-                    console.error(`Failed to create widget ${widgetData.id} (${widgetData.type}):`, error);
-                }
-            };
-        }
-
-        // Applies widget settings changes incrementally: unchanged nodes are
-        // left untouched (async widgets don't refetch). Grid size is left alone
-        // here, since resizing while children are alive causes allocation
-        // issues. Monitor geometry changes arrive via 'monitors-changed'.
-        _applyWidgetChanges() {
-            this._lastAppliedWidgetsJson = this.settings.get_string('widgets');
-
-            const previousCellTotalWidth = this.cellTotalWidth;
-            const previousCellTotalHeight = this.cellTotalHeight;
-
-            const { widgets, activeWidgets } = this._resolveActiveWidgets();
-
-            const layout = this._resolveGridLayout();
-            if (layout.cellTotalWidth !== previousCellTotalWidth || layout.cellTotalHeight !== previousCellTotalHeight) {
-                this._rebuildGrid();
-                return;
-            }
-
-            this._applyGridLayout(layout);
-
-            const globalSettings = readGlobalSettings(this.settings, this.interfaceSettings);
-            const createNode = this._createNodeFactory(layout, globalSettings);
-
-            const { sortedWidgets, modified } = this._layoutWidgetsOnGrid(activeWidgets, layout.gridCols, layout.gridRows);
-
-            sortedWidgets.forEach(widgetData => {
-                if (this.widgetNodes.has(widgetData.id) && this._nodeConfigs.get(widgetData.id) === JSON.stringify(widgetData))
-                    return;
-
-                const existingNode = this.widgetNodes.get(widgetData.id);
-                if (existingNode) {
-                    existingNode.destroy();
-                    this.widgetNodes.delete(widgetData.id);
-                    this._nodeConfigs.delete(widgetData.id);
-                }
-                createNode(widgetData);
-            });
-
-            for (const [widgetId, node] of [...this.widgetNodes]) {
-                if (!sortedWidgets.some(widgetData => widgetData.id === widgetId)) {
-                    node.destroy();
-                    this.widgetNodes.delete(widgetId);
-                    this._nodeConfigs.delete(widgetId);
-                }
-            }
-
-            if (modified) {
-                this._saveLocalWidgets(widgets);
-            }
-        }
         _connectIconSelection(node, widgetData) {
             node.connect('button-press-event', (_actor, event) => {
-                // Set for every button, and before anything below can return: the grid reads
-                // it to tell a press that started here from one that started on the desktop.
-                this._pressOnWidget = true;
+                // Only a primary press reaches the grid to read this flag: the drag handlers
+                // stop a secondary press on its way up, so a right-click that left it set
+                // made the next click on empty desktop read it stale.
+                this._pressOnWidget = (event.get_button() === BUTTON_PRIMARY);
                 // Both buttons, as a file manager does: right-clicking selects and opens the
                 // menu together, so the thing being acted on is the thing that lights up.
                 if (event.get_button() === BUTTON_PRIMARY || event.get_button() === BUTTON_SECONDARY) {
-                    selectIcon(this, node);
-                    this._selectedWidgetData = widgetData;
+                    selectIcon(this, node, widgetData);
                 }
                 return Clutter.EVENT_PROPAGATE;
             });
@@ -597,94 +237,6 @@ export const DesktopGrid = GObject.registerClass(
             });
         }
 
-        /**
-         * F2 renames the selected icon.
-         *
-         * A Meta keybinding rather than a key handler on the grid: the grid only sees a key
-         * press while something inside it holds focus, and a desktop icon never does, so a
-         * handler there would fire only after a click and not at all in the overview.
-         */
-        _addRenameShortcut() {
-            this._renameShortcutId = Main.wm.addKeybinding(
-                'rename-selected-icon',
-                this.settings,
-                Meta.KeyBindingFlags.NONE,
-                Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
-                () => this._renameSelectedIcon());
-        }
-
-        /**
-         * Ctrl+X and Ctrl+C on the selected icon.
-         *
-         * Registered together with F2 because they answer the same question: they act on
-         * whichever icon is selected, and so all three must ignore the key when nothing is.
-         */
-        _addClipboardShortcuts() {
-            const modes = Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW;
-            this._cutShortcutId = Main.wm.addKeybinding(
-                'cut-selected-icon', this.settings, Meta.KeyBindingFlags.NONE, modes,
-                () => this._withSelectedIcon(cutDesktopIcon));
-            this._copyShortcutId = Main.wm.addKeybinding(
-                'copy-selected-icon', this.settings, Meta.KeyBindingFlags.NONE, modes,
-                () => this._withSelectedIcon(copyDesktopIcon));
-        }
-
-        /** Runs an action against the selected icon, or does nothing if there is none. */
-        _withSelectedIcon(action) {
-            const widgetData = this._selectedWidgetData;
-            if (!widgetData)
-                return;
-            const node = this.widgetNodes.get(widgetData.id);
-            if (!node)
-                return;
-            action(node, widgetData);
-        }
-
-        _renameSelectedIcon() {
-            this._withSelectedIcon((node, widgetData) => startIconRename(this, node, widgetData));
-        }
-
-        _removeRenameShortcut() {
-            if (this._renameShortcutId) {
-                Main.wm.removeKeybinding('rename-selected-icon');
-                this._renameShortcutId = 0;
-            }
-        }
-
-        _rebuildGrid() {
-            this._lastAppliedWidgetsJson = this.settings.get_string('widgets');
-
-            this.widgetNodes.forEach(node => node.destroy());
-            this.widgetNodes.clear();
-            this._nodeConfigs.clear();
-            if (this._gridLineCanvas) {
-                this._gridLineCanvas.destroy();
-                this._gridLineCanvas = null;
-            }
-            this.destroy_all_children();
-
-            this.editOverlayCanvases.forEach(box => box.destroy());
-            this.editOverlayCanvases = [];
-
-            this._updateStageSize();
-
-            const { widgets, activeWidgets } = this._resolveActiveWidgets();
-            const layout = this._resolveGridLayout();
-
-            this._applyGridLayout(layout);
-
-            const globalSettings = readGlobalSettings(this.settings, this.interfaceSettings);
-            const createNode = this._createNodeFactory(layout, globalSettings);
-
-            const { sortedWidgets, modified } = this._layoutWidgetsOnGrid(activeWidgets, layout.gridCols, layout.gridRows);
-
-            sortedWidgets.forEach(createNode);
-
-            if (modified) {
-                this._saveLocalWidgets(widgets);
-            }
-        }
-
         _toggleGridOverlay(show) {
             if (show) {
                 if (this.editOverlayCanvases.length > 0) return;
@@ -692,7 +244,7 @@ export const DesktopGrid = GObject.registerClass(
                 const accentColor = readGlobalSettings(this.settings, this.interfaceSettings).globalAccentColor;
                 const accent = parseCssColor(accentColor);
                 const canvas = createGridOverlay(
-                    this.gridCols || COLUMNS_COUNT,
+                    this.gridCols,
                     this.gridRows,
                     this.cellTotalWidth,
                     this.gridMargin,
@@ -704,9 +256,5 @@ export const DesktopGrid = GObject.registerClass(
                 this.editOverlayCanvases.forEach(box => box.destroy());
                 this.editOverlayCanvases = [];
             }
-        }
-
-        _toggleGridLines() {
-            this._syncGridLines();
         }
     });

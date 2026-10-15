@@ -12,8 +12,9 @@ import {
 } from '../utils/widgetUtils.js';
 import { getWidgetCacheFolder } from '../utils/widgetRegistry.js';
 import { getWidgetsForMonitor, getPanelHeight, getEffectiveMonitorIndex } from './helpers.js';
+import { detachNode, getOtherWidgets, repositionNode, saveLocalWidgets } from './layout.js';
+import { toggleAllGridOverlays } from './overlays.js';
 import { registerWidgetCleanup } from '../shell/widgetUIUtils.js';
-import { openWidgetContextMenu } from './contextMenu.js';
 import { deleteLastGoodCache } from '../utils/lastGoodCache.js';
 import {
     BUTTON_PRIMARY,
@@ -22,8 +23,7 @@ import {
 } from './constants.js';
 
 function endDrag(state, grid, node, widgetData) {
-    if (state.dragMotionId) { global.stage.disconnect(state.dragMotionId); state.dragMotionId = 0; }
-    if (state.dragReleaseId) { global.stage.disconnect(state.dragReleaseId); state.dragReleaseId = 0; }
+    disconnectStageHandlers(state);
     if (state.isDragging) {
         state.isDragging = false;
 
@@ -51,11 +51,9 @@ function endDrag(state, grid, node, widgetData) {
                 }
             }
 
-            // The monitor under the pointer is also the grid's own monitor for an
-            // ordinary drag, so comparing the two is what separates a real
-            // cross-monitor move from a reposition. Without it every in-monitor
-            // drag took the cross-monitor path and destroyed the node, restarting
-            // each widget's async fetches.
+            // The monitor under the pointer is also the grid's own monitor for an ordinary
+            // drag, so comparing the two is what separates a real cross-monitor move from
+            // a reposition.
             const ownMonitorIndex = getEffectiveMonitorIndex(grid.targetMonitorIndex, grid.settings);
             const isCrossMonitorDrop = dropMonitorIndex !== null && dropMonitorIndex !== ownMonitorIndex;
 
@@ -69,7 +67,7 @@ function endDrag(state, grid, node, widgetData) {
                 const localX = widgetStageX - targetMonitor.x;
                 const localY = widgetStageY - (targetMonitor.y + topOffset);
 
-                const otherWidgetsOnTargetMon = grid.getOtherWidgets(widgets, widgetData.id, targetMonitorIndex);
+                const otherWidgetsOnTargetMon = getOtherWidgets(grid, widgets, widgetData.id, targetMonitorIndex);
 
                 const gridCols = COLUMNS_COUNT;
 
@@ -82,20 +80,15 @@ function endDrag(state, grid, node, widgetData) {
                     targetWidget.x = targetCol;
                     targetWidget.y = targetRow;
                     targetWidget.monitor = isPrimary ? 'primary' : String(targetMonitorIndex);
-                    // applyLocalWidgetLayout seeds diff guard, so drop node
+                    // saveLocalWidgets seeds the diff guard, so drop the node
                     // explicitly and let destination grid recreate it.
-                    const movedNode = grid.widgetNodes.get(targetWidget.id);
-                    if (movedNode) {
-                        movedNode.destroy();
-                        grid.widgetNodes.delete(targetWidget.id);
-                        grid._nodeConfigs.delete(targetWidget.id);
-                    }
-                    grid.applyLocalWidgetLayout(widgets);
+                    detachNode(grid, targetWidget.id);
+                    saveLocalWidgets(grid, widgets);
                 } else {
-                    grid._repositionNode(targetWidget.id, targetWidget.width, targetWidget.height, state.origGridX, state.origGridY);
+                    repositionNode(grid, targetWidget.id, targetWidget.width, targetWidget.height, state.origGridX, state.origGridY);
                 }
             } else {
-                const otherWidgets = grid.getOtherWidgets(widgets, widgetData.id);
+                const otherWidgets = getOtherWidgets(grid, widgets, widgetData.id);
                 const gridCols = grid.gridCols;
                 const gridRows = grid.gridRows;
 
@@ -105,21 +98,32 @@ function endDrag(state, grid, node, widgetData) {
                 if (!checkOverlap(targetCol, targetRow, targetWidget.width, targetWidget.height, otherWidgets)) {
                     targetWidget.x = targetCol;
                     targetWidget.y = targetRow;
-                    grid.applyLocalWidgetLayout(widgets);
-                    grid._repositionNode(targetWidget.id, targetWidget.width, targetWidget.height, targetCol, targetRow);
+                    saveLocalWidgets(grid, widgets);
+                    repositionNode(grid, targetWidget.id, targetWidget.width, targetWidget.height, targetCol, targetRow);
                 } else {
-                    grid._repositionNode(targetWidget.id, targetWidget.width, targetWidget.height, state.origGridX, state.origGridY);
+                    repositionNode(grid, targetWidget.id, targetWidget.width, targetWidget.height, state.origGridX, state.origGridY);
                 }
             }
         }
-        grid.constructor.toggleAllGridOverlays(false);
+        toggleAllGridOverlays(false);
+    }
+}
+
+/** Drops the stage handlers a press installed. Safe on a state that never installed any. */
+function disconnectStageHandlers(state) {
+    if (state.dragMotionId) {
+        global.stage.disconnect(state.dragMotionId);
+        state.dragMotionId = 0;
+    }
+    if (state.dragReleaseId) {
+        global.stage.disconnect(state.dragReleaseId);
+        state.dragReleaseId = 0;
     }
 }
 
 /** Per-grid in-flight drag, if any; lets a new press cancel a drag whose release event was consumed by a grab. */
 function getActiveDrag(grid) {
-    if (!grid._activeDrag) grid._activeDrag = null;
-    return grid._activeDrag;
+    return grid._activeDrag ?? null;
 }
 
 function setActiveDrag(grid, value) {
@@ -134,7 +138,7 @@ function cancelInterruptedDrag(grid) {
     endDrag(state, grid, node, widgetData);
 }
 
-export function attachDragHandlers(grid, node, widgetData) {
+export function attachDragHandlers(grid, node, widgetData, openContextMenu) {
     let pressX = 0;
     let pressY = 0;
     const state = { isDragging: false, dragMotionId: 0, dragReleaseId: 0, startX: 0, startY: 0, origGridX: 0, origGridY: 0 };
@@ -147,7 +151,7 @@ export function attachDragHandlers(grid, node, widgetData) {
 
     node.connect('button-press-event', (_actor, event) => {
         if (event.get_button() === BUTTON_SECONDARY) {
-            openWidgetContextMenu(grid, event, node, widgetData);
+            openContextMenu(grid, event, node, widgetData);
             return Clutter.EVENT_STOP;
         }
 
@@ -160,8 +164,7 @@ export function attachDragHandlers(grid, node, widgetData) {
             state.origGridX = widgetData.x;
             state.origGridY = widgetData.y;
 
-            if (state.dragMotionId) { global.stage.disconnect(state.dragMotionId); state.dragMotionId = 0; }
-            if (state.dragReleaseId) { global.stage.disconnect(state.dragReleaseId); state.dragReleaseId = 0; }
+            disconnectStageHandlers(state);
 
             state.dragMotionId = global.stage.connect('motion-event', (_stage, ev) => {
                 const evState = ev.get_state();
@@ -200,13 +203,8 @@ export function attachDragHandlers(grid, node, widgetData) {
     registerWidgetCleanup(node, () => {
         const currentDrag = getActiveDrag(grid);
         if (currentDrag && currentDrag.state === state) setActiveDrag(grid, null);
-        cancelInterruptedDragForState(state);
+        disconnectStageHandlers(state);
     });
-}
-
-function cancelInterruptedDragForState(state) {
-    if (state.dragMotionId) { global.stage.disconnect(state.dragMotionId); state.dragMotionId = 0; }
-    if (state.dragReleaseId) { global.stage.disconnect(state.dragReleaseId); state.dragReleaseId = 0; }
 }
 
 export function onWidgetResized(grid, widgetId, newCols, newRows, newX) {
@@ -217,7 +215,7 @@ export function onWidgetResized(grid, widgetId, newCols, newRows, newX) {
     const widget = activeWidgets.find(activeWidget => activeWidget.id === widgetId);
     if (!widget) return;
 
-    const otherWidgets = grid.getOtherWidgets(allWidgets, widgetId);
+    const otherWidgets = getOtherWidgets(grid, allWidgets, widgetId);
     const gridCols = grid.gridCols;
     const gridRows = grid.gridRows;
     const { validCols, validRows, validX } = calculateResizedDimensions(widget, newCols, newRows, newX, otherWidgets, gridCols, gridRows);
@@ -228,8 +226,8 @@ export function onWidgetResized(grid, widgetId, newCols, newRows, newX) {
             targetWidget.width = validCols;
             targetWidget.height = validRows;
             targetWidget.x = validX;
-            grid.applyLocalWidgetLayout(allWidgets);
-            grid._repositionNode(widgetId, validCols, validRows, validX, widget.y);
+            saveLocalWidgets(grid, allWidgets);
+            repositionNode(grid, widgetId, validCols, validRows, validX, widget.y);
         }
     }
 }

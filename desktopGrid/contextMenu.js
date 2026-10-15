@@ -1,12 +1,9 @@
 import St from 'gi://St';
-import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
-import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import { toggleWidgetResizeHandle } from './widgetEditUtils.js';
 import { onWidgetResized, onWidgetDeleted } from './dragDrop.js';
+import { applySizePreset, applyWidgetGenre, pickWidgetSource } from './widgetActions.js';
+import { copyDesktopIcon, cutDesktopIcon, startIconRename } from './iconActions.js';
 import { COLUMNS_COUNT, getWidgets } from '../utils/widgetUtils.js';
 import { DEFAULT_TOP_STORY_GENRE, SIZE_PRESET_TIERS, TOP_STORY_GENRE_LABELS, TOP_STORY_GENRE_NAMES, sizePresetTierCount, supportsSizePresets } from '../utils/widgetRegistry.js';
 import {
@@ -16,9 +13,8 @@ import {
     desktopFileFor,
     isAppLauncherEntry,
     isDesktopIcon,
-    renameDesktopIconEntry,
 } from '../desktopIcons/desktopIcons.js';
-import { beginInlineRename, launchDesktopIcon, setClipboardEmphasis } from '../desktopIcons/desktopIconWidget.js';
+import { launchDesktopIcon } from '../desktopIcons/desktopIconWidget.js';
 import {
     copyEntryTo,
     createDesktopFolder,
@@ -26,108 +22,25 @@ import {
     launchTerminalFor,
     moveEntryTo,
     openEntryWith,
-    describeUnusableName,
-    renameEntry,
     showInFileManager,
     trashEntry,
 } from '../desktopIcons/fileOperations.js';
 import { showFileProperties } from '../desktopIcons/propertiesLauncher.js';
 import { showAppChooserDialog } from '../desktopIcons/appChooserDialog.js';
 import { promptForText } from '../desktopIcons/textPrompt.js';
-import { pasteIntoDesktopFolder, setClipboardFiles } from '../desktopIcons/clipboardPaste.js';
+import { pasteIntoDesktopFolder } from '../desktopIcons/clipboardPaste.js';
 import { openPortalFileChooser } from '../utils/fileChooser.js';
-
-export function createPopupMenuAt(grid, event) {
-    if (grid._contextMenuCloseIdleId) {
-        GLib.Source.remove(grid._contextMenuCloseIdleId);
-        grid._contextMenuCloseIdleId = null;
-    }
-    if (grid.contextMenu) {
-        removeContextMenu(grid);
-    }
-
-    const [stageX, stageY] = event.get_coords();
-    const dummyActor = new St.Widget({ x: stageX, y: stageY, width: 1, height: 1 });
-    Main.uiGroup.add_child(dummyActor);
-    grid._contextMenuDummyActor = dummyActor;
-
-    grid.contextMenu = new PopupMenu.PopupMenu(dummyActor, 0.0, St.Side.TOP);
-    const openedMenu = grid.contextMenu;
-    openedMenu.connect('open-state-changed', (_menu, isOpen) => {
-        if (isOpen || grid.contextMenu !== openedMenu)
-            return;
-        const closedMenu = openedMenu;
-        grid._contextMenuCloseIdleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            grid._contextMenuCloseIdleId = null;
-            if (grid.contextMenu === closedMenu)
-                removeContextMenu(grid);
-            return GLib.SOURCE_REMOVE;
-        });
-    });
-
-    if (!grid._menuManager) {
-        grid._menuManager = new PopupMenu.PopupMenuManager(grid);
-    }
-    grid._menuManager.addMenu(grid.contextMenu);
-
-    return grid.contextMenu;
-}
-
-export function removeContextMenu(grid) {
-    if (grid.contextMenu) {
-        const menu = grid.contextMenu;
-        grid.contextMenu = null;
-        if (grid._menuManager) {
-            grid._menuManager.removeMenu(menu);
-        }
-        menu.destroy();
-    }
-    if (grid._contextMenuDummyActor) {
-        // destroy(), not remove_child(): a menu anchor that is only detached stays
-        // allocated and is rebuilt on every single menu close.
-        grid._contextMenuDummyActor.destroy();
-        grid._contextMenuDummyActor = null;
-    }
-}
-
-export function openPreferences(grid, targetWidgetId = null) {
-    if (targetWidgetId) {
-        grid.settings.set_string('open-edit-widget-id', targetWidgetId);
-    }
-    const extension = Extension.lookupByUUID(grid.metadata.uuid);
-    if (!extension) return;
-    extension.openPreferences();
-}
-
-/** Opens a GNOME Settings panel through GIO's app launcher instead of a raw fork/exec. */
-export function launchSettingsPanel(panelName = null) {
-    // create_from_commandline takes one commandline string, not an argv array, and the
-    // flag is SUPPORTS_STARTUP_NOTIFICATION. Passing an array throws, and a misspelled
-    // flag reads as undefined, so both were wrong and neither threw at the call site.
-    const commandline = panelName
-        ? `gnome-control-center ${panelName}`
-        : 'gnome-control-center';
-    try {
-        const appInfo = Gio.AppInfo.create_from_commandline(
-            commandline, 'GNOME Settings', Gio.AppInfoCreateFlags.SUPPORTS_STARTUP_NOTIFICATION);
-        appInfo.launch([], null);
-    } catch (e) {
-        console.error('Failed to launch GNOME Settings:', e);
-    }
-}
-
-function presentMenu(menu) {
-    Main.uiGroup.add_child(menu.actor);
-    menu.open(BoxPointer.PopupAnimation.FULL);
-}
+import {
+    createPopupMenuAt,
+    launchSettingsPanel,
+    openPreferences,
+    presentMenu,
+} from './menuPopup.js';
 
 /**
- * Asks for a name, and refuses an unusable one without closing the dialog.
- *
- * The refusal lands on the dialog's own subtitle with the text still there and selected,
- * so correcting a typo is typing the right name and pressing Return. Reopening a second
- * dialog instead left the retry inert, because the first one had to finish closing before
- * the new one's Return was delivered.
+ * Asks for a name, and refuses an unusable one without closing the dialog. The refusal
+ * lands on the dialog's own subtitle with the text still there and selected, so correcting
+ * a typo is typing the right name and pressing Return.
  */
 function promptForEntryName({ title, subtitle, initialText = '', confirmLabel }, onAccepted) {
     promptForText({
@@ -137,8 +50,7 @@ function promptForEntryName({ title, subtitle, initialText = '', confirmLabel },
         confirmLabel,
         validate: onAccepted,
     }, () => {
-        // null is a dismissed dialog, which is not a name the user asked for. An accepted
-        // name has already been acted on by validate.
+        // null is a dismissed dialog, not a name. An accepted one has already been acted on.
     });
 }
 
@@ -162,13 +74,13 @@ function addTransferItem(menu, file, label, shouldMove) {
     menu.addMenuItem(item);
 }
 
-// A dialog, not a submenu: a submenu only holds the applications registered for the
-// content type, which is narrower than the chooser needs.
-function openAppChooserFor(grid, menu, file) {
+// A submenu would only offer the applications registered for the content type, which is
+// narrower than the chooser needs.
+function openAppChooserFor(menu, file) {
     const item = new PopupMenu.PopupMenuItem('Open With…');
     item.connect('activate', () => {
-        // Null when there is nothing to choose from, which is left to the menu item
-        // rather than replaced by a dialog with an empty list in it.
+        // Null when there is nothing to choose from: the menu item is then the only
+        // thing that needs to say so, since a dialog would open on an empty list.
         if (!showAppChooserDialog({
             file,
             onChosen: app => {
@@ -182,44 +94,6 @@ function openAppChooserFor(grid, menu, file) {
     menu.addMenuItem(item);
 }
 
-// Shared with Ctrl+X, so the two cannot disagree: the clipboard write and the dimming
-// have to happen together.
-export function cutDesktopIcon(node, widgetData) {
-    const file = desktopFileFor(widgetData);
-    if (!file)
-        return;
-    setClipboardFiles([file.get_uri()], true);
-    setClipboardEmphasis(node, true);
-}
-
-// Shared with Ctrl+C.
-export function copyDesktopIcon(node, widgetData) {
-    const file = desktopFileFor(widgetData);
-    if (!file)
-        return;
-    setClipboardFiles([file.get_uri()], false);
-    setClipboardEmphasis(node, false);
-}
-
-// Shared with the Rename item and F2, which must validate and rename identically.
-export function startIconRename(grid, node, widgetData) {
-    const file = desktopFileFor(widgetData);
-    if (!file)
-        return;
-    beginInlineRename(node, {
-        initialText: file.get_basename(),
-        validate: name => describeUnusableName(name, { short: true }),
-        onAccepted: name => {
-            const result = renameEntry(file, name);
-            // Only after the file moved, and with the name that came back: an entry repointed at a
-            // name that does not exist yet is dropped as missing on the next resync.
-            if (result.ok)
-                renameDesktopIconEntry(grid.settings, widgetData.fileName, result.name);
-            return result;
-        },
-    });
-}
-
 function openDesktopIconMenu(grid, menu, node, widgetData) {
     const file = desktopFileFor(widgetData);
 
@@ -231,13 +105,14 @@ function openDesktopIconMenu(grid, menu, node, widgetData) {
         return;
     }
 
-    // One item, not two: Open in Files and Show in Files landed in Files for the same entry.
+    // Open in Files and Show in Files both landed in Files for the same entry, so they
+    // are one item.
     const isDirectory = isDirectoryEntry(file);
     const isLauncher = isAppLauncherEntry(widgetData);
 
     // A launcher has no Open With: it is an application, not a document something else opens.
     if (!isLauncher)
-        openAppChooserFor(grid, menu, file);
+        openAppChooserFor(menu, file);
 
     if (!isDirectory) {
         const openItem = new PopupMenu.PopupMenuItem('Open');
@@ -263,14 +138,14 @@ function openDesktopIconMenu(grid, menu, node, widgetData) {
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
     }
 
-    // Puts the file itself under the cursor.
+    // Reveals the entry itself, not its parent folder.
     const showInFilesItem = new PopupMenu.PopupMenuItem('Show in Files');
     showInFilesItem.connect('activate', () => showInFileManager(file));
     menu.addMenuItem(showInFilesItem);
 
     if (!isLauncher) {
-        // A folder only. A file has no folder of its own, so the console would open where
-        // the file is rather than anywhere the file is.
+        // A folder only. A file has no folder of its own, so there is nowhere better to
+        // open the console than where the file already is.
         if (isDirectory) {
             const consoleItem = new PopupMenu.PopupMenuItem('Open in Console');
             consoleItem.connect('activate', () => launchTerminalFor(file));
@@ -315,7 +190,7 @@ export function openWidgetContextMenu(grid, event, node, widgetData) {
             const item = new PopupMenu.PopupMenuItem(TOP_STORY_GENRE_LABELS[genre] || genre);
             if ((widgetData.genre || DEFAULT_TOP_STORY_GENRE) === genre)
                 item.add_style_class_name('selected');
-            item.connect('activate', () => grid.applyWidgetGenre(widgetData.id, genre));
+            item.connect('activate', () => applyWidgetGenre(grid, widgetData.id, genre));
             genreMenu.menu.addMenuItem(item);
         }
         menu.addMenuItem(genreMenu);
@@ -326,7 +201,7 @@ export function openWidgetContextMenu(grid, event, node, widgetData) {
         const sizeMenu = new PopupMenu.PopupSubMenuMenuItem('Size');
         SIZE_PRESET_TIERS.slice(0, sizeTiers).forEach((label, sizeIndex) => {
             const item = new PopupMenu.PopupMenuItem(label);
-            item.connect('activate', () => grid.applySizePreset(widgetData.id, sizeIndex));
+            item.connect('activate', () => applySizePreset(grid, widgetData.id, sizeIndex));
             sizeMenu.menu.addMenuItem(item);
         });
         menu.addMenuItem(sizeMenu);
@@ -355,7 +230,7 @@ export function openWidgetContextMenu(grid, event, node, widgetData) {
         const isSlideshow = widgetData.type === 'slideshow';
         const sourceItem = new PopupMenu.PopupMenuItem(
             isSlideshow ? 'Change Folder...' : 'Change Image...');
-        sourceItem.connect('activate', () => grid.pickWidgetSource(widgetData.id));
+        sourceItem.connect('activate', () => pickWidgetSource(grid, widgetData.id));
         menu.addMenuItem(sourceItem);
     }
 
