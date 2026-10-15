@@ -3,6 +3,9 @@ import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import Shell from 'gi://Shell';
 import {
     COLUMNS_COUNT,
     GRID_GAP_PX,
@@ -19,9 +22,12 @@ import {
 } from '../utils/widgetUtils.js';
 import { resolveWidgetSizePreset } from '../utils/widgetRegistry.js';
 import { openPortalFileChooser } from '../utils/fileChooser.js';
+import { clearIconSelection, selectIcon, setIconHovered } from '../desktopIcons/desktopIconWidget.js';
+import { copyDesktopIcon, cutDesktopIcon, startIconRename } from './contextMenu.js';
 import {
     DEFAULT_STAGE_WIDTH,
     DEFAULT_STAGE_HEIGHT,
+    BUTTON_PRIMARY,
     BUTTON_SECONDARY,
 } from './constants.js';
 import {
@@ -39,6 +45,7 @@ import {
 } from './contextMenu.js';
 import { isActorDestroyed, watchActorLifecycle } from '../utils/actorLifecycle.js';
 import { resolveWeatherLayoutVariant } from '../widgets/weather/weatherCommon.js';
+import { DISMISSED_DESKTOP_ICONS_KEY, isDesktopIconVisible } from '../desktopIcons/desktopIcons.js';
 
 const GRID_LINE_ALPHA = 0.25;
 const EDIT_OVERLAY_ALPHA = 0.3;
@@ -82,13 +89,30 @@ export const DesktopGrid = GObject.registerClass(
             }
             DesktopGrid._activeInstances.add(this);
 
+            this._selectedWidgetData = null;
+            this._pressOnWidget = false;
             this._setupSettingsListeners();
+            this._addRenameShortcut();
+            this._addClipboardShortcuts();
             this._rebuildGrid();
 
             this._backgroundPressId = this.connect('button-press-event', (_actor, event) => {
                 if (event.get_button() === BUTTON_SECONDARY) {
                     openContextMenu(this, event);
                     return Clutter.EVENT_STOP;
+                }
+                // A press on an icon bubbles up to here as well as landing on the grid, so
+                // this has to tell the two apart. It asks whether the press was inside a
+                // widget at all: checking that the source is the grid missed the drag
+                // overlay sitting between them, and checking the source against a node
+                // missed the icon's own children, which is what the pointer is over. Both
+                // mistakes read as a background press, so the icon was selected by its own
+                // click and deselected a moment later.
+                const wasOnWidget = this._pressOnWidget;
+                this._pressOnWidget = false;
+                if (event.get_button() === BUTTON_PRIMARY && !wasOnWidget) {
+                    clearIconSelection(this);
+                    this._selectedWidgetData = null;
                 }
                 return Clutter.EVENT_PROPAGATE;
             });
@@ -133,6 +157,11 @@ export const DesktopGrid = GObject.registerClass(
             this.widgetNodes.clear();
             this._nodeConfigs.clear();
             this._gridLineCanvas = null;
+            // The keybinding is process-wide, so a grid that goes away without removing it
+            // leaves F2 bound to a destroyed grid on the next monitor change.
+            this._removeRenameShortcut();
+            for (const name of ['cut-selected-icon', 'copy-selected-icon'])
+                Main.wm.removeKeybinding(name);
             this.destroy_all_children();
 
             super.destroy();
@@ -170,6 +199,10 @@ export const DesktopGrid = GObject.registerClass(
             connectSetting('weather-dynamic-color', () => this._rebuildGrid());
             connectSetting('weather-dynamic-image', () => this._rebuildGrid());
             connectSetting('show-grid', () => this._toggleGridLines());
+            // Unlike the keys above, this one is written by the preferences window as
+            // well as by the grid's own context menu, and it changes no entry in the
+            // layout, so the widgets signal never arrives to rebuild anything.
+            connectSetting(DISMISSED_DESKTOP_ICONS_KEY, () => this._rebuildGrid());
         }
 
         _updateStageSize() {
@@ -275,6 +308,10 @@ export const DesktopGrid = GObject.registerClass(
                 watchActorLifecycle(node);
                 node.widgetData = widgetData;
                 node.gridOverlayCallback = (showOverlay) => DesktopGrid.toggleAllGridOverlays(showOverlay);
+                // Before the drag handlers: their secondary-press branch returns EVENT_STOP,
+                // and Clutter stops calling further handlers on a signal once one does, so a
+                // selection handler connected after this would never see a right click.
+                this._connectIconSelection(node, widgetData);
                 attachDragHandlers(this, node, widgetData);
                 this.add_child(node);
                 this.widgetNodes.set(widgetData.id, node);
@@ -335,7 +372,11 @@ export const DesktopGrid = GObject.registerClass(
             const isEachMode = (monitorMode === 'each');
 
             const widgets = getWidgets(this.settings);
-            const activeWidgets = getWidgetsForMonitor(widgets, getEffectiveMonitorIndex(this.targetMonitorIndex, this.settings), isEachMode);
+            // Hidden icons are filtered out of what is drawn but stay in what is saved:
+            // `widgets` is the whole layout and the next write is the whole layout, so
+            // dropping them here would delete them and lose their positions.
+            const rendered = widgets.filter(widget => isDesktopIconVisible(widget, this.settings));
+            const activeWidgets = getWidgetsForMonitor(rendered, getEffectiveMonitorIndex(this.targetMonitorIndex, this.settings), isEachMode);
             return { widgets, activeWidgets };
         }
 
@@ -533,6 +574,83 @@ export const DesktopGrid = GObject.registerClass(
                 this._saveLocalWidgets(widgets);
             }
         }
+        _connectIconSelection(node, widgetData) {
+            node.connect('button-press-event', (_actor, event) => {
+                // Set for every button, and before anything below can return: the grid reads
+                // it to tell a press that started here from one that started on the desktop.
+                this._pressOnWidget = true;
+                // Both buttons, as a file manager does: right-clicking selects and opens the
+                // menu together, so the thing being acted on is the thing that lights up.
+                if (event.get_button() === BUTTON_PRIMARY || event.get_button() === BUTTON_SECONDARY) {
+                    selectIcon(this, node);
+                    this._selectedWidgetData = widgetData;
+                }
+                return Clutter.EVENT_PROPAGATE;
+            });
+            node.connect('enter-event', () => {
+                setIconHovered(node, true);
+                return Clutter.EVENT_PROPAGATE;
+            });
+            node.connect('leave-event', () => {
+                setIconHovered(node, false);
+                return Clutter.EVENT_PROPAGATE;
+            });
+        }
+
+        /**
+         * F2 renames the selected icon.
+         *
+         * A Meta keybinding rather than a key handler on the grid: the grid only sees a key
+         * press while something inside it holds focus, and a desktop icon never does, so a
+         * handler there would fire only after a click and not at all in the overview.
+         */
+        _addRenameShortcut() {
+            this._renameShortcutId = Main.wm.addKeybinding(
+                'rename-selected-icon',
+                this.settings,
+                Meta.KeyBindingFlags.NONE,
+                Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+                () => this._renameSelectedIcon());
+        }
+
+        /**
+         * Ctrl+X and Ctrl+C on the selected icon.
+         *
+         * Registered together with F2 because they answer the same question: they act on
+         * whichever icon is selected, and so all three must ignore the key when nothing is.
+         */
+        _addClipboardShortcuts() {
+            const modes = Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW;
+            this._cutShortcutId = Main.wm.addKeybinding(
+                'cut-selected-icon', this.settings, Meta.KeyBindingFlags.NONE, modes,
+                () => this._withSelectedIcon(cutDesktopIcon));
+            this._copyShortcutId = Main.wm.addKeybinding(
+                'copy-selected-icon', this.settings, Meta.KeyBindingFlags.NONE, modes,
+                () => this._withSelectedIcon(copyDesktopIcon));
+        }
+
+        /** Runs an action against the selected icon, or does nothing if there is none. */
+        _withSelectedIcon(action) {
+            const widgetData = this._selectedWidgetData;
+            if (!widgetData)
+                return;
+            const node = this.widgetNodes.get(widgetData.id);
+            if (!node)
+                return;
+            action(node, widgetData);
+        }
+
+        _renameSelectedIcon() {
+            this._withSelectedIcon((node, widgetData) => startIconRename(this, node, widgetData));
+        }
+
+        _removeRenameShortcut() {
+            if (this._renameShortcutId) {
+                Main.wm.removeKeybinding('rename-selected-icon');
+                this._renameShortcutId = 0;
+            }
+        }
+
         _rebuildGrid() {
             this._lastAppliedWidgetsJson = this.settings.get_string('widgets');
 

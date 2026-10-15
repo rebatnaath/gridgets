@@ -1,6 +1,9 @@
 import Adw from 'gi://Adw';
 import GLib from 'gi://GLib';
-import { populateActiveWidgets } from './activeWidgetsList.js';
+import Gtk from 'gi://Gtk';
+import { populateActiveWidgets, removableWidgets, removeAllWidgets } from './activeWidgetsList.js';
+import { createSwitchRow } from './aestheticControls.js';
+import { confirmDestructive } from './confirmActions.js';
 
 export function buildIndividualSettingsPage(window, settings) {
     const page = new Adw.PreferencesPage({
@@ -127,6 +130,47 @@ export function buildIndividualSettingsPage(window, settings) {
         }
         pendingNavigateWidgetId = null;
     });
+
+    const dangerGroup = new Adw.PreferencesGroup({
+        title: 'Removing Widgets',
+        description: 'Removing a widget deletes the data it has saved, and there is no undo.',
+    });
+
+    dangerGroup.add(createSwitchRow(
+        'Confirm Before Removing',
+        'Ask each time. Turn this off when clearing several widgets in a row.',
+        settings,
+        'confirm-widget-delete'
+    ).row);
+
+    const clearRow = new Adw.ActionRow({
+        title: 'Delete All Widgets',
+        subtitle: 'Every widget and its saved data go. Icons on your desktop stay: they come from the folder, not from here.',
+    });
+    const clearButton = new Gtk.Button({
+        label: 'Delete All',
+        valign: Gtk.Align.CENTER,
+        css_classes: ['destructive-action'],
+    });
+    // Nothing to delete should not offer to delete. Desktop icons do not count: they are
+    // left behind by this action, so a grid holding only them has nothing to remove.
+    const refreshClearButton = () => {
+        clearButton.sensitive = removableWidgets(settings).length > 0;
+    };
+    clearButton.connect('clicked', () => {
+        confirmDestructive(window, settings, {
+            heading: 'Delete all widgets?',
+            body: 'Every widget on the desktop goes, along with the data each one has saved. Icons on your desktop stay. This cannot be undone.',
+            confirmLabel: 'Delete All',
+        }, () => removeAllWidgets(settings));
+    });
+    clearRow.add_suffix(clearButton);
+    refreshClearButton();
+    dangerGroup.add(clearRow);
+    page.add(dangerGroup);
+
+    const widgetsChangedForClearId = settings.connect('changed::widgets', refreshClearButton);
+    page.connect('destroy', () => settings.disconnect(widgetsChangedForClearId));
 
     refreshActiveWidgets();
     consumePendingEditRequest();

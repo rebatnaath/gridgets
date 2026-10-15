@@ -74,6 +74,37 @@ widget appears at.
 
 ### New widgets
 
+- **Desktop icons** - the contents of your desktop folder, drawn on the grid
+  beside everything else. Off by default; turn it on with **Show Desktop Icons**
+  on the Global Settings page. Entries appear and disappear as you add and
+  remove files, and each one keeps the position you drag it to. Double-click to
+  open, right-click for **Open in Files**, **Open With…**, **Open**, **Cut**,
+  **Copy**, **Move to…**, **Copy to…**, **Show in Files**, **Open in Console**,
+  **Rename…**, **Move to Trash**, **Properties** and **Remove from Desktop**.
+  **Open With…** is a dialog of every installed application with a filter box and
+  the current default first, the way Desktop Icons NG does it, rather than a submenu
+  that could only list what is registered for that file type. Cut and Copy write
+  the standard URI list and cut flag, so a cut pasted into Files moves rather than
+  copies, and dim the icon while it is there, more for a cut than a copy. Move to…
+  and Copy to… pick a folder through the portal and count up a name that is taken
+  instead of replacing it. Open in Console finds a terminal among the nine common
+  ones and asks it for a tab as well as a directory, because GNOME Terminal and
+  GNOME Console run as one instance and ignore the second request otherwise.
+  Renaming keeps the icon in
+  place, refuses a name that is already taken, and leaves that name on screen with the
+  reason on it so it can be corrected in place; the name prompts confirm on Return and
+  cancel on Escape. **Properties** opens a dialog Gridgets draws itself — icon, name,
+  kind, free space, folder, times, size, and Owner/Group/Others read-write-execute
+  toggles that apply immediately, used only when nothing on the bus answers —
+  because GNOME 43 moved that dialog into Files and stopped shipping
+  `nautilus-properties`, leaving nothing to spawn. **Properties** instead asks the
+  file manager over the freedesktop `FileManager1` bus interface to open its own
+  properties window, the way Desktop Icons NG does, so no window has to appear
+  first.
+  Right-clicking the empty desktop adds **New Folder**, **Paste** and **Show
+  Hidden Files**, so files copied or cut in Files can be pasted onto the grid and
+  dotfiles can be shown. Removing an icon only takes it off the grid, never
+  touches the file, and **Restore Hidden Icons** brings it back where it was.
 - **News** - a scrolling list of headlines from many publishers, each with
   its thumbnail. Pick a genre when you add it.
 - **Calendar Events** - a month grid with the selected day's events listed
@@ -177,6 +208,16 @@ text wrongly, and music artwork could disappear.
 
 ### Internals
 
+- Desktop icons are saved as ordinary entries in the widget layout under a type
+  of their own, so the grid's existing drag, collision and persistence paths
+  carry them with nothing extra to maintain. A new `nextWidgetIdFromList` helper
+  hands out ids against a list a caller already holds, which is what adding
+  several entries in one pass needs.
+- Gridgets now warns in the journal when an extension that also draws desktop
+  icons is enabled alongside it, naming the other extension.
+- Desktop icon operations are split across three small modules by what they need:
+  the folder reconciliation is gi-free so the preferences process can reach it,
+  the file operations need only Gio, and the clipboard paste needs St.
 - Shared helpers were pulled out instead of being copied around: text size and
   weight settings, telling a click apart from a drag, the small graphs used by the
   system widgets, and the button styling on the pomodoro timer.

@@ -101,6 +101,51 @@
       <summary>Global Caption Text Color</summary>
       <description>Caption text color for image and slideshow widgets that follow the global setting.</description>
     </key>
+    <key name="show-desktop-icons" type="b">
+      <default>false</default>
+      <summary>Show Desktop Icons</summary>
+      <description>Draw the contents of the user's desktop folder on the widget grid. Entries are kept while this is off so switching it back on restores their positions.</description>
+    </key>
+    <key name="confirm-widget-delete" type="b">
+      <default>true</default>
+      <summary>Confirm Before Removing Widgets</summary>
+      <description>Ask before a widget is removed from the desktop. Removing one also deletes its saved data and cannot be undone.</description>
+    </key>
+    <key name="show-app-launchers" type="b">
+      <default>false</default>
+      <summary>Show Application Launchers</summary>
+      <description>Draw the application launchers chosen below on the widget grid, alongside the files in the desktop folder. They are entries rather than files: there is nothing in the folder to move or delete.</description>
+    </key>
+    <key name="app-launchers" type="as">
+      <default>[]</default>
+      <summary>Chosen Application Launchers</summary>
+      <description>Desktop IDs of the launchers to show, such as org.gnome.Nautilus.desktop. Ids that no longer resolve are ignored, so uninstalling an app removes it from the grid.</description>
+    </key>
+    <key name="show-hidden-desktop-icons" type="b">
+      <default>false</default>
+      <summary>Show Hidden Desktop Entries</summary>
+      <description>Include dotfiles from the desktop folder. Turning this off drops their grid entries, so switching it back on places them at the next free spot.</description>
+    </key>
+    <key name="dismissed-desktop-icons" type="as">
+      <default>[]</default>
+      <summary>Dismissed Desktop Icons</summary>
+      <description>Names of desktop folder entries hidden from the grid. The files themselves are never touched and each entry keeps its place, so clearing this list brings every one of them back where it was.</description>
+    </key>
+    <key name="cut-selected-icon" type="as">
+      <default>['&lt;Control&gt;x']</default>
+      <summary>Cut Selected Desktop Icon</summary>
+      <description>Keyboard shortcut that puts the selected desktop icon on the clipboard as a cut, the way a file manager does. Has no effect until an icon is selected.</description>
+    </key>
+    <key name="copy-selected-icon" type="as">
+      <default>['&lt;Control&gt;c']</default>
+      <summary>Copy Selected Desktop Icon</summary>
+      <description>Keyboard shortcut that puts the selected desktop icon on the clipboard as a copy, the way a file manager does. Has no effect until an icon is selected.</description>
+    </key>
+    <key name="rename-selected-icon" type="as">
+      <default>['F2']</default>
+      <summary>Rename Selected Desktop Icon</summary>
+      <description>Keyboard shortcut that opens the rename entry on the selected desktop icon, the way a file manager does. Has no effect until an icon is selected.</description>
+    </key>
     <key name="global-monitor" type="s">
       <default>'primary'</default>
       <summary>Global Target Monitor</summary>

@@ -19,6 +19,7 @@ For a detailed walkthrough of all widgets, customization options, and desktop in
 - **Individual Styling:** Customize colors, fonts, border radii, and sizes for every widget.
 - **Size Presets:** Quick S/M/L sizing from the right-click context menu.
 - **Drag & Resize:** Move widgets by dragging, resize with the corner handle.
+- **Desktop Icons:** Optionally draw your desktop folder on the grid; entries follow the folder as you add and remove files.
 - **Multi-Monitor:** Show widgets on primary, all, or each monitor independently.
 - **Follow System Theme:** Automatically switch between light and dark mode.
 
@@ -173,12 +174,62 @@ Open the **Extensions** app (or Extension Manager) and click the gear icon next 
 
 Supported GNOME Shell versions: `45`, `46`, `47`, `48`, `49`, `50`.
 
+### Desktop Icons
+
+Gridgets can draw the contents of your desktop folder on the grid, next to
+everything else. Turn it on with **Show Desktop Icons** on the Global Settings
+page.
+
+- Entries appear and disappear as you add and remove files, and each one keeps
+  the position you drag it to.
+- Double-click an icon to open it. A `.desktop` launcher is run rather than
+  opened in a text editor.
+- Right-click an icon for the usual items, in this order: **Open in Files**,
+  **Open With…**, **Open**, **Cut**, **Copy**, **Move to…**, **Copy to…**,
+  **Show in Files**, **Open in Console**, **Rename…**, **Move to Trash**,
+  **Properties**, **Remove from Desktop**. Renaming keeps the icon where it is;
+  nothing is overwritten, and a name that is already taken is refused and asked
+  again with the reason attached. **Open With…** opens a dialog of every installed
+  application with the file's current one first and a box to filter by name —
+  a submenu could only list the applications registered for that file type, which
+  is just a slower way of opening it. **Cut** and **Copy** put the file on the
+  clipboard the standard way so it can be pasted into Files, and the icon dims
+  while it is there, more for a cut than a copy. **Move to…** and **Copy to…** pick
+  a folder and never replace what is already there — a taken name is counted up
+  instead. **Open in Files** opens the containing folder, **Show in Files** puts the
+  file itself under the cursor, and **Open in Console** starts a terminal in the
+  containing folder, trying GNOME Terminal, GNOME Console and the other common
+  terminals in turn. The name prompts take Return to confirm and Escape to cancel.
+- **Properties** asks the file manager over the freedesktop `FileManager1` bus
+  interface to open its own properties window for the file, which is how Desktop
+  Icons NG does it and needs no window to appear first. GNOME 43 moved that dialog
+  into Files and stopped shipping the standalone `nautilus-properties` program, so
+  there is no other way to reach it. On a desktop with no file manager on the bus,
+  Gridgets draws the dialog itself instead: icon, name, kind, free space, folder,
+  modified and created times, size, and Owner/Group/Others read-write-execute
+  toggles that take effect immediately.
+- Right-clicking the empty desktop adds **New Folder**, **Paste** and **Show
+  Hidden Files**, which appear only while desktop icons are switched on. Paste
+  reads the shell clipboard, so files copied or cut in Files land here — a cut
+  moves them, a copy duplicates them.
+- **Remove from Desktop** only takes an icon off the grid; the file on disk is
+  untouched, and the icon comes back where it was from **Restore Hidden
+  Icons** on the Global Settings page.
+- Dotfiles are hidden unless **Show Hidden Files** is used, and the icon has no
+  size options of its own.
+
+Because Gridgets draws these itself, an extension that also draws desktop icons
+will paint a second set over the first. See below.
+
 ### Desktop Icons NG
 
 Gridgets and [Desktop Icons NG](https://gitlab.com/smedius/desktop-icons-ng) can be
 enabled at the same time and both keep working, but they draw into the same part
 of the screen, so there are a few things to be aware of.
 
+- **If you turn on Show Desktop Icons, turn Desktop Icons NG off.** Both draw
+  icons into the same area, so you get two sets on top of each other. Gridgets
+  logs a warning naming the other extension when it finds one enabled.
 - **Desktop Icons NG takes over the desktop right-click menu.** Right-clicking
   the empty desktop opens its menu instead of Gridgets'. 
 - **Icons are drawn over the widgets.** Gridgets draws into the layer above the

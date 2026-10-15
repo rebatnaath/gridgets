@@ -12,6 +12,7 @@ import {
 import { createPomodoroNode, createPomodoroFocusNode } from '../widgets/pomodoro/index.js';
 import { createAppLauncherNode } from '../widgets/appLauncher/index.js';
 import { createScreenTimeNode, createMoodNode } from '../widgets/wellness/index.js';
+import { createDesktopIconNode } from '../desktopIcons/desktopIconWidget.js';
 import {
     createStaticImageNode,
     createAnimatedImageNode,
@@ -50,6 +51,7 @@ const WIDGET_CREATORS = {
     'rss-headlines': (data, w, h, x, y) => createRssHeadlinesNode(data, w, h, x, y),
     'top-stories': (data, w, h, x, y) => createTopStoriesNode(data, w, h, x, y),
     'mood': (data, w, h, x, y) => createMoodNode(data, w, h, x, y),
+    'desktop-icon': (data, w, h, x, y) => createDesktopIconNode(data, w, h, x, y),
     'slideshow': (data, w, h, x, y) => createSlideshowNode(data, w, h, x, y),
     'image': (data, w, h, x, y) => {
         if (data.imagePath && isAnimatedImageFile(data.imagePath)) {

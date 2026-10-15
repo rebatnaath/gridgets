@@ -18,6 +18,22 @@ import { findThemePreset } from './utils/themePresets.js';
 import { clearMusicPlaybackState } from './widgets/music/playbackState.js';
 import { clearMusicPolls } from './widgets/music/index.js';
 import { screenTimeEngine } from './utils/screenTimeEngine.js';
+import { APP_LAUNCHERS_KEY, SHOW_APP_LAUNCHERS_KEY } from './desktopIcons/appLaunchers.js';
+import {
+    SHOW_DESKTOP_ICONS_KEY,
+    SHOW_HIDDEN_DESKTOP_ICONS_KEY,
+    startDesktopIconWatch,
+    stopDesktopIconWatch,
+    syncDesktopIcons,
+} from './desktopIcons/desktopIcons.js';
+
+// Extensions that draw their own desktop icons. Running alongside one of them puts two
+// sets of icons on the same wallpaper, which is why enabling this warns rather than
+// silently rendering over the other.
+const DESKTOP_ICON_EXTENSION_UUIDS = Object.freeze([
+    'gtk4-ding@smedius.gitlab.com',
+    'ding@smedius.gnome.org',
+]);
 
 export default class GridgetsExtension extends Extension {
     enable() {
@@ -40,6 +56,53 @@ export default class GridgetsExtension extends Extension {
         this._settingSignalIds.push(
             this._settings.connect('changed::accent-color-override', () => this._rebuildGrids())
         );
+        // Synced before the grids are built so icons are part of the first layout rather
+        // than appearing a moment later, and the key is not watched by the grids either:
+        // this rebuild is the only rebuild for it.
+        this._settingSignalIds.push(
+            this._settings.connect(`changed::${SHOW_DESKTOP_ICONS_KEY}`, () => {
+                if (this._settings.get_boolean(SHOW_DESKTOP_ICONS_KEY)) {
+                    this._warnIfDesktopIconsExtensionEnabled();
+                    syncDesktopIcons(this._settings);
+                    startDesktopIconWatch(this._settings);
+                } else {
+                    stopDesktopIconWatch();
+                }
+                this._rebuildGrids();
+            })
+        );
+
+        if (this._settings.get_boolean(SHOW_DESKTOP_ICONS_KEY)) {
+            this._warnIfDesktopIconsExtensionEnabled();
+            syncDesktopIcons(this._settings);
+            startDesktopIconWatch(this._settings);
+        }
+
+        // Watched here for the same reason as SHOW_DESKTOP_ICONS_KEY, and for one more:
+        // which entries change is only known once the folder has been read again, so a
+        // grid reacting to this key on its own would rebuild before the layout knew.
+        this._settingSignalIds.push(
+            this._settings.connect(`changed::${SHOW_HIDDEN_DESKTOP_ICONS_KEY}`, () => {
+                if (!this._settings.get_boolean(SHOW_DESKTOP_ICONS_KEY))
+                    return;
+                syncDesktopIcons(this._settings);
+                this._rebuildGrids();
+            })
+        );
+
+        // Same reason as the two keys above: the set of entries is only known once the
+        // folder and the chosen launchers have been read again, so the sync happens here
+        // and the grids are told to rebuild afterwards rather than reacting on their own.
+        for (const key of [SHOW_APP_LAUNCHERS_KEY, APP_LAUNCHERS_KEY]) {
+            this._settingSignalIds.push(
+                this._settings.connect(`changed::${key}`, () => {
+                    if (!this._settings.get_boolean(SHOW_DESKTOP_ICONS_KEY))
+                        return;
+                    syncDesktopIcons(this._settings);
+                    this._rebuildGrids();
+                })
+            );
+        }
 
         this._screenTimeRelease = screenTimeEngine.acquire();
 
@@ -80,6 +143,7 @@ export default class GridgetsExtension extends Extension {
         }
         this._settings = null;
 
+        stopDesktopIconWatch();
         this._removeAllGrids();
         if (this._screenTimeRelease) {
             this._screenTimeRelease();
@@ -102,6 +166,15 @@ export default class GridgetsExtension extends Extension {
         const currentTheme = this._settings.get_string('theme');
         if (!currentTheme || !findThemePreset(currentTheme))
             this._settings.set_string('theme', 'adwaita');
+    }
+
+    _warnIfDesktopIconsExtensionEnabled() {
+        const shellSettings = Gio.Settings.new('org.gnome.shell');
+        const enabled = shellSettings.get_strv('enabled-extensions');
+        const conflict = DESKTOP_ICON_EXTENSION_UUIDS.find(uuid => enabled.includes(uuid));
+        if (conflict) {
+            console.error(`Gridgets: ${conflict} draws its own desktop icons and will paint them over the grid's. Turn it off in the Extensions app to avoid seeing two sets.`);
+        }
     }
 
     _spawnGrid(monitorIndex) {

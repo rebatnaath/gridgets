@@ -712,9 +712,20 @@ export function saveWidgets(settings, widgets) {
 
 /** Generates a unique widget ID by incrementing the highest existing counter for the given prefix. */
 export function nextWidgetId(settings, prefix) {
+    return nextWidgetIdFromList(getWidgets(settings), prefix);
+}
+
+/**
+ * The same id, against a widget list the caller already holds.
+ *
+ * Callers that add several widgets in one pass cannot use the settings form: it re-reads
+ * the saved list, which does not yet contain the widgets added earlier in the same pass, so
+ * every one of them would be handed the same id.
+ */
+export function nextWidgetIdFromList(widgets, prefix) {
     const idStem = `widget-${prefix}-`;
     let maxCounter = 0;
-    for (const widget of getWidgets(settings)) {
+    for (const widget of widgets) {
         if (typeof widget.id !== 'string' || !widget.id.startsWith(idStem))
             continue;
         const counter = parseInt(widget.id.slice(idStem.length), 10);

@@ -1,10 +1,12 @@
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
 import { getWidgets, saveWidgets, deleteCacheFile } from '../utils/widgetUtils.js';
+import { isDesktopIcon } from '../desktopIcons/desktopIcons.js';
 import { getWidgetCacheFolder } from '../utils/widgetRegistry.js';
 import { deleteLastGoodCache } from '../utils/lastGoodCache.js';
 import { buildWidgetEditPanel } from './widgetEditDialogs.js';
 import { getStoreWidgetEntry, getWidgetDetailText } from './widgetCatalog.js';
+import { confirmDestructive } from './confirmActions.js';
 
 const GLOBAL_SECTION_KEY = 'global';
 const PRIMARY_SECTION_KEY = 'primary';
@@ -112,6 +114,42 @@ function buildWidgetSubtitle(widget) {
     return detailText ? `${detailText} · ${metadataText}` : metadataText;
 }
 
+/** Removes one widget and whatever it had cached. */
+export function removeWidget(settings, widgetId) {
+    const widgets = getWidgets(settings);
+    const target = widgets.find(widget => widget.id === widgetId);
+    const cacheFolder = target ? getWidgetCacheFolder(target.type) : null;
+    if (cacheFolder) {
+        deleteCacheFile(cacheFolder, widgetId);
+        deleteLastGoodCache(target.type, widgetId);
+    }
+    saveWidgets(settings, widgets.filter(widget => widget.id !== widgetId));
+}
+
+/** Removes every widget and all of their cached data, leaving an empty desktop. */
+/** The widgets Delete All would take: everything on the grid that is not a desktop entry. */
+export function removableWidgets(settings) {
+    return getWidgets(settings).filter(widget => !isDesktopIcon(widget));
+}
+
+/**
+ * Removes every widget and all of their cached data.
+ *
+ * Desktop icons are left alone. They are entries in this list but they are not widgets: the
+ * reconciler rebuilds them from the desktop folder, so removing one here would only see it
+ * come back on the next sync, and the position chosen for it would be lost for nothing.
+ */
+export function removeAllWidgets(settings) {
+    for (const widget of removableWidgets(settings)) {
+        const cacheFolder = getWidgetCacheFolder(widget.type);
+        if (!cacheFolder)
+            continue;
+        deleteCacheFile(cacheFolder, widget.id);
+        deleteLastGoodCache(widget.type, widget.id);
+    }
+    saveWidgets(settings, getWidgets(settings).filter(isDesktopIcon));
+}
+
 function createWidgetRow(window, settings, widget) {
     const widgetEntry = getStoreWidgetEntry(widget);
     const rowTitle = widgetEntry ? widgetEntry.title : 'Color Block';
@@ -142,32 +180,10 @@ function createWidgetRow(window, settings, widget) {
     });
 
     deleteButton.connect('clicked', () => {
-        // Removing the widget also deletes its saved data, and there is no undo, so it is
-        // confirmed the same way the insights page confirms its own destructive clear.
-        const dialog = new Adw.AlertDialog({
+        confirmDestructive(window, settings, {
             heading: `Remove ${widget.type} widget?`,
             body: 'This cannot be undone.',
-        });
-        dialog.add_response('cancel', 'Cancel');
-        dialog.add_response('remove', 'Remove');
-        dialog.set_response_appearance('remove', Adw.ResponseAppearance.DESTRUCTIVE);
-        dialog.set_default_response('cancel');
-        dialog.set_close_response('cancel');
-        dialog.connect('response', (_dlg, responseId) => {
-            if (responseId !== 'remove')
-                return;
-            const widgets = getWidgets(settings);
-            const remainingWidgets = widgets.filter(existingWidget => existingWidget.id !== widget.id);
-
-            const cacheFolder = getWidgetCacheFolder(widget.type);
-            if (cacheFolder) {
-                deleteCacheFile(cacheFolder, widget.id);
-                deleteLastGoodCache(widget.type, widget.id);
-            }
-
-            saveWidgets(settings, remainingWidgets);
-        });
-        dialog.present(window);
+        }, () => removeWidget(settings, widget.id));
     });
 
     expanderRow.add_suffix(deleteButton);
@@ -205,7 +221,10 @@ function createWidgetRow(window, settings, widget) {
  * adds are tracked here rather than read back off the widget.
  */
 export function populateActiveWidgets(window, settings, page) {
-    const widgets = getWidgets(settings);
+    // Desktop icons are listed on the Desktop page and managed by the desktop folder
+    // itself. They have no settings to edit and no size to change, so a row here would
+    // offer neither, and its delete button would fight the folder monitor.
+    const widgets = getWidgets(settings).filter(widget => !isDesktopIcon(widget));
 
     const previousGroups = page.activeGroupsByKey instanceof Map
         ? page.activeGroupsByKey

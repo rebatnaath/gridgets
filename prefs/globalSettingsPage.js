@@ -2,6 +2,8 @@ import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
 import { createSwitchRow, createColorRow } from './aestheticControls.js';
 import { getConnectedMonitorsCount, buildMonitorEntries } from './displayUtils.js';
+import { restoreDismissedDesktopIcons } from '../desktopIcons/desktopIcons.js';
+import { openAppLauncherChooser } from './appLauncherChooser.js';
 
 function buildMonitorGroup(settings) {
     const group = new Adw.PreferencesGroup({
@@ -115,6 +117,75 @@ function buildWeatherGroup(settings) {
     return group;
 }
 
+function buildDesktopGroup(settings, page) {
+    const group = new Adw.PreferencesGroup({
+        title: 'Desktop',
+        description: 'Draw the contents of your desktop folder on the widget grid.',
+    });
+    group.add(createSwitchRow(
+        'Show Desktop Icons',
+        'Entries follow the folder: a file added there appears, and one removed disappears.',
+        settings,
+        'show-desktop-icons'
+    ).row);
+
+    group.add(createSwitchRow(
+        'Show Application Launchers',
+        'Add entries from your application menu to the grid, alongside the files in your desktop folder.',
+        settings,
+        'show-app-launchers'
+    ).row);
+
+    // Choosing is only meaningful with the toggle on, so the button follows the key rather
+    // than being read once: the grid never changes this key, but the switch does.
+    const chooseRow = new Adw.ActionRow({
+        title: 'Choose Applications',
+        subtitle: 'Pick which launchers appear. An entry stays on the grid until you remove it here.',
+    });
+    const chooseButton = new Gtk.Button({
+        label: 'Choose…',
+        valign: Gtk.Align.CENTER,
+        css_classes: ['suggested-action'],
+    });
+    const refreshChooseButton = () => {
+        chooseButton.sensitive = settings.get_boolean('show-app-launchers');
+    };
+    const showAppId = settings.connect('changed::show-app-launchers', refreshChooseButton);
+    chooseButton.connect('clicked', () => {
+        // get_root is what yields the containing preferences window to be modal against.
+        openAppLauncherChooser(settings, page.get_root());
+    });
+    chooseRow.add_suffix(chooseButton);
+    refreshChooseButton();
+    chooseRow.connect('destroy', () => settings.disconnect(showAppId));
+    group.add(chooseRow);
+
+    // The one action that cannot be done from the desktop itself, since an icon removed
+    // from the grid has no menu left to be restored from.
+    const restoreRow = new Adw.ActionRow({
+        title: 'Restore Hidden Icons',
+        subtitle: 'Bring back icons removed from the grid. The files themselves are never touched.',
+    });
+    const restoreButton = new Gtk.Button({
+        label: 'Restore',
+        valign: Gtk.Align.CENTER,
+        css_classes: ['suggested-action'],
+    });
+    const refreshRestoreButton = () => {
+        restoreButton.sensitive = settings.get_strv('dismissed-desktop-icons').length > 0;
+    };
+    // The grid dismisses an icon from its own context menu, which this page never sees
+    // happen, so the button follows the key instead of being read once at build time.
+    const dismissedId = settings.connect('changed::dismissed-desktop-icons', refreshRestoreButton);
+    restoreButton.connect('clicked', () => restoreDismissedDesktopIcons(settings));
+    refreshRestoreButton();
+    restoreRow.connect('destroy', () => settings.disconnect(dismissedId));
+    restoreRow.add_suffix(restoreButton);
+    group.add(restoreRow);
+
+    return group;
+}
+
 function buildTimeGroup(settings) {
     const group = new Adw.PreferencesGroup({
         title: 'Time',
@@ -136,6 +207,7 @@ export function buildGlobalSettingsPage(settings) {
     });
 
     page.add(buildMonitorGroup(settings));
+    page.add(buildDesktopGroup(settings, page));
     page.add(buildImageGroup(settings));
     page.add(buildWeatherGroup(settings));
     page.add(buildTimeGroup(settings));
