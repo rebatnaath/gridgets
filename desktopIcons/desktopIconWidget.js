@@ -1,7 +1,7 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
-import { WidgetActor, attachResponsiveScaler } from '../shell/widgetUIUtils.js';
+import { WidgetActor, attachResponsiveScaler, registerWidgetCleanup } from '../shell/widgetUIUtils.js';
 import { isActorDestroyed, watchActorLifecycle } from '../utils/actorLifecycle.js';
 import { connectDoubleClick, openExternalUri } from '../utils/widgetInteractions.js';
 import { clampText } from '../utils/feedText.js';
@@ -15,12 +15,14 @@ import {
 import {
     cssColorToRgba,
     resolveExplicitFontFamily,
+    resolveWidgetBackgroundColor,
     resolveWidgetForegroundColor,
+    isDarkBackgroundColor,
 } from '../utils/widgetUtils.js';
 import Gio from 'gi://Gio';
 import { isOnClipboard } from './clipboardPaste.js';
 import { extensionIndex } from './fileOperations.js';
-import { desktopFileFor, resolveDesktopEntry, DESKTOP_ENTRY_SUFFIX } from '../desktopIcons/desktopIcons.js';
+import { desktopFileFor, isDesktopIcon, resolveDesktopEntry, DESKTOP_ENTRY_SUFFIX } from '../desktopIcons/desktopIcons.js';
 
 /**
  * launch_uris for a document, launch with an empty argument list for a .desktop file: the
@@ -120,7 +122,14 @@ const REFERENCE_WIDTH_PX = 72;
 const REFERENCE_HEIGHT_PX = 84;
 
 export function createDesktopIconNode(widgetData, width, height, xPosition, yPosition) {
+    // The icon has no card, so its label sits straight on the wallpaper. On a light theme
+    // the foreground washes out against a light desktop, so the label takes the
+    // background colour there and the text colour everywhere else. Reacting to the
+    // background rather than color-scheme means it also follows a theme override.
     const textColor = resolveWidgetForegroundColor(widgetData);
+    const labelColor = isDarkBackgroundColor(resolveWidgetBackgroundColor(widgetData))
+        ? textColor
+        : resolveWidgetBackgroundColor(widgetData);
     const fontFamily = resolveExplicitFontFamily(widgetData);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
 
@@ -209,8 +218,8 @@ export function createDesktopIconNode(widgetData, width, height, xPosition, yPos
         iconActor.icon_size = Math.round(ICON_SIZE_PX * scale);
         // On the content box, so the highlight still fills the whole cell.
         box.style = iconContentPadding(scale);
-        labelActor.style = `${fontCss}color: ${textColor}; font-size: ${fontSize}; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
-        renameEntry.style = `${fontCss}color: ${textColor}; font-size: ${fontSize};`;
+        labelActor.style = `${fontCss}color: ${labelColor}; font-size: ${fontSize}; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
+        renameEntry.style = `${fontCss}color: ${labelColor}; font-size: ${fontSize};`;
         messageLabel.style = `${fontCss}${messageLabelStyle()} font-size: ${fontSize};`;
     };
 
@@ -382,13 +391,73 @@ export function setIconHovered(actor, isHovered) {
     applyIconFrame(controller);
 }
 
-export function selectIcon(grid, actor) {
-    clearIconSelection(grid);
-    setIconSelected(actor, true);
+// One selection across every grid. GNOME keys bindings by name and keeps the first
+// registration, so the shortcuts are registered once for the whole extension; a selection
+// held per grid would leave the key acting on whichever grid happened to register first,
+// and two grids could each believe an icon was selected.
+let selectedIcon = null;
+
+const selectionListeners = new Set();
+
+/**
+ * Clears the selection without telling anyone. Returns whether there was one, so a caller
+ * that is about to set a new selection notifies once rather than twice.
+ */
+function dropSelection() {
+    if (!selectedIcon)
+        return false;
+    const { actor } = selectedIcon;
+    selectedIcon = null;
+    setIconSelected(actor, false);
+    return true;
 }
 
-export function clearIconSelection(grid) {
-    grid.widgetNodes.forEach(node => setIconSelected(node, false));
+export function selectIcon(grid, actor, widgetData) {
+    const hadSelection = dropSelection();
+    // Only a desktop icon is selectable. Every other widget shares this handler, and the
+    // keyboard shortcuts are registered process-wide, so recording one of those would let
+    // F2 reach for a file that a weather widget has no name for.
+    if (isDesktopIcon(widgetData)) {
+        setIconSelected(actor, true);
+        selectedIcon = { grid, actor, widgetData };
+        // A rebuild destroys the node the selection points at, which is also how the
+        // selection ends when the entry is deleted. The shortcuts are bound to it, so they
+        // have to be released when it goes rather than left holding a dead actor.
+        registerWidgetCleanup(actor, () => {
+            if (selectedIcon && selectedIcon.actor === actor)
+                clearIconSelection();
+        });
+    }
+    if (hadSelection || selectedIcon)
+        notifySelectionChanged();
+}
+
+export function clearIconSelection() {
+    if (dropSelection())
+        notifySelectionChanged();
+}
+
+/**
+ * Called with the new selection, or null when there is none. This is what the shortcuts
+ * are bound to: Mutter only takes an accelerator from the rest of the session while a
+ * binding for it exists, so leaving them unregistered is what keeps Ctrl+X, Ctrl+C and F2
+ * working in the file manager and in text fields until an icon here is selected.
+ */
+export function onSelectionChanged(listener) {
+    selectionListeners.add(listener);
+    return () => selectionListeners.delete(listener);
+}
+
+function notifySelectionChanged() {
+    for (const listener of selectionListeners)
+        listener(selectedIcon);
+}
+
+/** The selected icon, or null once its node has gone. */
+export function getSelectedIcon() {
+    if (selectedIcon && isActorDestroyed(selectedIcon.actor))
+        selectedIcon = null;
+    return selectedIcon;
 }
 
 // Only a cut is dimmed: a copy leaves the file in place and has nothing to announce.

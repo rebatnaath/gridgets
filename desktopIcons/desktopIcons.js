@@ -53,7 +53,17 @@ export function desktopDirectoryExists(path = desktopDirectoryPath()) {
     return Gio.File.new_for_path(path).query_exists(null);
 }
 
+/**
+ * The file a desktop icon points at, or null when it has none.
+ *
+ * Only entries in the desktop folder have a path here. Every other widget type shares the
+ * grid and the keyboard shortcuts with them, so the type check belongs at this choke
+ * point rather than in each of the actions: without it they build a path from a widget
+ * that has no fileName and act on ~/Desktop/undefined.
+ */
 export function desktopFileFor(widgetData) {
+    if (!isDesktopIcon(widgetData))
+        return null;
     // A launcher is not in the desktop folder, so its file is found by desktop ID instead.
     // The null case is an id that no longer resolves, which the next sync drops.
     if (widgetData.isAppLauncher)
