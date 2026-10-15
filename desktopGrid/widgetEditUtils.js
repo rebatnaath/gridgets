@@ -1,5 +1,6 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import GObject from 'gi://GObject';
 import {
     calculateResizedDimensions,
     GRID_GAP_PX,
@@ -17,6 +18,31 @@ const OVERLAY_RADIUS_PX = 6;
 const RESIZE_HANDLE_MARGIN_PX = 4;
 const RESIZE_ICON_SIZE_PX = 16;
 
+// Held outside the handle, because reading a property off an already disposed actor
+// raises in GJS, and destroy() has to be callable on one.
+const RESIZE_HANDLE_TEARDOWNS = new WeakMap();
+
+/**
+ * The handle is a plain button, so tying teardown to its destruction means overriding
+ * destroy(): every path that kills it goes through the class vfunc, whether the call is
+ * `handle.destroy()` from here or the handle going down with the grid that parents it.
+ *
+ * It is idempotent because a handle really is destroyed twice: the toggle-off branch and
+ * endResize() destroy it explicitly, and the widget's own cleanup does it again when the
+ * node goes. The repeat call has to stop before super.destroy().
+ */
+const ResizeHandle = GObject.registerClass(
+    class ResizeHandle extends St.Button {
+        destroy() {
+            const teardown = RESIZE_HANDLE_TEARDOWNS.get(this);
+            if (!teardown)
+                return;
+            RESIZE_HANDLE_TEARDOWNS.delete(this);
+            teardown();
+            super.destroy();
+        }
+    });
+
 export function toggleWidgetResizeHandle(
     widgetNode,
     widgetData,
@@ -33,12 +59,12 @@ export function toggleWidgetResizeHandle(
         return;
     }
 
-    const overlay = new St.Button({
+    const overlay = new ResizeHandle({
         style: `
             border-radius: ${OVERLAY_RADIUS_PX}px;
             background-color: rgba(255, 255, 255, 0.9);
             border: 1px solid rgba(0, 0, 0, 0.2);
-            box-shadow: 0px 2px 4px rgba(0,0,0,0.3);
+            box-shadow: 0px 2px 4px 0px rgba(0, 0, 0, 0.3);
             padding: 0px;
         `,
         reactive: true,
@@ -90,28 +116,24 @@ export function toggleWidgetResizeHandle(
         if (resizeReleaseId) { global.stage.disconnect(resizeReleaseId); resizeReleaseId = 0; }
     };
 
-    // The handle lives on the grid, so a grid rebuild can destroy it at any moment,
-    // including mid-resize. Everything the handle started has to be undone here or
-    // the grid overlay stays painted on every monitor and the context menu keeps
-    // offering to hide a handle that no longer exists. Safe to run more than once.
+    // A grid rebuild can destroy the handle at any moment, mid-resize included. Everything
+    // it started has to be undone here or the overlay stays painted on every monitor.
+    // Safe to run more than once.
     const teardownResizeHandle = () => {
         if (widgetNode.actionOverlay === overlay)
             widgetNode.actionOverlay = null;
         if (isResizing) {
             isResizing = false;
             widgetNode.isResizing = false;
-            if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(false);
+            widgetNode.gridOverlayCallback(false);
         }
         cleanupResizeHandlers();
         detachPlacementListeners();
     };
 
-    registerWidgetCleanup(widgetNode, () => {
-        teardownResizeHandle();
-        overlay.destroy();
-    });
+    RESIZE_HANDLE_TEARDOWNS.set(overlay, teardownResizeHandle);
 
-    overlay.connect('destroy', teardownResizeHandle);
+    registerWidgetCleanup(widgetNode, () => overlay.destroy());
 
     const minWidth = cellTotalWidth;
     const minHeight = cellTotalHeight;
@@ -119,11 +141,10 @@ export function toggleWidgetResizeHandle(
     const endResize = () => {
         if (!isResizing) return;
         isResizing = false;
-        // Cleared before the final set_size below, so anything that restyles itself on
-        // a size change settles once on the snapped size rather than on the last
-        // dragged one.
+        // Cleared before the final set_size below, so a restyle settles on the snapped
+        // size rather than the last dragged one.
         widgetNode.isResizing = false;
-        if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(false);
+        widgetNode.gridOverlayCallback(false);
         cleanupResizeHandlers();
 
         const safeWidth = Math.max(1, widgetNode.width);
@@ -139,10 +160,8 @@ export function toggleWidgetResizeHandle(
 
         onResizeEnd(validCols, validRows, validX);
 
-        // Anything that held still during the drag settles here on the final size.
-        // Done after the resize is applied, and unconditionally: the size is
-        // cell-quantised already, so this is the only point it is known to match the
-        // snapped result.
+        // Everything held still during the drag settles here, after the resize is applied:
+        // the size is cell-quantised, so this is the only point it matches the snapped one.
         settleAfterResize(widgetNode);
 
         overlay.destroy();
@@ -153,7 +172,7 @@ export function toggleWidgetResizeHandle(
             cleanupResizeHandlers();
             isResizing = true;
             widgetNode.isResizing = true;
-            if (widgetNode.gridOverlayCallback) widgetNode.gridOverlayCallback(true);
+            widgetNode.gridOverlayCallback(true);
             const [stageX, stageY] = event.get_coords();
             resizeStartX = stageX;
             resizeStartY = stageY;
@@ -171,15 +190,11 @@ export function toggleWidgetResizeHandle(
                 const dx = x - resizeStartX;
                 const dy = y - resizeStartY;
 
-                // A free-flow widget follows the pointer exactly and rounds to the grid
-                // only on release, so nothing here may quantise the size: a cap derived
-                // from a cell count is itself a cell multiple, and it drags the widget
-                // onto the grid mid-drag while it is still growing. Shrinking moves away
-                // from a cap and never meets one, so only growing would show it.
-                //
-                // Only a real edge stops the drag. The stage is used for the bottom rather
-                // than maxRows, because a screen too short for a whole number of cells
-                // leaves the last row hanging past the work area.
+                // The size follows the pointer exactly and rounds to the grid on release, so
+                // nothing here may quantise it: a cap derived from a cell count is itself a
+                // cell multiple, and meeting one snaps the widget onto the grid mid-drag.
+                // The stage is the bottom edge because maxRows leaves the last row hanging
+                // past the work area on a screen too short for a whole number of cells.
                 const placementHost = widgetNode.get_parent() || widgetNode;
                 const gridRight = GRID_MARGIN_PX + (maxCols * cellTotalWidth);
                 const gridBottom = global.stage.height - GRID_MARGIN_PX;
