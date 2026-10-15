@@ -46,6 +46,10 @@ const SIZE_PRESETS = Object.freeze({
     'quotes': [[4, 4], [5, 5], [6, 6]],
     'screen-time': [[8, 4], [10, 5], [12, 6]],
     'todo': [[6, 4], [7, 4], [8, 5]],
+    // One glyph and one label, whatever the tier, so a desktop icon cannot be resized
+    // into a footprint that has nothing to put in it. It is not in the store: entries
+    // appear and disappear with the files in the desktop folder.
+    'desktop-icon': [[3, 3]],
     'github': [[8, 4], [10, 5], [12, 6]],
     'mood': [[6, 3], [8, 4], [10, 5]],
     'rss-headlines': [[4, 4], [5, 5], [6, 6]],
