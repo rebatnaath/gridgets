@@ -100,6 +100,13 @@ export function addGithubWidget(settings, username = '') {
     addWidget(settings, widgetConfig);
 }
 
+export function addGithubWeekWidget(settings, username = '') {
+    const widgetConfig = { id: nextWidgetId(settings, 'github-week'), type: 'github-week' };
+    if (username)
+        widgetConfig.username = username;
+    addWidget(settings, widgetConfig);
+}
+
 export function addRssHeadlinesWidget(settings, feedUrl = '') {
     if (!feedUrl)
         return;

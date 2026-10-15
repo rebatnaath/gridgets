@@ -5,7 +5,6 @@ import {
     addSlideshowWidget,
     addTimeWidget,
     addWeatherWidget,
-    addGithubWidget,
     addRssHeadlinesWidget,
     addSunTimesWidget,
     addAppLauncherWidget,
@@ -286,8 +285,10 @@ export function openAddWorldClockDialog(parentWindow, settings) {
     dialog.present();
 }
 
-export function openAddGithubDialog(parentWindow, settings) {
-    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, 'Configure GitHub Activity Widget');
+// Both GitHub widgets ask for a username in the same dialog, so the adder and the title
+// are passed in rather than the dialog being written twice.
+export function openAddGithubDialog(parentWindow, settings, addWidget, title = 'Configure GitHub Activity Widget') {
+    const { dialog, grid } = createBaseWidgetAddDialog(parentWindow, title);
     let addButton = null;
 
     const userLabel = new Gtk.Label({ label: 'GitHub Username:', xalign: 0 });
@@ -307,7 +308,7 @@ export function openAddGithubDialog(parentWindow, settings) {
         if (responseId === Gtk.ResponseType.OK) {
             const username = userEntry.get_text().trim().replace(/^@/, '');
             if (username) {
-                addGithubWidget(settings, username);
+                addWidget(settings, username);
             }
         }
         dialogWindow.destroy();

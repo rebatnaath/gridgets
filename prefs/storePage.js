@@ -18,6 +18,8 @@ import {
     addCalendarAgendaWidget,
     addTodoWidget,
     addMoodWidget,
+    addGithubWidget,
+    addGithubWeekWidget,
 } from './widgetAdders.js';
 
 import {
@@ -212,7 +214,11 @@ function buildStoreCategories(window, settings, weatherState) {
         {
             title: 'Personal',
             entries: [
-                card(STORE_WIDGETS.githubWidget, () => openAddGithubDialog(window, settings)),
+                card(STORE_WIDGETS.githubWidget,
+                    () => openAddGithubDialog(window, settings, addGithubWidget)),
+                card(STORE_WIDGETS.githubWeekWidget,
+                    () => openAddGithubDialog(window, settings, addGithubWeekWidget,
+                        'Configure GitHub Week Widget')),
                 card(STORE_WIDGETS.rssHeadlinesWidget, () => openAddRssHeadlinesDialog(window, settings)),
                 card(STORE_WIDGETS.topStoriesWidget, () => openAddTopStoriesDialog(window, settings)),
                 card(STORE_WIDGETS.quotesWidget, () => addQuotesWidget(settings)),

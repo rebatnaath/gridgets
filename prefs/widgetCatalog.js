@@ -169,6 +169,13 @@ export const STORE_WIDGETS = Object.freeze({
         thumbnail: 'github/github.svg',
         fallbackIconName: 'starred-symbolic',
     },
+    githubWeekWidget: {
+        title: 'GitHub Week',
+        description: 'This week\u2019s contributions by day, against last week.',
+        gridSize: '5x4',
+        thumbnail: 'github/github-week.svg',
+        fallbackIconName: 'starred-symbolic',
+    },
     rssHeadlinesWidget: {
         title: 'RSS Headlines',
         description: 'A compact card that auto-rotates through article headlines from any feed.',
@@ -273,6 +280,8 @@ function getStoreWidgetKey(widget) {
             return 'todoWidget';
         case 'github':
             return 'githubWidget';
+        case 'github-week':
+            return 'githubWeekWidget';
         case 'rss-headlines':
             return 'rssHeadlinesWidget';
         case 'top-stories':

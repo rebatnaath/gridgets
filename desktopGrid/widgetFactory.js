@@ -3,7 +3,7 @@ import { createWeatherNode, createSunTimesNode } from '../widgets/weather/index.
 import { createMusicNode } from '../widgets/music/index.js';
 import { createNotesNode, createClipboardNode, createTodoNode } from '../widgets/productivity/index.js';
 import { createCalendarNode, createCalendarGridNode, createCalendarAgendaNode } from '../widgets/calendar/index.js';
-import { createQuotesNode, createGithubNode, createRssHeadlinesNode, createTopStoriesNode } from '../widgets/social/index.js';
+import { createQuotesNode, createGithubNode, createGithubWeekNode, createRssHeadlinesNode, createTopStoriesNode } from '../widgets/social/index.js';
 import {
     createCpuRamNode,
     createNetworkSpeedNode,
@@ -47,6 +47,7 @@ const WIDGET_CREATORS = {
     'calendar-agenda': (data, w, h, x, y) => createCalendarAgendaNode(data, w, h, x, y),
     'todo': (data, w, h, x, y) => createTodoNode(data, w, h, x, y),
     'github': (data, w, h, x, y) => createGithubNode(data, w, h, x, y),
+    'github-week': (data, w, h, x, y) => createGithubWeekNode(data, w, h, x, y),
     'sun-schedule': (data, w, h, x, y) => createSunTimesNode(data, w, h, x, y),
     'rss-headlines': (data, w, h, x, y) => createRssHeadlinesNode(data, w, h, x, y),
     'top-stories': (data, w, h, x, y) => createTopStoriesNode(data, w, h, x, y),

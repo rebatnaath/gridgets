@@ -51,6 +51,7 @@ const SIZE_PRESETS = Object.freeze({
     // appear and disappear with the files in the desktop folder.
     'desktop-icon': [[3, 3]],
     'github': [[12, 6], [14, 7], [16, 8]],
+    'github-week': [[8, 5], [9, 6], [10, 7]],
     'mood': [[6, 3], [8, 4], [10, 5]],
     'rss-headlines': [[4, 4], [5, 5], [6, 6]],
     'top-stories': [[10, 8], [11, 9], [12, 10]],
@@ -66,6 +67,7 @@ const CACHE_FOLDERS = Object.freeze({
     clipboard: 'clipboard',
     todo: 'todos',
     github: 'github',
+    'github-week': 'github',
     'top-stories': 'top-stories',
     'rss-headlines': 'rss-headlines',
     quotes: 'quotes',
