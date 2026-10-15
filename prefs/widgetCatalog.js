@@ -5,7 +5,7 @@ export const STORE_WIDGETS = Object.freeze({
         title: 'Weather Standard',
         description: 'A clean weather widget with current conditions and temperature.',
         gridSize: '3x3',
-        thumbnail: 'weathers/weather-standard.svg',
+        thumbnail: 'weathers/test.svg',
         fallbackIconName: 'weather-few-clouds-symbolic',
     },
     weatherMinimal: {
