@@ -41,6 +41,18 @@ export function desktopDirectoryPath() {
     return configured || `${GLib.get_home_dir()}/Desktop`;
 }
 
+/**
+ * Whether the desktop folder is there to read.
+ *
+ * A missing folder is not an error to log and carry on from. Nothing can bring the icons
+ * back while it is gone, so a switch left on would promise a desktop that is not there and
+ * draw nothing for it. Callers turn the setting off instead and the user is asked to
+ * create the folder again the next time they try.
+ */
+export function desktopDirectoryExists(path = desktopDirectoryPath()) {
+    return Gio.File.new_for_path(path).query_exists(null);
+}
+
 export function desktopFileFor(widgetData) {
     // A launcher is not in the desktop folder, so its file is found by desktop ID instead.
     // The null case is an id that no longer resolves, which the next sync drops.
@@ -109,9 +121,9 @@ function queryFileInfo(file) {
 
 
 
-function listDesktopEntries(showHidden) {
+function listDesktopEntries(showHidden, path) {
     const entries = [];
-    const directory = Gio.File.new_for_path(desktopDirectoryPath());
+    const directory = Gio.File.new_for_path(path);
 
     try {
         const enumerator = directory.enumerate_children(DESKTOP_ENTRY_ATTRIBUTES, Gio.FileQueryInfoFlags.NONE, null);
@@ -144,8 +156,8 @@ function listDesktopEntries(showHidden) {
  * A launcher already present in the folder is left out: the folder copy is a real file with
  * the full set of actions, and two entries sharing a name would collide on one grid cell.
  */
-function listGridEntries(settings, showHidden) {
-    const files = listDesktopEntries(showHidden);
+function listGridEntries(settings, showHidden, path) {
+    const files = listDesktopEntries(showHidden, path);
     if (!files)
         return null;
 
@@ -174,8 +186,16 @@ function desktopIdOf(file) {
     }
 }
 
-export function syncDesktopIcons(settings) {
-    const entries = listGridEntries(settings, settings.get_boolean(SHOW_HIDDEN_DESKTOP_ICONS_KEY));
+export function syncDesktopIcons(settings, path = desktopDirectoryPath()) {
+    if (!desktopDirectoryExists(path)) {
+        if (settings.get_boolean(SHOW_DESKTOP_ICONS_KEY)) {
+            console.error('Gridgets: the desktop folder is gone, so desktop icons are switched off');
+            settings.set_boolean(SHOW_DESKTOP_ICONS_KEY, false);
+        }
+        return false;
+    }
+
+    const entries = listGridEntries(settings, settings.get_boolean(SHOW_HIDDEN_DESKTOP_ICONS_KEY), path);
     if (!entries)
         return false;
 

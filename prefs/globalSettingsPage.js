@@ -3,6 +3,7 @@ import Adw from 'gi://Adw';
 import { createSwitchRow, createColorRow } from './aestheticControls.js';
 import { getConnectedMonitorsCount, buildMonitorEntries } from './displayUtils.js';
 import { restoreDismissedDesktopIcons } from '../desktopIcons/desktopIcons.js';
+import { offerToCreateDesktopFolder } from './desktopFolderPrompt.js';
 import { openAppLauncherChooser } from './appLauncherChooser.js';
 
 function buildMonitorGroup(settings) {
@@ -129,12 +130,13 @@ function buildDesktopGroup(settings, page) {
         'show-desktop-icons'
     ).row);
 
-    group.add(createSwitchRow(
+    const launchersRow = createSwitchRow(
         'Show Application Launchers',
         'Add entries from your application menu to the grid, alongside the files in your desktop folder.',
         settings,
         'show-app-launchers'
-    ).row);
+    ).row;
+    group.add(launchersRow);
 
     // Choosing is only meaningful with the toggle on, so the button follows the key rather
     // than being read once: the grid never changes this key, but the switch does.
@@ -147,18 +149,35 @@ function buildDesktopGroup(settings, page) {
         valign: Gtk.Align.CENTER,
         css_classes: ['suggested-action'],
     });
-    const refreshChooseButton = () => {
-        chooseButton.sensitive = settings.get_boolean('show-app-launchers');
-    };
-    const showAppId = settings.connect('changed::show-app-launchers', refreshChooseButton);
     chooseButton.connect('clicked', () => {
         // get_root is what yields the containing preferences window to be modal against.
         openAppLauncherChooser(settings, page.get_root());
     });
     chooseRow.add_suffix(chooseButton);
-    refreshChooseButton();
-    chooseRow.connect('destroy', () => settings.disconnect(showAppId));
     group.add(chooseRow);
+
+    // Launchers are drawn as desktop icons, so with the desktop folder switched off there is
+    // nothing for this switch to switch on. Both rows go insensitive rather than left sitting
+    // there saving a setting that does nothing.
+    const refreshLauncherRows = () => {
+        const desktopIconsOn = settings.get_boolean('show-desktop-icons');
+        launchersRow.sensitive = desktopIconsOn;
+        chooseButton.sensitive = desktopIconsOn && settings.get_boolean('show-app-launchers');
+    };
+
+    const showAppId = settings.connect('changed::show-app-launchers', refreshLauncherRows);
+    // Asked when the switch is turned on rather than while the page is built, so it never
+    // opens a dialog behind the user's back, and only when the folder is actually missing.
+    const desktopIconsId = settings.connect('changed::show-desktop-icons', () => {
+        refreshLauncherRows();
+        if (settings.get_boolean('show-desktop-icons'))
+            offerToCreateDesktopFolder(settings, page.get_root())?.present(page.get_root());
+    });
+    refreshLauncherRows();
+    page.connect('destroy', () => {
+        settings.disconnect(showAppId);
+        settings.disconnect(desktopIconsId);
+    });
 
     // The one action that cannot be done from the desktop itself, since an icon removed
     // from the grid has no menu left to be restored from.
