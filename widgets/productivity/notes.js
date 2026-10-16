@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetColors, resolveWidgetForegroundColor, saveJsonToFile, saveJsonToFileSync, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
-import { createWidgetContainer, registerWidgetCleanup, scheduleDeferredUpdate, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, connectTimerCleanup, scheduleDeferredUpdate, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
 const DEFAULT_NOTE_TEXT = 'Quick Note\n- [ ] Task 1\n- [x] Task 2\n\n**Click the pen icon to edit**';
@@ -177,11 +177,8 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
         }
     });
 
+    connectTimerCleanup(container, state);
     registerWidgetCleanup(container, () => {
-        if (state.deferredUpdateId) {
-            GLib.Source.remove(state.deferredUpdateId);
-            state.deferredUpdateId = null;
-        }
         if (isEditingActive) {
             noteContent = textEditor.text;
             saveJsonToFileSync(notesFilePath, { notes: noteContent });
