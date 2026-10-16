@@ -6,8 +6,6 @@ import Pango from 'gi://Pango';
 import { watchActorLifecycle, isActorDestroyed } from '../utils/actorLifecycle.js';
 import { createScrim } from '../components/scrim/scrim.js';
 
-/** Abbreviated month names shared by calendar and contribution-grid widgets. */
-export const MONTH_NAMES_ABBREVIATED = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 import {
     buildBaseWidgetStyle,
     resolveWidgetBackgroundColor,

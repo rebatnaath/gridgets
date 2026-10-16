@@ -4,7 +4,7 @@ import Adw from 'gi://Adw';
 import GLib from 'gi://GLib';
 import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
-import { DESKTOP_APP_KEY, getGridgetsDataDir, todayDateString, MOOD_LEVELS } from '../utils/widgetUtils.js';
+import { DESKTOP_APP_KEY, getGridgetsDataDir, todayDateString, MOOD_LEVELS, MONTH_NAMES_ABBREVIATED } from '../utils/widgetUtils.js';
 import { listMoodDatesSync, getMood, loadDatesSync } from '../utils/moodStore.js';
 import { clearBox } from './displayUtils.js';
 
@@ -54,8 +54,7 @@ function formatCompactDuration(totalSeconds) {
 
 function formatDateString(dateString) {
     const [y, m, d] = dateString.split('-').map(Number);
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${d} ${months[m - 1]} ${y}`;
+    return `${d} ${MONTH_NAMES_ABBREVIATED[m - 1]} ${y}`;
 }
 
 function daysAgoDate(days) {

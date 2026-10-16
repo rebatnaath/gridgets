@@ -2,6 +2,7 @@ import St from 'gi://St';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import { createCaptionOverlay, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
+import { MONTH_NAMES_ABBREVIATED } from '../../utils/widgetUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { addSettleAfterResize } from '../../utils/resizeSettle.js';
 
@@ -25,9 +26,6 @@ export function backgroundImageStyle(imagePath, baseStyle) {
     const uri = GLib.filename_to_uri(imagePath, null);
     return `background-image: url("${uri}"); background-size: cover; ${baseStyle}`;
 }
-
-const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Mirrors CAPTION_SOURCES in prefs/captionControls.js, which the shell cannot import.
 const CAPTION_SOURCE_FILE_NAME = 'file-name';
@@ -54,7 +52,7 @@ export function imageDateCaption(imagePath) {
         const date = GLib.DateTime.new_from_unix_local(modifiedSeconds);
         if (!date)
             return '';
-        return `${date.get_day_of_month()} ${MONTH_NAMES_SHORT[date.get_month() - 1]}, ${date.get_year()}`;
+        return `${date.get_day_of_month()} ${MONTH_NAMES_ABBREVIATED[date.get_month() - 1]}, ${date.get_year()}`;
     } catch {
         return '';
     }

@@ -13,8 +13,8 @@ import {
     resolveChildCornerRadius,
     DEFAULT_CHILD_CORNER_RADIUS_PX,
     DESKTOP_APP_KEY,
-    resolveAccentColor, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
-import { MONTH_NAMES_ABBREVIATED as MONTH_NAMES, createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+    resolveAccentColor, resolveWidgetCornerRadius, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../utils/widgetUtils.js';
+import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { screenTimeEngine } from '../../utils/screenTimeEngine.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { resolveDesktopAppInfo } from '../../shell/appResolution.js';

@@ -12,6 +12,9 @@ export const DESKTOP_APP_KEY = 'desktop';
 export const CALENDAR_WEEKDAY_NAMES = Object.freeze([
     'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
 ]);
+export const MONTH_NAMES_ABBREVIATED = Object.freeze([
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]);
 
 const TEMPERATURE_FAHRENHEIT_MULTIPLIER = 9 / 5;
 const TEMPERATURE_FAHRENHEIT_OFFSET = 32;
