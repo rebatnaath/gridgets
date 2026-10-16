@@ -28,6 +28,7 @@ const HEADER_PADDING_V_PX = 10;
 const HEADER_PADDING_H_PX = 14;
 const REF_WIDTH_PX = 240;
 const REF_HEIGHT_PX = 160;
+const CLUTTER_OPACITY_OPAQUE = 255;
 
 function convertMarkdownToPango(text) {
     if (!text) return '';
@@ -70,14 +71,16 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
 
     const titleLabel = new St.Label({
         text: 'Quick Notes',
-        style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`,
+        style: `${fontCss}color: ${textColor};`,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
         x_expand: true,
         y_align: Clutter.ActorAlign.CENTER,
     });
 
     const editIcon = new St.Icon({
         icon_name: 'document-edit-symbolic',
-        style: `color: ${textColor}; opacity: ${ICON_OPACITY_SECONDARY};`,
+        style: `color: ${textColor};`,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * ICON_OPACITY_SECONDARY),
     });
 
     const editButton = new St.Button({

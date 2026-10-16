@@ -28,6 +28,7 @@ const HEADER_BORDER_WIDTH_PX = 1;
 
 const REF_WIDTH_PX = 240;
 const REF_HEIGHT_PX = 160;
+const CLUTTER_OPACITY_OPAQUE = 255;
 
 export function createClipboardNode(config, width, height, xPosition, yPosition) {
     const fontFamily = resolveExplicitFontFamily(config);
@@ -56,7 +57,8 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
 
     const headerLabel = new St.Label({
         text: 'Clipboard History',
-        style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`,
+        style: `${fontCss}color: ${textColor};`,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
         y_align: Clutter.ActorAlign.CENTER,
     });
 
@@ -117,7 +119,8 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         if (state.clipboardHistory.length === 0) {
             const emptyLabel = new St.Label({
                 text: 'No history yet.',
-                style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${scaleFontSize(BASE_ITEM_FONT_SIZE, currentScale, MIN_FONT_SIZE.label)}px;`,
+                style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_ITEM_FONT_SIZE, currentScale, MIN_FONT_SIZE.label)}px;`,
+                opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
             });
             itemContainer.add_child(emptyLabel);
             return;

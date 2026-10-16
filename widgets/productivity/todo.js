@@ -18,8 +18,9 @@ const COUNT_FONT_SIZE_PX = TYPOGRAPHY_SIZE.displayXL;
 const ADD_BUTTON_SIZE_PX = 32;
 const TASK_ROW_RADIUS_PX = DEFAULT_CHILD_CORNER_RADIUS_PX;
 const TASK_ROW_PADDING_V_PX = 9;
+const ENTRY_ROW_PADDING_V_REDUCTION_PX = 3;
 const TASK_ROW_PADDING_H_PX = 14;
-const TASK_TEXT_FONT_SIZE_PX = 15;
+const TASK_TEXT_FONT_SIZE_PX = TYPOGRAPHY_SIZE.body;
 const CHECKBOX_SIZE_PX = 16;
 const ROW_SPACING_PX = 8;
 const COUNTER_ROW_MARGIN_TOP_PX = 6;
@@ -32,6 +33,7 @@ const TASK_LIST_SPACING_PX = 8;
 const CHECKBOX_BORDER_WIDTH_PX = 1.5;
 const CHECKMARK_ICON_SIZE_PX = 10;
 const DELETE_ICON_SIZE_PX = 13;
+const CLUTTER_OPACITY_OPAQUE = 255;
 
 /** Renames a task file written under the old singular name, so no list is lost to the
  *  rename below. Only ever acts when the old file exists and the new one does not. */
@@ -94,7 +96,8 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     const titleLabel = new St.Label({
         text: 'Tasks',
         style: `${fontCss}font-size: ${TITLE_FONT_SIZE_PX}px; `
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`,
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
     });
 
     const counterRow = new St.BoxLayout({
@@ -162,7 +165,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
         orientation: Clutter.Orientation.HORIZONTAL,
         x_expand: true,
         style: rowBackgroundStyle + ` border-radius: ${resolveChildCornerRadius(TASK_ROW_RADIUS_PX, scale)}px;`
-            + `padding: ${TASK_ROW_PADDING_V_PX - 3}px ${TASK_ROW_PADDING_H_PX}px;`,
+            + `padding: ${TASK_ROW_PADDING_V_PX - ENTRY_ROW_PADDING_V_REDUCTION_PX}px ${TASK_ROW_PADDING_H_PX}px;`,
     });
 
     const taskEntry = new St.Entry({
@@ -183,7 +186,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px;`;
         leftColumn.set_style(`width: ${px(LEFT_COLUMN_WIDTH_PX)}px;`);
         titleLabel.style = `${fontCss}font-size: ${scaleFontSize(TITLE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px; `
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`;
         countLabel.style = `${fontCss}font-size: ${scaleFontSize(COUNT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.black}; color: ${textColor};`;
         listIcon.icon_size = px(LIST_ICON_SIZE_PX);
@@ -194,7 +197,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
         rightColumn.style = `spacing: ${px(TASK_ROW_SPACING_PX)}px; padding-left: ${px(TASK_ROW_PADDING_H_PX)}px;`;
         taskList.style = `spacing: ${px(ROW_SPACING_PX)}px;`;
         entryRow.style = rowBackgroundStyle + ` border-radius: ${resolveChildCornerRadius(TASK_ROW_RADIUS_PX, scale)}px;`
-            + `padding: ${Math.max(1, px(TASK_ROW_PADDING_V_PX) - 3)}px ${px(TASK_ROW_PADDING_H_PX)}px;`;
+            + `padding: ${Math.max(1, px(TASK_ROW_PADDING_V_PX) - ENTRY_ROW_PADDING_V_REDUCTION_PX)}px ${px(TASK_ROW_PADDING_H_PX)}px;`;
 
         renderTasks();
     }
@@ -243,8 +246,9 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
             style: `${fontCss}font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`
-                + `color: ${textColor}; opacity: ${task.done ? TEXT_OPACITY.metadata : TEXT_OPACITY.primary};`,
+                + `color: ${textColor};`,
         });
+        textLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * (task.done ? TEXT_OPACITY.metadata : TEXT_OPACITY.primary));
         textLabel.clutter_text.use_markup = true;
         textLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         textLabel.clutter_text.set_markup(labelText);
@@ -263,7 +267,7 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
             }),
             reactive: true,
             can_focus: true,
-            style: `opacity: ${TEXT_OPACITY.disabled};`,
+            opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.disabled),
             y_align: Clutter.ActorAlign.CENTER,
         });
         deleteButton.connect('clicked', () => {
@@ -289,12 +293,12 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
 
         taskList.destroy_all_children();
         if (tasks.length === 0) {
-            const px = (v) => scaleFontSize(v, scale);
             const emptyLabel = new St.Label({
                 text: 'No tasks yet — press + to add one',
                 x_align: Clutter.ActorAlign.CENTER,
                 style: `${fontCss}font-size: ${scaleFontSize(TASK_TEXT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.body)}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`
-                    + `color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`,
+                    + `color: ${textColor};`,
+                opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
             });
             taskList.add_child(emptyLabel);
             return;
@@ -367,8 +371,15 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
         if (isActorDestroyed(container)) return;
         tasksLoaded = true;
         if (savedData && Array.isArray(savedData.tasks)) {
-            tasks = savedData.tasks.filter(task => task && typeof task.text === 'string')
+            // Tasks typed before the read returned must survive it, so merge them into
+            // the saved list instead of replacing it. Match on text so a retyped task
+            // wins over its saved copy.
+            const pendingTasks = tasks;
+            const pendingTexts = new Set(pendingTasks.map(task => task.text));
+            const savedTasks = savedData.tasks
+                .filter(task => task && typeof task.text === 'string' && !pendingTexts.has(task.text))
                 .map(task => ({ text: task.text, done: !!task.done }));
+            tasks = [...savedTasks, ...pendingTasks];
             renderTasks();
         } else if (!loadError) {
             saveTasks();
