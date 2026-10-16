@@ -11,8 +11,8 @@ import {
     deleteCacheFile
 } from '../utils/widgetUtils.js';
 import { getWidgetCacheFolder } from '../utils/widgetRegistry.js';
-import { getWidgetsForMonitor, getPanelHeight, getEffectiveMonitorIndex } from './helpers.js';
-import { detachNode, getOtherWidgets, repositionNode, saveLocalWidgets } from './layout.js';
+import { getPanelHeight, getEffectiveMonitorIndex } from './helpers.js';
+import { detachNode, getOtherWidgets, repositionNode, resolveActiveWidgets, saveLocalWidgets } from './layout.js';
 import { toggleAllGridOverlays } from './overlays.js';
 import { registerWidgetCleanup } from '../shell/widgetUIUtils.js';
 import { deleteLastGoodCache } from '../utils/lastGoodCache.js';
@@ -208,10 +208,7 @@ export function attachDragHandlers(grid, node, widgetData, openContextMenu) {
 }
 
 export function onWidgetResized(grid, widgetId, newCols, newRows, newX) {
-    const allWidgets = getWidgets(grid.settings);
-    const monitorMode = grid.settings.get_string('global-monitor') || 'primary';
-    const isEachMode = (monitorMode === 'each');
-    const activeWidgets = getWidgetsForMonitor(allWidgets, getEffectiveMonitorIndex(grid.targetMonitorIndex, grid.settings), isEachMode);
+    const { widgets: allWidgets, activeWidgets } = resolveActiveWidgets(grid);
     const widget = activeWidgets.find(activeWidget => activeWidget.id === widgetId);
     if (!widget) return;
 
