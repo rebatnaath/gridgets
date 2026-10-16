@@ -24,8 +24,10 @@ export function setClipboardFiles(uris, isCut) {
         new TextEncoder().encode(payload));
 }
 
+// St hands the callback a GBytes, which GJS maps straight to a Uint8Array, so there is
+// nothing to unwrap. The write above relies on the same mapping in the other direction.
 function decodeContent(content) {
-    return new TextDecoder().decode(content.get_data());
+    return new TextDecoder().decode(content);
 }
 
 function readClipboardUris(callback) {
@@ -73,9 +75,7 @@ function pasteIntoFolder(directory, callback) {
 }
 
 export function pasteIntoDesktopFolder(callback) {
-    pasteIntoFolder(Gio.File.new_for_path(desktopDirectoryPath()), (pasted, failure) => {
-        callback(pasted, failure);
-    });
+    pasteIntoFolder(Gio.File.new_for_path(desktopDirectoryPath()), callback);
 }
 
 /**
