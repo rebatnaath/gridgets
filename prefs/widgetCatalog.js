@@ -102,14 +102,14 @@ export const STORE_WIDGETS = Object.freeze({
     quickNotes: {
         title: 'Quick Notes',
         description: 'A markdown sticky note to quickly write down notes.',
-        gridSize: '4x4',
+        gridSize: '5x6',
         thumbnail: 'quick-notes/quick-notes.svg',
         fallbackIconName: 'text-editor-symbolic',
     },
     clipboardHistory: {
         title: 'Clipboard History',
         description: 'Access a history of your recently copied text items.',
-        gridSize: '4x4',
+        gridSize: '7x8',
         thumbnail: 'clipboard/clipboard.svg',
         fallbackIconName: 'edit-copy-symbolic',
     },
