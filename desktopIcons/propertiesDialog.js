@@ -113,8 +113,8 @@ function createDetailRow(label, value) {
 }
 
 /**
- * Owner, group and others, each with three toggles. A toggle that cannot be written is
- * made insensitive rather than hidden, so the row still shows what the mode says.
+ * Owner, group and others, each with three toggles. Every change writes the whole mode, and
+ * a write the filesystem refuses puts the toggles back to what the mode still says.
  */
 function createPermissionsSection(file, fileInfo) {
     const mode = fileInfo.get_attribute_uint32('unix::mode');
@@ -152,7 +152,16 @@ function createPermissionsSection(file, fileInfo) {
         section.add_child(row);
     }
 
+    // Putting the toggles back re-enters the handler below, so the revert runs behind the
+    // guard rather than writing again. knownPermissions is the mode last confirmed on disk:
+    // it is what a refused write has to fall back to, not the value it tried to write.
+    let knownPermissions = mode & PERMISSION_MASK;
+    let applying = false;
+
     const applyPermissions = () => {
+        if (applying)
+            return;
+
         let permissions = 0;
         for (const permissionClass of PERMISSION_CLASSES) {
             for (const permissionName of PERMISSION_NAMES) {
@@ -165,17 +174,20 @@ function createPermissionsSection(file, fileInfo) {
         // would leave the filesystem entry with no type at all.
         try {
             file.set_attribute_uint32('unix::mode', typeBits | permissions, Gio.FileQueryInfoFlags.NONE, null);
+            knownPermissions = permissions;
         } catch (error) {
             console.error(`Gridgets: the permissions of ${file.get_uri()} could not be changed:`, error);
-            restoreFromMode(typeBits, permissions);
+            applying = true;
+            restoreFromMode(knownPermissions);
+            applying = false;
         }
     };
 
-    const restoreFromMode = (restoredTypeBits, restoredPermissions) => {
+    const restoreFromMode = known => {
         for (const permissionClass of PERMISSION_CLASSES) {
             for (const permissionName of PERMISSION_NAMES) {
                 const bit = PERMISSION_MATRIX[permissionClass][permissionName];
-                toggles[permissionClass][permissionName].checked = (restoredPermissions & bit) !== 0;
+                toggles[permissionClass][permissionName].checked = (known & bit) !== 0;
             }
         }
     };
