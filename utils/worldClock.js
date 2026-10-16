@@ -8,6 +8,10 @@ import GLib from 'gi://GLib';
 export const MIN_CITY_COUNT = 2;
 export const MAX_CITY_COUNT = 4;
 
+// The offset label that means this zone agrees with the local clock. Callers compare
+// against it rather than retyping the string, so the wording stays in one place.
+export const LOCAL_TIME_LABEL = 'Local time';
+
 export const DEFAULT_CITIES = Object.freeze([
     { name: 'London', timezone: 'Europe/London', country: 'GB' },
     { name: 'New York', timezone: 'America/New_York', country: 'US' },
@@ -75,7 +79,7 @@ export function isDaytimeHour(hour) {
  */
 export function formatOffsetLabel(offsetSeconds) {
     if (!Number.isFinite(offsetSeconds) || offsetSeconds === 0)
-        return 'Local time';
+        return LOCAL_TIME_LABEL;
 
     const behind = offsetSeconds < 0;
     const total = Math.abs(offsetSeconds);

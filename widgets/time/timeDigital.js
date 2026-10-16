@@ -17,6 +17,7 @@ import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, for
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 
+const CLUTTER_OPACITY_OPAQUE = 255;
 const BASE_FACE_SIZE = 200;
 const BASE_TIME_FONT_SIZE = 63;
 // A share of the face, not of the widget scale: a narrow screen derives below the 0.5
@@ -60,12 +61,12 @@ function timeLabelStyle({ fontCss, textColor, timeFontSize }) {
 
 function meridiemLabelStyle({ fontCss, textColor, meridiemFontSize }) {
     return `${fontCss}color: ${textColor}; font-size: ${meridiemFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`
-        + ` opacity: ${TEXT_OPACITY.secondary}; margin-bottom: ${MERIDIEM_MARGIN_BOTTOM_PX}px;`;
+        + ` margin-bottom: ${MERIDIEM_MARGIN_BOTTOM_PX}px;`;
 }
 
 function cityLabelStyle({ fontCss, textColor, cityFontSize }) {
     return `${fontCss}color: ${textColor}; font-size: ${cityFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`
-        + ` opacity: ${TEXT_OPACITY.metadata}; margin-top: ${CITY_MARGIN_TOP_PX}px;`;
+        + ` margin-top: ${CITY_MARGIN_TOP_PX}px;`;
 }
 
 // A point on a corner arc, with the unit normal pointing at its centre.
@@ -171,6 +172,7 @@ function buildFaceLabels({ is24h, fontCss, textColor, timeFontSize, meridiemFont
         meridiemLabel = new St.Label({
             text: 'AM',
             style: meridiemLabelStyle({ fontCss, textColor, meridiemFontSize }),
+            opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
             x_align: Clutter.ActorAlign.CENTER,
         });
     }
@@ -186,6 +188,7 @@ function buildFaceLabels({ is24h, fontCss, textColor, timeFontSize, meridiemFont
         cityLabel = new St.Label({
             text: locationName,
             style: cityLabelStyle({ fontCss, textColor, cityFontSize }),
+            opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
             x_align: Clutter.ActorAlign.CENTER,
         });
     }
@@ -215,7 +218,7 @@ export function createDigitalTimeNode(widgetData, width, height, xPosition, yPos
     const textColor = resolveWidgetForegroundColor(widgetData);
     const timeZone = resolveTimeZone(widgetData);
     const locationName = widgetData.location?.name || '';
-    const tickColor = parseCssColor(textColor) || { r: 1, g: 1, b: 1 };
+    const tickColor = parseCssColor(textColor);
     const cardRadius = resolveWidgetCornerRadius(widgetData);
 
     const widgetNode = createWidgetContainer(widgetData, width, height, xPosition, yPosition);

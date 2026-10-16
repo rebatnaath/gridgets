@@ -3,13 +3,14 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { resolveExplicitFontFamily, resolveUse24h, resolveWidgetSurfaces } from '../../utils/widgetUtils.js';
-import { resolveCityList, dayRelationLabel, formatOffsetLabel, isDaytimeHour, offsetFrom, zoneFor } from '../../utils/worldClock.js';
+import { resolveCityList, dayRelationLabel, formatOffsetLabel, isDaytimeHour, offsetFrom, zoneFor, LOCAL_TIME_LABEL } from '../../utils/worldClock.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, formatTimeParts, startMinuteAlignedTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { setWeatherIcon } from '../../utils/weatherIcons.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 
+const CLUTTER_OPACITY_OPAQUE = 255;
 // The face is square at every preset, so the scale reference is square too.
 const BASE_CONTAINER_SIZE = 240;
 
@@ -109,31 +110,24 @@ function rowMetrics(scale, cityCount, faceHeight) {
     return m;
 }
 
-function getFormattedTime(now, timezoneId, is24h) {
-    const tz = timezoneId
-        ? (GLib.TimeZone.new_identifier(timezoneId) || GLib.TimeZone.new(timezoneId))
-        : null;
-    return formatTimeParts(tz ? now.to_timezone(tz) : now.to_local(), is24h);
-}
-
 function buildWorldClockUI(layoutBox, fontCss, metrics, cities, surfaces) {
     const { card } = surfaces;
     // Labels inherit their colour and carry their own weight, so a resize restyles a
-    // label through the same call that built it.
-    const labelCss = (sizePx, { weight = null, opacity = null } = {}) => {
-        let style = `${fontCss}font-size: ${sizePx}px; color: inherit;`;
-        if (weight !== null) style += ` font-weight: ${weight};`;
-        if (opacity !== null) style += ` opacity: ${opacity};`;
-        return style;
+    // label through the same call that built it. Opacity is the actor property, not a
+    // style one: St has no `opacity` CSS property, so a label that asked for one in its
+    // style string would still draw opaque.
+    const applyLabelStyle = (label, sizePx, { weight, opacity = 1 }) => {
+        label.style = `${fontCss}font-size: ${sizePx}px; color: inherit; font-weight: ${weight};`;
+        label.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * opacity);
     };
 
     const applyRowStyles = (entry, m) => {
-        entry.cityLabel.style = labelCss(m.city, CITY_LABEL);
-        entry.metaLabel.style = labelCss(m.meta, META_LABEL);
-        entry.hourLabel.style = labelCss(m.time, TIME_LABEL);
-        entry.minuteLabel.style = labelCss(m.time, TIME_LABEL);
-        entry.colonLabel.style = labelCss(Math.round(m.time * 0.8), COLON_LABEL);
-        entry.ampmLabel.style = labelCss(m.mer, AMPM_LABEL);
+        applyLabelStyle(entry.cityLabel, m.city, CITY_LABEL);
+        applyLabelStyle(entry.metaLabel, m.meta, META_LABEL);
+        applyLabelStyle(entry.hourLabel, m.time, TIME_LABEL);
+        applyLabelStyle(entry.minuteLabel, m.time, TIME_LABEL);
+        applyLabelStyle(entry.colonLabel, Math.round(m.time * 0.8), COLON_LABEL);
+        applyLabelStyle(entry.ampmLabel, m.mer, AMPM_LABEL);
         entry.timeBox.style = `spacing: ${m.merGap}px;`;
         entry.rowBox.style = `spacing: ${m.columnGap}px; padding: ${m.rowPadding}px ${m.rowPadding}px;`;
         entry.rowPanel.style = `border-radius: ${CORNER_RADIUS_PX}px; background-color: ${card};`;
@@ -252,7 +246,6 @@ function buildWorldClockUI(layoutBox, fontCss, metrics, cities, surfaces) {
 
     return {
         rows,
-        cities,
         zones: cities.map(city => zoneFor(city.timezone)),
         applyScale: nextMetrics => {
             mainContainer.style = `padding: ${nextMetrics.padding}px;`
@@ -287,7 +280,7 @@ function updateWorldTimes(ui, is24h) {
 
         const dayLabel = dayRelationLabel(cityNow, localNow);
         const offset = formatOffsetLabel(offsetFrom(zone, localZone, now));
-        row.metaLabel.set_text(offset === 'Local time' ? dayLabel : `${dayLabel} · ${offset}`);
+        row.metaLabel.set_text(offset === LOCAL_TIME_LABEL ? dayLabel : `${dayLabel} · ${offset}`);
 
         const isDay = isDaytimeHour(cityNow.get_hour());
         if (row.isDay !== isDay) {
