@@ -20,15 +20,23 @@ import {
 } from '../widgets/media/index.js';
 import { isAnimatedImageFile } from '../utils/widgetUtils.js';
 
+// Whether weather-driven colouring and the condition overlay image are on, resolving
+// the per-widget override against the global setting the same way for every weather
+// widget that honours them.
+function resolveWeatherToggles(data) {
+    const dynamicColor = data.weatherDynamicColorFollowGlobal === true
+        ? (data.globalWeatherDynamicColor !== false)
+        : (data.dynamicColor !== undefined ? data.dynamicColor : (data.globalWeatherDynamicColor !== false));
+    const dynamicImage = data.weatherDynamicImageFollowGlobal === true
+        ? (data.globalWeatherDynamicImage !== false)
+        : (data.dynamicImage !== undefined ? data.dynamicImage : (data.globalWeatherDynamicImage !== false));
+    return { dynamicColor, dynamicImage };
+}
+
 const WIDGET_CREATORS = {
     'time': (data, w, h, x, y) => createTimeNode(data, w, h, x, y),
     'weather': (data, w, h, x, y) => {
-        const dynamicColor = data.weatherDynamicColorFollowGlobal === true
-            ? (data.globalWeatherDynamicColor !== false)
-            : (data.dynamicColor !== undefined ? data.dynamicColor : (data.globalWeatherDynamicColor !== false));
-        const dynamicImage = data.weatherDynamicImageFollowGlobal === true
-            ? (data.globalWeatherDynamicImage !== false)
-            : (data.dynamicImage !== undefined ? data.dynamicImage : (data.globalWeatherDynamicImage !== false));
+        const { dynamicColor, dynamicImage } = resolveWeatherToggles(data);
         return createWeatherNode(data, w, h, x, y, dynamicColor, dynamicImage);
     },
     'music': (data, w, h, x, y) => createMusicNode(data, w, h, x, y),
@@ -48,7 +56,10 @@ const WIDGET_CREATORS = {
     'todo': (data, w, h, x, y) => createTodoNode(data, w, h, x, y),
     'github': (data, w, h, x, y) => createGithubNode(data, w, h, x, y),
     'github-week': (data, w, h, x, y) => createGithubWeekNode(data, w, h, x, y),
-    'sun-schedule': (data, w, h, x, y) => createSunTimesNode(data, w, h, x, y),
+    'sun-schedule': (data, w, h, x, y) => {
+        const { dynamicColor, dynamicImage } = resolveWeatherToggles(data);
+        return createSunTimesNode(data, w, h, x, y, dynamicColor, dynamicImage);
+    },
     'rss-headlines': (data, w, h, x, y) => createRssHeadlinesNode(data, w, h, x, y),
     'top-stories': (data, w, h, x, y) => createTopStoriesNode(data, w, h, x, y),
     'mood': (data, w, h, x, y) => createMoodNode(data, w, h, x, y),

@@ -152,7 +152,7 @@ const WEATHER_CODE_THUNDERSTORMS_GROUP = [1087, 1273, 1276, 1279, 1282];
 const WEATHER_CODE_SNOW_BLIZZARD = 1117;
 const WEATHER_CODE_SNOW_GROUP = [1066, 1114, 1210, 1213, 1216, 1219, 1222, 1225, 1255, 1258];
 
-function resolveConditionCode(code, text = '') {
+export function resolveConditionCode(code, text = '') {
     if (typeof code === 'number' && code > 0) return code;
     const lower = (text || '').toLowerCase();
     if (lower.includes('clear') || lower.includes('sun')) return WEATHER_CODE_CLEAR;
@@ -249,7 +249,7 @@ const WEATHER_ASSET_RULES = [
     },
 ];
 
-function getWeatherAssets(extensionPath, code, isDay, folderName = '3x3', text = '') {
+export function getWeatherAssets(extensionPath, code, isDay, folderName = '3x3', text = '') {
     const effectiveCode = resolveConditionCode(code, text);
     const rule = WEATHER_ASSET_RULES.find(candidate => candidate.matches(effectiveCode));
     const background = isDay ? rule?.dayBackground : rule?.nightBackground;
@@ -499,7 +499,7 @@ function getWmoConditionText(code, isDay = true) {
     }
 }
 
-function wmoToWeatherApiCode(wmo) {
+export function wmoToWeatherApiCode(wmo) {
     if (wmo === 0) return 1000;
     if (wmo === 1 || wmo === 2) return 1003;
     if (wmo === 3) return 1006;

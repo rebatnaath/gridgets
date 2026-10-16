@@ -28,7 +28,7 @@ const SIZE_PRESETS = Object.freeze({
     'weatherStandard': [[4, 4], [5, 5], [6, 6]],
     'weatherSimple': [[4, 4], [5, 5], [6, 5]],
     'weatherForecast': [[6, 4], [8, 5], [10, 6]],
-    'sun-schedule': [[7, 5], [7, 6], [8, 7]],
+    'sun-schedule': [[5, 4], [6, 5], [7, 6]],
     'musicSmall': [[4, 4], [5, 5], [6, 6]],
     'musicWide': [[8, 4], [10, 5], [12, 6]],
     'calendar': [[4, 4], [5, 5], [5, 6]],

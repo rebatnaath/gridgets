@@ -38,7 +38,7 @@ export const ICON_OPACITY_SECONDARY = 0.7;
 // Opacity for non-text graphics: dividers, borders, grid lines, progress tracks.
 // Text-bearing elements use TEXT_OPACITY instead.
 export const GRAPHICS_OPACITY = Object.freeze({
-    arcTrack: 0.15,
+    arcTrack: 0.3,
     divider: 0.2,
     border: 0.25,
     gridLine: 0.3,
