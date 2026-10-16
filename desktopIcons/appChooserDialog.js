@@ -49,9 +49,9 @@ const DISABLED_OPACITY = 0.45;
 // colour and paints nothing.
 const LABEL_COLOUR = 'color: -st-foreground-color;';
 
-// St drops linear-gradient(), so this is a flat wash over the accent.
-const LIGHTEN_ALPHA = 0.22;
-const LIGHTEN_OVERLAY = `background-image: linear-gradient(rgba(255, 255, 255, ${LIGHTEN_ALPHA}), rgba(255, 255, 255, ${LIGHTEN_ALPHA}));`;
+// St styles carry no opacity property, so a fade is the actor's own opacity. The accent
+// cannot be lightened in place, and a flat white wash would need the label to flip colour.
+const OPEN_HOVER_OPACITY = 0.8;
 const ROW_RADIUS_PX = 8;
 const LABEL_STYLE = `${LABEL_COLOUR} font-size: ${SUBTITLE_SIZE_PX}px;`;
 
@@ -186,14 +186,22 @@ export function showAppChooserDialog({ file, onChosen }) {
         dialog.close();
         settle(chosen);
     });
-    attachHoverTint(openButton, openRestingStyle, `${openRestingStyle} ${LIGHTEN_OVERLAY}`);
+    // Opacity is the actor's, not the style's: St ignores an opacity declaration in a style
+    // string, so the disabled and hover fades both have to be set on the actor.
+    let openEnabled = false;
+    const updateOpenOpacity = () => {
+        if (!openEnabled)
+            openButton.opacity = Math.round(255 * DISABLED_OPACITY);
+        else
+            openButton.opacity = Math.round(255 * (openButton.hover ? OPEN_HOVER_OPACITY : 1));
+    };
+    openButton.connect('notify::hover', updateOpenOpacity);
     const setOpenEnabled = enabled => {
         // reactive rather than sensitive: with no stylesheet of our own an insensitive
         // button would look enabled and only stop working.
+        openEnabled = enabled;
         openButton.reactive = enabled;
-        openButton.style = enabled
-            ? openRestingStyle
-            : `${openRestingStyle} opacity: ${DISABLED_OPACITY};`;
+        updateOpenOpacity();
     };
     setOpenEnabled(false);
 
@@ -258,8 +266,11 @@ export function showAppChooserDialog({ file, onChosen }) {
     const select = app => {
         selected = app;
         setOpenEnabled(true);
-        for (const restyle of rows.values())
-            restyle(false);
+        // Each entry is the row plus its styler, not the styler alone. Restyling every row
+        // on select is what makes the highlight appear on the click rather than whenever the
+        // pointer next moves and re-runs the hover handler.
+        for (const created of rows.values())
+            created.restyle(created.row.hover);
     };
 
     const activate = (app, shouldOpen) => {
@@ -306,15 +317,30 @@ export function showAppChooserDialog({ file, onChosen }) {
         if (noMatchesLabel.visible)
             rowBox.add_child(noMatchesLabel);
 
-        // A selection the filter has hidden cannot be confirmed.
+        // A selection the filter has hidden cannot be confirmed, and its row has to lose the
+        // selected background too or it still paints it the next time the row is shown.
         if (selected && !rowBox.get_children().includes(rows.get(selected).row)) {
+            const hidden = rows.get(selected);
             selected = null;
             setOpenEnabled(false);
+            hidden.restyle(hidden.row.hover);
         }
     };
 
     searchEntry.clutter_text.connect('text-changed', render);
     render();
+
+    // ModalDialog routes a key only through a button registered with it, so Escape needs one
+    // of its own. It stays invisible because the real buttons sit in the header.
+    const escapeButton = dialog.addButton({
+        label: '',
+        action: () => dialog.close(),
+        key: Clutter.KEY_Escape,
+    });
+    escapeButton.visible = false;
+    // addButton gives the hidden button the initial focus, which would leave the search box
+    // unable to take a keystroke.
+    dialog.setInitialKeyFocus(searchEntry);
 
     dialog.connect('closed', () => settle(null));
     dialog.open(Clutter.get_current_event_time());
