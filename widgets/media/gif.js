@@ -200,13 +200,17 @@ export function createAnimatedImageNode(widgetData, width, height, xPosition, yP
             scheduleDeferredUpdate(state, RESIZE_REPAINT_THROTTLE_MS, () => updateImage(iter.get_pixbuf()));
         };
         addSettleAfterResize(widgetNode, repaintForCurrentSize);
-        widgetNode.connect('notify::width', () => {
+        const widthSignalId = widgetNode.connect('notify::width', () => {
             if (!widgetNode.isResizing)
                 repaintForCurrentSize();
         });
-        widgetNode.connect('notify::height', () => {
+        const heightSignalId = widgetNode.connect('notify::height', () => {
             if (!widgetNode.isResizing)
                 repaintForCurrentSize();
+        });
+        registerWidgetCleanup(widgetNode, () => {
+            widgetNode.disconnect(widthSignalId);
+            widgetNode.disconnect(heightSignalId);
         });
 
         connectTimerCleanup(widgetNode, state);

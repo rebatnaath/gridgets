@@ -19,6 +19,9 @@ const FILE_ENUM_BATCH_SIZE = 64;
 const MIN_CAPTION_SCALE = 0.35;
 const MAX_CAPTION_SCALE = 3.5;
 
+// Derived from the widget's width rather than stored, so it survives a reload.
+const CAPTION_REFERENCE_WIDTH_PX = 320;
+
 /** Shared by the static widget and the animated one's fallback, so a change to one cannot miss the other. */
 export function backgroundImageStyle(imagePath, baseStyle) {
     // filename_to_uri percent-encodes for the url("...") token: a path holding a quote
@@ -176,8 +179,6 @@ export function attachCaptionOverlay(widgetNode, widgetData, width, height, imag
     if (caption.length === 0) return null;
 
     const overlay = createCaptionOverlay(widgetData, caption);
-    // Derived from the widget's width rather than stored, so it survives a reload.
-    const CAPTION_REFERENCE_WIDTH_PX = 320;
     const updateCaptionScale = () => {
         if (isActorDestroyed(overlay)) return;
         // Held still during a resize drag, per resizeSettle.js.

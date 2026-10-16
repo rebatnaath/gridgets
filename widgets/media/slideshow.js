@@ -5,7 +5,7 @@ import { createAnimatedImageNode } from './gif.js';
 import { listImagesInFolder, attachCaptionOverlay, resolveCaptionText, backgroundImageStyle } from './mediaCommon.js';
 import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetCornerRadius, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
 import { WidgetActor, connectTimerCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
 
 const DEFAULT_SLIDE_INTERVAL_SECONDS = 10;
@@ -85,7 +85,7 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
         if (isActorDestroyed(placeholderLabel)) return;
         const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label);
         placeholderLabel.style = `${fontCss}color: ${textColor}; font-size: ${fontSize}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
     };
     // The scaler's first pass is deferred to an idle, so this would otherwise paint one
     // frame unscaled.
@@ -152,13 +152,13 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
                 duration: CROSSFADE_DURATION_MS,
                 mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
                 onComplete: () => {
-                    if (outgoingLayer && !isActorDestroyed(outgoingLayer))
+                    if (!isActorDestroyed(outgoingLayer))
                         outgoingLayer.destroy();
                 }
             });
         };
 
-        const validInterval = Math.max(1000, Math.floor(slideInterval));
+        const validInterval = Math.max(MILLISECONDS_PER_SECOND, Math.floor(slideInterval));
         state.timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, validInterval, () => {
             if (isActorDestroyed(container)) return GLib.SOURCE_REMOVE;
             advanceSlide();
