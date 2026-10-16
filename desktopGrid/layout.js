@@ -20,7 +20,7 @@ import { getWidgetsForMonitor, getEffectiveMonitorIndex } from './helpers.js';
 import { isDesktopIconVisible } from '../desktopIcons/desktopIcons.js';
 import { isActorDestroyed } from '../utils/actorLifecycle.js';
 
-/** Pixel size and position of a grid cell rectangle. */
+/** Pixel rect of a cols×rows footprint whose top-left cell is at (cellX, cellY). */
 export function gridGeometry(cols, rows, cellX, cellY, cellSize, cellTotalWidth, cellTotalHeight) {
     return {
         width: (cols * cellSize) + ((cols - 1) * GRID_GAP_PX),

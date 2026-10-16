@@ -158,5 +158,3 @@ export function applyWidgetChanges(grid) {
 
     syncNodes(grid, true);
 }
-
-export { createAndAttachWidget };

@@ -2,7 +2,7 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
-import { readGlobalSettings, parseCssColor } from '../utils/widgetUtils.js';
+import { COLUMNS_COUNT, readGlobalSettings, parseCssColor } from '../utils/widgetUtils.js';
 import { clearIconSelection, selectIcon, setIconHovered } from '../desktopIcons/desktopIconWidget.js';
 import {
     DEFAULT_STAGE_WIDTH,
@@ -122,7 +122,7 @@ export const DesktopGrid = GObject.registerClass(
                 cellSize: 0,
                 cellTotalWidth: this.width,
                 cellTotalHeight: this.height,
-                gridCols: 60,
+                gridCols: COLUMNS_COUNT,
                 gridRows: 1,
             };
             applyGridLayout(this, layout);
