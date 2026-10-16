@@ -103,9 +103,12 @@ const MESSAGE_MAX_CHARS = 34;
 // One entry and one message label per icon, reached from the node the grid already holds.
 const ICON_CONTROLLERS = new WeakMap();
 
+// Nodes that already carry the selection teardown below. selectIcon runs on every press, so
+// registering each time would stack an identical callback per click on the same node.
+const SELECTION_TEARDOWNS = new WeakSet();
+
 // The icon is left alone in both states: hiding it to make room for the message made an
 // emptied entry look like the icon had been deleted.
-
 function setRenameMessage(controller, message) {
     if (message === '') {
         controller.messageLabel.text = '';
@@ -235,17 +238,18 @@ export function createDesktopIconNode(widgetData, width, height, xPosition, yPos
 
     ICON_CONTROLLERS.set(rootContainer, {
         frameActor,
-        fontCss,
         highlightColor: resolveHighlightColor(widgetData, textColor),
         hovered: false,
         selected: false,
-        box,
         entry: renameEntry,
-        iconActor,
         labelActor,
         messageLabel,
         editing: false,
     });
+
+    // A rename can still be in flight when the node goes, and its idle source holds a
+    // callback against an actor that no longer exists.
+    registerWidgetCleanup(rootContainer, () => abortInlineRename(ICON_CONTROLLERS.get(rootContainer)));
 
     return watchActorLifecycle(rootContainer);
 }
@@ -329,6 +333,21 @@ export function beginInlineRename(actor, { initialText = '', validate, onAccepte
     return true;
 }
 
+// Drops the state a rename holds. Safe on a controller whose actors are already gone, so
+// the node's teardown can call it without disconnecting signals that have disconnected
+// themselves with the actor.
+function abortInlineRename(controller) {
+    if (!controller)
+        return;
+    if (controller.focusIdle) {
+        GLib.Source.remove(controller.focusIdle);
+        controller.focusIdle = 0;
+    }
+    controller.editing = false;
+    controller.validate = null;
+    controller.onAccepted = null;
+}
+
 /**
  * Stops renaming, leaving the label showing `text` when one was given.
  *
@@ -341,18 +360,10 @@ function endInlineRename(actor, { text } = {}) {
     if (!controller || !controller.editing)
         return;
 
-    controller.editing = false;
-
-    if (controller.focusIdle) {
-        GLib.Source.remove(controller.focusIdle);
-        controller.focusIdle = 0;
-    }
-
     controller.entry.clutter_text.disconnect(controller.onTextChanged);
     // From the same object it was connected to, or the handler is left on the text.
     controller.entry.clutter_text.disconnect(controller.onKeyPress);
-    controller.validate = null;
-    controller.onAccepted = null;
+    abortInlineRename(controller);
 
     controller.entry.hide();
     if (typeof text === 'string')
@@ -423,10 +434,13 @@ export function selectIcon(grid, actor, widgetData) {
         // A rebuild destroys the node the selection points at, which is also how the
         // selection ends when the entry is deleted. The shortcuts are bound to it, so they
         // have to be released when it goes rather than left holding a dead actor.
-        registerWidgetCleanup(actor, () => {
-            if (selectedIcon && selectedIcon.actor === actor)
-                clearIconSelection();
-        });
+        if (!SELECTION_TEARDOWNS.has(actor)) {
+            SELECTION_TEARDOWNS.add(actor);
+            registerWidgetCleanup(actor, () => {
+                if (selectedIcon && selectedIcon.actor === actor)
+                    clearIconSelection();
+            });
+        }
     }
     if (hadSelection || selectedIcon)
         notifySelectionChanged();
