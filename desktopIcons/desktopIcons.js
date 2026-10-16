@@ -46,8 +46,8 @@ export function desktopDirectoryPath() {
  *
  * A missing folder is not an error to log and carry on from. Nothing can bring the icons
  * back while it is gone, so a switch left on would promise a desktop that is not there and
- * draw nothing for it. Callers turn the setting off instead and the user is asked to
- * create the folder again the next time they try.
+ * draw nothing for it. Callers turn the setting off instead of keeping entries for a
+ * folder that is not there.
  */
 export function desktopDirectoryExists(path = desktopDirectoryPath()) {
     return Gio.File.new_for_path(path).query_exists(null);
@@ -70,8 +70,6 @@ export function desktopFileFor(widgetData) {
         return launcherFile(widgetData.fileName);
     return Gio.File.new_for_path(`${desktopDirectoryPath()}/${widgetData.fileName}`);
 }
-
-
 
 export function isAppLauncherEntry(widgetData) {
     return widgetData.isAppLauncher === true;
@@ -129,8 +127,6 @@ function queryFileInfo(file) {
     }
 }
 
-
-
 function listDesktopEntries(showHidden, path) {
     const entries = [];
     const directory = Gio.File.new_for_path(path);
@@ -153,13 +149,6 @@ function listDesktopEntries(showHidden, path) {
     return entries;
 }
 
-/**
- * Brings the saved layout in line with the desktop folder and reports whether it wrote.
- *
- * Runs whether or not icons are being shown, so a file deleted while they are switched off
- * does not leave an entry behind that nothing will ever remove. Only entries whose file is
- * gone are dropped: a dismissed entry is kept so its position survives.
- */
 /**
  * The desktop folder's files, plus the chosen launchers.
  *
@@ -186,8 +175,6 @@ function listGridEntries(settings, showHidden, path) {
     return entries;
 }
 
-
-
 function desktopIdOf(file) {
     try {
         return Gio.DesktopAppInfo.new_from_filename(file.get_path())?.get_id() ?? null;
@@ -196,6 +183,13 @@ function desktopIdOf(file) {
     }
 }
 
+/**
+ * Brings the saved layout in line with the desktop folder and reports whether it wrote.
+ *
+ * Runs whether or not icons are being shown, so a file deleted while they are switched off
+ * does not leave an entry behind that nothing will ever remove. Only entries whose file is
+ * gone are dropped: a dismissed entry is kept so its position survives.
+ */
 export function syncDesktopIcons(settings, path = desktopDirectoryPath()) {
     if (!desktopDirectoryExists(path)) {
         if (settings.get_boolean(SHOW_DESKTOP_ICONS_KEY)) {
@@ -210,6 +204,14 @@ export function syncDesktopIcons(settings, path = desktopDirectoryPath()) {
         return false;
 
     const liveNames = new Set(entries.map(entry => entry.name));
+
+    // A dismissed name only means "this entry" while the file is there. Left in place it
+    // would hide a later file that happens to reuse the name, with nothing on screen to
+    // explain why the new icon never appeared.
+    const dismissed = settings.get_strv(DISMISSED_DESKTOP_ICONS_KEY);
+    const liveDismissed = dismissed.filter(name => liveNames.has(name));
+    if (liveDismissed.length !== dismissed.length)
+        settings.set_strv(DISMISSED_DESKTOP_ICONS_KEY, liveDismissed);
 
     const widgets = getWidgets(settings);
     const retained = [];
@@ -267,6 +269,8 @@ export function startDesktopIconWatch(settings) {
 
     const directory = Gio.File.new_for_path(desktopDirectoryPath());
     try {
+        // WATCH_MOVES: without it a rename arrives as an unrelated delete and create, and the
+        // entry loses the place it had.
         directoryMonitor = directory.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
     } catch (error) {
         console.error(`Gridgets: ${directory.get_path()} cannot be watched for changes:`, error);
@@ -302,8 +306,6 @@ function scheduleResync(settings) {
         return GLib.SOURCE_REMOVE;
     });
 }
-
-// Without this a rename reconciles as two unrelated events and the entry loses its place.
 
 export function renameDesktopIconEntry(settings, fileName, newName) {
     if (fileName === newName)
