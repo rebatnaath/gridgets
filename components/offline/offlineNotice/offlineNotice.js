@@ -3,8 +3,6 @@ import Clutter from 'gi://Clutter';
 import {
     TYPOGRAPHY_SIZE,
     TYPOGRAPHY_WEIGHT,
-    TEXT_OPACITY,
-    ICON_OPACITY_SECONDARY,
     MIN_FONT_SIZE,
     scaleFontSize,
 } from '../../../utils/typography.js';
@@ -65,10 +63,8 @@ export function createOfflineNotice({ fontCss = '', textColor = '', scale = 1 } 
         const currentScale = Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
         const gap = scaleFontSize(ICON_TEXT_GAP_PX, currentScale);
         icon.icon_size = scaleFontSize(BASE_ICON_SIZE_PX, currentScale);
-        // Opacity goes in the stylesheet, which takes a 0-1 float. ClutterActor.opacity
-        // is a 0-255 ubyte and would truncate this to zero.
-        icon.style = `color: ${textColor}; opacity: ${ICON_OPACITY_SECONDARY};`;
-        label.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`
+        icon.style = `color: ${textColor};`;
+        label.style = `${fontCss}color: ${textColor};`
             + ` font-size: ${scaleFontSize(BASE_TEXT_SIZE_PX, currentScale, MIN_FONT_SIZE.label)}px;`
             + ` font-weight: ${TYPOGRAPHY_WEIGHT.medium}; padding: 0 ${gap}px;`;
     }
@@ -78,7 +74,6 @@ export function createOfflineNotice({ fontCss = '', textColor = '', scale = 1 } 
     }
 
     applyScale(scale);
-    setMessage(OFFLINE_NOTICE_MESSAGES.empty);
 
     return { actor, setMessage, applyScale };
 }
