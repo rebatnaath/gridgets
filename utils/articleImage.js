@@ -32,10 +32,12 @@ const HTTP_URL_PATTERN = /^https?:\/\//i;
 const MAX_PAGE_BYTES = 768 * 1024;
 
 const resolvedUrlCache = new Map();
-const inFlightLookups = new Map();
 const waitingCallbacks = new Map();
 let lookupQueue = [];
 let activeLookups = 0;
+/** Generation counter — a read that finishes after a clear is discarded. */
+let cacheGeneration = 0;
+let cacheLoadStarted = false;
 let cacheLoaded = false;
 /** Lookups asked for before the stored answers arrive; replayed once the read lands. */
 let cacheLoadWaiters = [];
@@ -62,10 +64,14 @@ function whenCacheLoaded(callback) {
 }
 
 function loadCache() {
-    if (cacheLoaded)
+    if (cacheLoadStarted)
         return;
-    cacheLoaded = true;
+    cacheLoadStarted = true;
+    const generation = cacheGeneration;
     loadJsonFromFileAsync(cacheFilePath(), (data) => {
+        if (generation !== cacheGeneration)
+            return;
+        cacheLoaded = true;
         if (data && typeof data === 'object') {
             for (const [articleUrl, imageUrl] of Object.entries(data)) {
                 if (HTTP_URL_PATTERN.test(imageUrl))
@@ -120,7 +126,6 @@ function notifyWaiters(articleUrl, imageUrl) {
 }
 
 function startLookup(articleUrl, cancellable) {
-    inFlightLookups.set(articleUrl, cancellable);
     activeLookups += 1;
     const session = getSession();
     const message = createGetMessage(articleUrl, { acceptEncoding: 'gzip' });
@@ -232,7 +237,6 @@ function readUntilImageFound(stream, cancellable, done) {
 function settleLookup(articleUrl, imageUrl) {
     // The cancellable belongs to the caller, which shares one across every lookup,
     // image download and decode it starts, so it must never be cancelled here.
-    inFlightLookups.delete(articleUrl);
     activeLookups = Math.max(0, activeLookups - 1);
     if (imageUrl) {
         rememberResolvedUrl(articleUrl, imageUrl);
@@ -305,7 +309,9 @@ export function fetchImageBytes(imageUrl, cancellable, callback) {
 
 /** Frees the cached answers and the queues behind them. Called from disable(). */
 export function clearArticleImageCache() {
-    inFlightLookups.clear();
+    cacheGeneration++;
+    cacheLoadStarted = false;
+    cacheLoaded = false;
     lookupQueue = [];
     waitingCallbacks.clear();
     cacheLoadWaiters = [];
