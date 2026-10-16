@@ -1,6 +1,7 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import Pango from 'gi://Pango';
 import {
     CALENDAR_WEEKDAY_NAMES, resolveAccentColor, resolveTextOnAccentColor,
     resolveChildCornerRadius, resolveWidgetBackgroundColor, resolveWidgetSurfaces,
@@ -9,7 +10,7 @@ import {
 import { GRID_REF_PADDING_PX, weekdayIndex } from './calendarCommon.js';
 import { COMPACT_TYPE_SCALE } from './monthGridPanel.js';
 import { connectShortClick } from '../../utils/widgetInteractions.js';
-import { TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_WEIGHT, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 
 // Spacing between the boxes stacked in the column. Kept small so the weekday and the
 // date read as one heading, and so the list gets the height.
@@ -196,7 +197,10 @@ export function createDayColumn({
             const label = new St.Label({
                 text: '',
                 x_align: Clutter.ActorAlign.START,
+                // Lets a long title give way rather than widen the column.
+                x_expand: true,
             });
+            label.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
             const row = new St.BoxLayout({
                 orientation: Clutter.Orientation.HORIZONTAL,
                 x_expand: true,
@@ -346,9 +350,7 @@ export function createDayColumn({
                 + `background-color: ${cssColorToRgba(accentHex, GRAPHICS_OPACITY.gridLine)};`
                 // Square on the left so the block meets the rule, rounded on the right.
                 + `border-radius: 0 ${blockRadius}px ${blockRadius}px 0;`
-                // Lets a long title give way rather than widen the column.
-                + `padding: ${blockPadding}px ${blockPadding * 2}px;`
-                + 'x-expand: true;';
+                + `padding: ${blockPadding}px ${blockPadding * 2}px;`;
             rule.visible = true;
             // Mirrored, so the rule and the block read as one shape.
             rule.style = `width: ${ruleWidth}px;`
@@ -421,7 +423,7 @@ export function createDayColumn({
             + `font-weight: ${DATE_FONT_WEIGHT};`
             + `margin-bottom: ${Math.round(DATE_GAP_PX * currentScale)}px;`;
 
-        noEventsLabel.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`
+        noEventsLabel.style = `${fontCss}color: ${textColor};`
             + `font-size: ${scaleFontSize(typeScale.eventSize, currentScale, typeScale.eventMinSize)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.regular};`;
 

@@ -18,7 +18,6 @@ const SUNDAY_FIRST_REGIONS = new Set([
     'US', 'CA', 'AU', 'NZ', 'IN', 'JP', 'KR', 'TW', 'HK', 'SG', 'PH', 'ZA', 'BR', 'MX',
     'AR', 'CL', 'CO', 'PE', 'VE', 'IL', 'EG', 'SA', 'AE', 'TH', 'ID', 'MY', 'CN',
 ]);
-const WEEKDAY_NAMES_BY_LOCALE = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 // Long enough for a client to finish rewriting the file, short enough to feel current.
@@ -37,7 +36,7 @@ export function resolveFirstDay(settings) {
         return override;
 
     const desktopCalendar = new Gio.Settings({ schema_id: 'org.gnome.desktop.calendar' });
-    const configuredIndex = WEEKDAY_NAMES_BY_LOCALE.indexOf(desktopCalendar.get_string('week-start-day'));
+    const configuredIndex = CALENDAR_WEEKDAY_NAMES.indexOf(desktopCalendar.get_string('week-start-day'));
     if (configuredIndex >= 0)
         return configuredIndex;
 

@@ -5,7 +5,7 @@ import {
     CALENDAR_WEEKDAY_NAMES, resolveAccentColor, resolveTextOnAccentColor,
     resolveWidgetSurfaces, resolveWidgetBackgroundColor, blendCssColor,
 } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
 import { MONTH_NAMES, GRID_REF_PADDING_PX, getDaysInMonth, getColumnForDate, isWeekend, toDateKey } from './calendarCommon.js';
 import { connectDoubleClick } from '../../utils/widgetInteractions.js';
 
@@ -13,7 +13,6 @@ const ROW_GAP_PX = 4;
 const HEADER_BOX_SPACING_PX = 4;
 const WEEKS_IN_GRID = 6;
 const DAY_CELL_SPACING_PX = 1;
-const SECONDARY_TEXT_OPACITY = 0.3;
 const HEADER_ROW_GAP_PX = 6;
 
 /**
@@ -29,7 +28,6 @@ const COMPACT_TYPE_SCALE = Object.freeze({
     weekdaySize: TYPOGRAPHY_SIZE.metadata,
     weekdayMinSize: MIN_FONT_SIZE.metadata,
     weekdayWeight: TYPOGRAPHY_WEIGHT.semibold,
-    weekdayOpacity: TEXT_OPACITY.metadata,
     daySize: TYPOGRAPHY_SIZE.metadata,
     dayMinSize: MIN_FONT_SIZE.metadata,
     dayWeight: TYPOGRAPHY_WEIGHT.regular,
@@ -37,8 +35,6 @@ const COMPACT_TYPE_SCALE = Object.freeze({
     eventSize: TYPOGRAPHY_SIZE.metadata,
     eventMinSize: MIN_FONT_SIZE.metadata,
     eventWeight: TYPOGRAPHY_WEIGHT.regular,
-    navIconSize: 9,
-    navIconMinSize: 6,
 });
 
 const AGENDA_TYPE_SCALE = Object.freeze({
@@ -48,7 +44,6 @@ const AGENDA_TYPE_SCALE = Object.freeze({
     weekdaySize: TYPOGRAPHY_SIZE.body,
     weekdayMinSize: MIN_FONT_SIZE.body,
     weekdayWeight: TYPOGRAPHY_WEIGHT.extrabold,
-    weekdayOpacity: TEXT_OPACITY.subtle,
     daySize: TYPOGRAPHY_SIZE.body,
     dayMinSize: MIN_FONT_SIZE.body,
     dayWeight: TYPOGRAPHY_WEIGHT.regular,
@@ -56,8 +51,6 @@ const AGENDA_TYPE_SCALE = Object.freeze({
     eventSize: TYPOGRAPHY_SIZE.body,
     eventMinSize: MIN_FONT_SIZE.body,
     eventWeight: TYPOGRAPHY_WEIGHT.medium,
-    navIconSize: 15,
-    navIconMinSize: 12,
 });
 
 export { COMPACT_TYPE_SCALE, AGENDA_TYPE_SCALE };
@@ -245,7 +238,7 @@ export function createMonthGrid({
 
             if (dayNumber < 1 || dayNumber > daysInMonth) {
                 label.text = '';
-                label.style = `${baseDayStyle(fontSize)} opacity: ${SECONDARY_TEXT_OPACITY};`;
+                label.style = baseDayStyle(fontSize);
                 state.eventDotSlots[cell].visible = false;
                 state.cellDates[cell] = null;
                 continue;
@@ -298,7 +291,7 @@ export function createMonthGrid({
             label.text = dayName.slice(0, 1).toUpperCase();
             label.style = `${fontCss}font-size: ${fontSize}px; `
                 + `color: ${isAccentDay ? accentHex : textColor};`
-                + ` opacity: ${isAccentDay ? 1 : typeScale.weekdayOpacity}; font-weight: ${typeScale.weekdayWeight};`;
+                + `font-weight: ${typeScale.weekdayWeight};`;
         });
 
         // The weekday labels are centred in their pinned columns, so the same offset
