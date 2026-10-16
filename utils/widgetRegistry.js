@@ -34,7 +34,7 @@ const SIZE_PRESETS = Object.freeze({
     'calendar': [[4, 4], [5, 5], [5, 6]],
     'calendar-grid': [[5, 4], [6, 5], [8, 7]],
     'calendar-agenda': [[7, 4], [9, 5], [13, 7]],
-    'system-dashboard': [[4, 4], [5, 5], [6, 6]],
+    'system-dashboard': [[6, 4], [9, 6], [13, 10]],
     'pomodoro': [[4, 4], [5, 5], [6, 6]],
     'pomodoro-focus': [[8, 4], [10, 5], [12, 6]],
     'cpu-ram': [[4, 2], [6, 3], [8, 4]],

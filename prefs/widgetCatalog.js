@@ -66,8 +66,8 @@ export const STORE_WIDGETS = Object.freeze({
     },
     systemDashboard: {
         title: 'System Dashboard',
-        description: 'All-in-one system dashboard with CPU history, temp, tasks, network speed, and RAM.',
-        gridSize: '4x4',
+        description: 'All-in-one dashboard: CPU and memory load, GPU, disk, network, battery, and uptime.',
+        gridSize: '6x4',
         thumbnail: 'system-utils/system-dashboard.svg',
         fallbackIconName: 'resources-symbolic',
     },
