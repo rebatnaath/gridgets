@@ -4,7 +4,7 @@ import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { cssColorToRgba, resolveAccentColor, resolveExplicitFontFamily, resolveWidgetColors } from '../../utils/widgetUtils.js';
 import { getTopStoryFeeds, getTopStoryGenreIcon, getTopStoryGenreLabel } from '../../utils/widgetRegistry.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { subscribeToFeed } from '../../utils/rssEngine.js';
 import { resolveArticleImageUrl, fetchImageBytes } from '../../utils/articleImage.js';
@@ -92,6 +92,10 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         /** Image URL per article link, keyed so the pruner keeps the files actually in use. */
         entryImageUrls: new Map(),
         prunedImageSignature: null,
+        /** Cards currently on screen, so a late resolution can re-run the prune. */
+        shownCards: 0,
+        /** Shown articles whose image URL is still being resolved. */
+        pendingImageUrls: 0,
         /** Non-empty only when there is nothing to read and a fetch has failed. */
         fetchFailureMessage: '',
     };
@@ -263,8 +267,8 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
             + ` min-height: ${Math.round(titleFontPx * TITLE_LINE_HEIGHT_RATIO * CARD_TITLE_MAX_LINES)}px;`;
         entry.sourceLabel.style = metaStyle;
         entry.timeLabel.style = metaStyle;
-        // ClutterActor.opacity is a ubyte, not the 0-1 the stylesheet form takes, so the
-        // token has to be converted or it truncates to 0 and the label disappears.
+        // ClutterActor.opacity is a ubyte, so the token has to be converted or it
+        // truncates to 0 and the label disappears.
         const metaOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata);
         entry.sourceLabel.opacity = metaOpacity;
         entry.timeLabel.opacity = metaOpacity;
@@ -275,7 +279,8 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         if (entry.thumbnailImage.visible)
             entry.thumbnailImage.style = thumbnailStyle(entry.imageUri, thumbnailPx);
         entry.monogramLabel.style = `${fontCss}font-size: ${Math.max(1, Math.round(thumbnailPx * MONOGRAM_SIZE_RATIO))}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor}; opacity: ${TEXT_OPACITY.disabled};`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
+        entry.monogramLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.disabled);
     }
 
     function clearThumbnail(entry, thumbnailPx) {
@@ -343,26 +348,29 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
     function loadThumbnail(entry, article, thumbnailPx) {
         clearThumbnail(entry, thumbnailPx);
 
-        const applyResolved = imageUrl => {
-            if (isActorDestroyed(container) || entry.articleLink !== article.link) {
-                return;
-            }
-            if (imageUrl)
-                showImage(entry, article.link, imageUrl, thumbnailPx);
-        };
-
         if (article.image) {
-            applyResolved(article.image);
+            if (!isActorDestroyed(container) && entry.articleLink === article.link)
+                showImage(entry, article.link, article.image, thumbnailPx);
             return;
         }
         if (state.lookedUpUrls.has(article.link))
             return;
         state.lookedUpUrls.add(article.link);
-        resolveArticleImageUrl(article.link, state.imageCancellable, applyResolved);
+        // Counted while in flight so the pruner waits: a file whose URL has not landed yet
+        // is still in use, and pruning it is a refetch on the next start.
+        state.pendingImageUrls += 1;
+        resolveArticleImageUrl(article.link, state.imageCancellable, imageUrl => {
+            if (!isActorDestroyed(container) && entry.articleLink === article.link && imageUrl)
+                showImage(entry, article.link, imageUrl, thumbnailPx);
+            state.pendingImageUrls = Math.max(0, state.pendingImageUrls - 1);
+            if (state.pendingImageUrls === 0)
+                pruneVisibleThumbnails(state.shownCards);
+        });
     }
 
     function renderCards() {
         const shown = Math.min(MAX_CARDS, state.articles.length);
+        state.shownCards = shown;
         const thumbnailPx = px(THUMBNAIL_SIZE_PX);
         for (let i = 0; i < shown; i++) {
             const article = state.articles[i];
@@ -424,6 +432,11 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
      * to repeat per resize, so it runs only when the set of URLs has changed.
      */
     function pruneVisibleThumbnails(shown) {
+        // Nothing rendered yet, or a shown article's URL still in flight: an incomplete
+        // keep set is not a licence to delete the files it does not name. Teardown clears
+        // the map before a cancelled lookup settles, so a destroyed actor is skipped too.
+        if (state.articles.length === 0 || state.pendingImageUrls > 0 || isActorDestroyed(container))
+            return;
         const keepImageUrls = [];
         for (let i = 0; i < shown; i++) {
             const imageUrl = state.entryImageUrls.get(state.articles[i].link);
@@ -441,7 +454,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         if (!currentWidth || !currentHeight) {
             return;
         }
-        scale = Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX);
+        scale = clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
         const headerIconPx = px(HEADER_ICON_SIZE_PX);
         headerBox.style = `padding: ${px(HEADER_PADDING_V_PX)}px ${px(CONTENT_INSET_PX)}px ${px(HEADER_PADDING_BOTTOM_PX)}px;`;
         headerLabel.style = `${fontCss}font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`

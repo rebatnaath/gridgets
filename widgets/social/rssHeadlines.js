@@ -21,6 +21,8 @@ const FOOTER_PADDING_V_PX = 8;
 const ARTICLE_TITLE_MAX_CHARS = 110;
 const SNIPPET_MAX_CHARS = 160;
 const SOURCE_NAME_MAX_CHARS = 22;
+const BORDER_WIDTH_PX = 1;
+const CLUTTER_OPACITY_OPAQUE = 255;
 
 const SOURCE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
 const TITLE_DISPLAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
@@ -273,7 +275,7 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
         titleBar.style = `padding: ${px(TITLEBAR_PADDING_V_PX)}px ${px(TITLEBAR_PADDING_H_PX)}px;`
             + `background-color: ${subtleBackground};`
             + `border-radius: ${borderRadius}px ${borderRadius}px 0 0;`
-            + `border-bottom: 1px solid ${highlightBackground};`;
+            + `border-bottom: ${BORDER_WIDTH_PX}px solid ${highlightBackground};`;
         sourceLabel.style = `${fontCss}font-size: ${scaleFontSize(SOURCE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
         sourceLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -282,14 +284,18 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
         emptyState.applyScale(scale);
         articleTitle.style = `${fontCss}font-size: ${scaleFontSize(TITLE_DISPLAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
         articleSnippet.style = `${fontCss}font-size: ${scaleFontSize(SNIPPET_DISPLAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`
-            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `color: ${textColor};`;
+        articleSnippet.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
         articleSnippet.clutter_text.line_wrap = true;
         articleSnippet.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
 
         footerBar.style = `padding: ${px(FOOTER_PADDING_V_PX)}px ${px(TITLEBAR_PADDING_H_PX)}px;`
-            + `border-top: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.divider)};`;
-        timeLabel.style = `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`;
-        articlePositionLabel.style = `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`;
+            + `border-top: ${BORDER_WIDTH_PX}px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.divider)};`;
+        const footerOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata);
+        timeLabel.style = `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; color: ${textColor};`;
+        timeLabel.opacity = footerOpacity;
+        articlePositionLabel.style = `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; color: ${textColor};`;
+        articlePositionLabel.opacity = footerOpacity;
 
         applyArticle();
     }

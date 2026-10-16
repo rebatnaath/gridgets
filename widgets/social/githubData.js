@@ -155,10 +155,9 @@ export const DAY_NAMES = Object.freeze(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'
  * the caller draws it as an empty placeholder instead.
  */
 export function weekOfContributions(byDate, today) {
-    // GLib counts Sunday as 1 and Saturday as 7, so subtracting one makes Sunday 0. Taking
-    // the modulus instead would leave Sunday at 1, colliding with Monday, and start the week
-    // on the Saturday before.
-    const weekStart = today.add_days(-(today.get_day_of_week() - 1));
+    // GLib counts Monday as 1 and Sunday as 7, so the modulus maps Sunday to 0 and starts
+    // the week on the Sunday before today.
+    const weekStart = today.add_days(-(today.get_day_of_week() % 7));
     const counts = [];
     for (let day = 0; day < 7; day++) {
         const date = weekStart.add_days(day);

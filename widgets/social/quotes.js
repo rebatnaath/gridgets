@@ -21,6 +21,7 @@ const QUOTES_URL = 'https://raw.githubusercontent.com/rebatnaath/gridgets/main/g
 const QUOTES_REQUEST_TIMEOUT_SECONDS = 30;
 const OUTER_PADDING_PX = 14;
 const QUOTE_SIDE_PADDING_PX = 4;
+const CLUTTER_OPACITY_OPAQUE = 255;
 
 export function createQuotesNode(config, width, height, xPosition, yPosition) {
     const textColor = resolveWidgetForegroundColor(config);
@@ -33,7 +34,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
     let scale = clampWidgetScale(Math.min(width / REF_WIDTH, height / REF_HEIGHT));
     const px = value => scaleFontSize(value, scale);
     const authorStyle = () => `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label)}px; `
-        + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; opacity: ${TEXT_OPACITY.secondary}; padding-right: ${px(QUOTE_SIDE_PADDING_PX)}px;`;
+        + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; padding-right: ${px(QUOTE_SIDE_PADDING_PX)}px;`;
 
     const outerBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -62,6 +63,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
         y_expand: true,
         style: authorStyle(),
     });
+    authorLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
     outerBox.add_child(authorLabel);
 
     const offlineNotice = createOfflineNotice({ fontCss, textColor, scale });

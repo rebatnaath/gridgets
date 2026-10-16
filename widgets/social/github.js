@@ -2,15 +2,20 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
-import Soup from 'gi://Soup?version=3.0';
-import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, getGridgetsDataDir, loadJsonFromFileAsync, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, cssColorToRgba, saveJsonToFile, resolveAccentColor, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../utils/widgetUtils.js';
+import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, cssColorToRgba, resolveAccentColor, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../utils/widgetUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, traceRoundedRect, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
-import { HTTP_STATUS_OK, createGetMessage } from '../../utils/httpClient.js';
 import { createOfflineNotice, OFFLINE_NOTICE_MESSAGES } from '../../components/offline/offlineNotice/offlineNotice.js';
 import { isNetworkAvailable, subscribeToSettledConnectivity } from '../../utils/connectivity.js';
-import { cachedImageUri, writeCachedImageBytes } from '../../utils/lastGoodCache.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
+import {
+    createGithubClient,
+    githubAvatarCacheUri,
+    loadGithubUsername,
+    noteGithubAvatarFailure,
+    saveGithubUsername,
+    writeGithubAvatar,
+} from './githubData.js';
 
 const REF_WIDTH_PX = 520;
 const REF_HEIGHT_PX = 250;
@@ -34,15 +39,8 @@ const TOTAL_CAPTION_MONTHS = 6;
 const CONTRIBUTION_LEVEL_ALPHAS = [0, 0.28, 0.48, 0.72, 1];
 const MIN_CONTRIBUTION_WEEKS = 8;
 const MAX_CONTRIBUTION_WEEKS = 30;
-const AVATAR_REQUEST_SIZE_PX = 64;
 const REFRESH_INTERVAL_SECONDS = 600;
-// A session with no timeout waits forever, so a network that accepts the connection and
-// then goes quiet would leave a request in flight until the widget was destroyed.
-const GITHUB_REQUEST_TIMEOUT_SECONDS = 30;
-const decoder = new TextDecoder();
-
-/** Usernames whose avatar has already failed, so a 404 is not retried in the journal. */
-const loggedAvatarFailures = new Set();
+const CLUTTER_OPACITY_OPAQUE = 255;
 
 function contributionLevel(count) {
     if (count >= 10) return 4;
@@ -70,12 +68,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     let avatarImageUri = '';
 
     const state = { timerId: null, editing: false, cancellable: new Gio.Cancellable() };
-    const session = new Soup.Session({ timeout: GITHUB_REQUEST_TIMEOUT_SECONDS });
-
-    const dataFilePath = GLib.build_filenamev([
-        getGridgetsDataDir('github'),
-        `github-${config.id}.json`,
-    ]);
+    const client = createGithubClient(state.cancellable);
 
     const mainBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -239,7 +232,8 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         text: username ? 'Syncing…' : 'Click the username to configure',
         y_align: Clutter.ActorAlign.CENTER,
         style: `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-            + `color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`,
+            + `color: ${textColor};`,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
     });
 
     // The bar chart sits under the grid rather than beside it: the two share a week axis, so
@@ -269,7 +263,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     chartCaptionRow.add_child(thisWeekCaption);
     chartBox.add_child(chartCaptionRow);
 
-    const persistUsername = () => saveJsonToFile(dataFilePath, { username });
+    const persistUsername = () => saveGithubUsername(config, username);
 
     function applyLayout() {
         offlineNotice.applyScale(scale);
@@ -290,18 +284,23 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
             + `color: ${textColor}; width: ${px(150)}px;`;
         totalLabel.style = `${fontCss}font-size: ${scaleFontSize(TOTAL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${accentColor};`;
+        const secondaryOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
         totalCaptionLabel.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `color: ${textColor};`;
+        totalCaptionLabel.opacity = secondaryOpacity;
         statRows.forEach((row, index) => {
             row.name.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-                + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+                + `color: ${textColor};`;
+            row.name.opacity = secondaryOpacity;
             row.value.style = `${fontCss}font-size: ${scaleFontSize(STAT_VALUE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
         });
         weeklyCaption.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `color: ${textColor};`;
+        weeklyCaption.opacity = secondaryOpacity;
         thisWeekCaption.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `color: ${textColor};`;
+        thisWeekCaption.opacity = secondaryOpacity;
 
         renderMatrix();
         applySummary();
@@ -343,7 +342,8 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
                 x_align: Clutter.ActorAlign.START,
                 y_align: Clutter.ActorAlign.CENTER,
                 style: `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-                    + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`,
+                    + `color: ${textColor};`,
+                opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
             });
             label.translation_x = labelX;
             lastLabelEnd = labelX + estimatedLabelWidth;
@@ -447,10 +447,16 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         // Saturday, so days after today in the same column would read as a broken streak.
         let currentStreak = 0;
         const today = GLib.DateTime.new_now_local();
+        let latestKey = '';
+        for (const key of byDate.keys()) {
+            if (key > latestKey)
+                latestKey = key;
+        }
         for (let back = 0; back < daysInGrid; back++) {
-            if (today.add_days(-back).format('%Y-%m-%d') > (byDate instanceof Map ? [...byDate.keys()].sort().pop() : ''))
+            const dayKey = today.add_days(-back).format('%Y-%m-%d');
+            if (dayKey > latestKey)
                 continue;
-            if ((byDate.get(today.add_days(-back).format('%Y-%m-%d')) || 0) > 0)
+            if ((byDate.get(dayKey) || 0) > 0)
                 currentStreak++;
             else
                 break;
@@ -548,9 +554,9 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
         const today = GLib.DateTime.new_now_local();
         const daysInGrid = weeks * 7;
-        // Anchor to the end of the current week so the latest, partial week is always
-        // the last column. The modulus turns GLib's Sun=1..Sat=7 into Sat=6, so this
-        // lands on Saturday, which is the last row the cells below are numbered for.
+        // Anchor to the end of the current week so the latest, partial week is always the
+        // last column. GLib counts Monday as 1 and Sunday as 7, so the modulus maps Sunday
+        // to 0 and every day still resolves to the Saturday that closes its week.
         const gridEnd = today.add_days(6 - (today.get_day_of_week() % 7));
         const alignedStart = gridEnd.add_days(-(daysInGrid - 1));
 
@@ -568,7 +574,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
             const dateKey = date.format('%Y-%m-%d');
             const column = Math.floor(index / 7);
-            const row = date.get_day_of_week() % 7; // GLib Sun=1..Sat=7 -> row Sun=0
+            const row = date.get_day_of_week() % 7; // GLib Monday=1..Sunday=7, so Sunday is row 0
 
             cells.push({
                 x: column * (size + gap),
@@ -596,72 +602,30 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
             statusLabel.hide();
     }
 
-    function fetchJson(url, callback) {
-        const message = createGetMessage(url);
-        if (!message) {
-            callback(new Error('request could not be created'), null);
-            return;
-        }
-        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (s, res) => {
-            try {
-                const bytes = s.send_and_read_finish(res);
-                if (message.get_status() !== HTTP_STATUS_OK)
-                    throw new Error(`HTTP ${message.get_status()}`);
-                callback(null, JSON.parse(decoder.decode(bytes.get_data())));
-            } catch (err) {
-                const isCancelled = err.matches && err.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED);
-                callback(isCancelled ? null : err, null);
-            }
-        });
-    }
-
     function loadAvatar() {
         if (!username) return;
         // The request is for this user specifically, so the key and the guard both have to
         // be taken from it rather than from whatever username holds when the answer lands.
         const requestedUsername = username;
-        const url = `https://github.com/${encodeURIComponent(requestedUsername)}.png?size=${AVATAR_REQUEST_SIZE_PX}`;
-        const message = createGetMessage(url);
-        if (!message) {
-            console.error('Gridgets: github avatar request could not be created');
-            return;
-        }
-        session.send_and_read_async(message, GLib.PRIORITY_DEFAULT, state.cancellable, (s, res) => {
+        client.fetchAvatar(requestedUsername, (err, bytes) => {
             if (isActorDestroyed(container) || username !== requestedUsername) return;
-            try {
-                const bytes = s.send_and_read_finish(res);
-                if (!bytes || bytes.get_size() === 0)
-                    throw new Error('empty response');
-                // GitHub's avatar endpoint redirects and answers with JPEG whatever the
-                // .png in the URL says, so the bytes are stored as they arrive and the
-                // stylesheet is left to work out the format.
-                if (message.get_status() !== HTTP_STATUS_OK)
-                    throw new Error(`status ${message.get_status()}`);
-
-                // Keyed by username and size, so a different person gets a different file
-                // and St's CSS cache cannot serve one avatar in place of another. The style
-                // is applied only once the write has landed, because a background-image
-                // pointing at a file that is not there yet fails silently.
-                const key = `avatar-${requestedUsername}-${AVATAR_REQUEST_SIZE_PX}`;
-                const uri = cachedImageUri('github', config.id, key);
-                if (!uri)
-                    throw new Error('no cache path for avatar');
-                writeCachedImageBytes('github', config.id, key, bytes, () => {
-                    if (isActorDestroyed(container) || username !== requestedUsername) return;
-                    avatarImageUri = uri;
-                    initialsLabel.hide();
-                    applyLayout();
-                });
-            } catch (err) {
-                // Latched per username: a mistyped name 404s on every fetch, and the avatar
-                // is retried on each reconnect, so this would otherwise repeat indefinitely
-                // for what is a user error rather than a fault.
-                const key = `avatar-failed-${requestedUsername}`;
-                if (!loggedAvatarFailures.has(key)) {
-                    loggedAvatarFailures.add(key);
-                    console.error('Gridgets: github avatar could not be fetched:', err.message);
-                }
+            if (err || !bytes) {
+                noteGithubAvatarFailure(requestedUsername, err || new Error('no avatar'));
+                return;
             }
+            const uri = githubAvatarCacheUri(config, requestedUsername);
+            if (!uri) {
+                noteGithubAvatarFailure(requestedUsername, new Error('no cache path for avatar'));
+                return;
+            }
+            // The style is applied only once the write has landed, because a background-image
+            // pointing at a file that is not there yet fails silently.
+            writeGithubAvatar(config, requestedUsername, bytes, () => {
+                if (isActorDestroyed(container) || username !== requestedUsername) return;
+                avatarImageUri = uri;
+                initialsLabel.hide();
+                applyLayout();
+            });
         });
     }
 
@@ -669,9 +633,9 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
         if (!username) return;
         const requestedUsername = username;
         updateStatus('Syncing…');
-        fetchJson(`https://github-contributions-api.jogruber.de/v4/${encodeURIComponent(requestedUsername)}`, (err, data) => {
+        client.fetchContributions(requestedUsername, (err, byDate) => {
             if (isActorDestroyed(container) || username !== requestedUsername) return;
-            if (err || !data || !Array.isArray(data.contributions)) {
+            if (err || !byDate) {
                 if (!isNetworkAvailable()) {
                     showOfflineState();
                     return;
@@ -679,12 +643,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
                 updateStatus('Error loading');
                 return;
             }
-
-            const byDate = new Map();
-            data.contributions.forEach(day => byDate.set(day.date, day.count || 0));
-
             updateStatus('');
-
             latestByDate = byDate;
             showContentState();
             renderMatrix(byDate);
@@ -761,7 +720,6 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     connectTimerCleanup(container, state);
     registerWidgetCleanup(container, () => {
         state.cancellable.cancel();
-        session.abort();
         persistUsername();
         if (global.stage.get_key_focus() === usernameEntry)
             global.stage.set_key_focus(null);
@@ -789,10 +747,10 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     registerWidgetCleanup(container, () => releaseConnectivity());
 
-    loadJsonFromFileAsync(dataFilePath, (savedData, loadError) => {
+    loadGithubUsername(config, (savedUsername, loadError) => {
         if (isActorDestroyed(container)) return;
-        if (savedData && typeof savedData.username === 'string') {
-            username = savedData.username;
+        if (savedUsername) {
+            username = savedUsername;
             config.username = username;
             updateHeader();
             fetchContributions();

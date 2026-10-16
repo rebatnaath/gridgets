@@ -44,9 +44,11 @@ const PLACEHOLDER_HEIGHT_PX = 14;
 const PLACEHOLDER_DASH_PX = 4;
 const PLACEHOLDER_GAP_PX = 3;
 const DIVIDER_THICKNESS_PX = 1;
+const PILL_BORDER_WIDTH_PX = 1;
 const SUMMARY_MONTHS = 6;
 const PILL_RADIUS_PX = 999;
 const REFRESH_INTERVAL_SECONDS = 600;
+const CLUTTER_OPACITY_OPAQUE = 255;
 
 /**
  * The outline of a rounded rectangle as a closed polyline, walked from the top-left corner
@@ -246,8 +248,8 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
      * and the bars are corrected on the next layout pass.
      */
     function barAreaHeight() {
-        const measured = dayColumns[0]?.box?.height || 0;
-        const labels = (dayColumns[0]?.countLabel?.height || 0) + (dayColumns[0]?.dayLabel?.height || 0);
+        const measured = dayColumns[0].box.height || 0;
+        const labels = (dayColumns[0].countLabel.height || 0) + (dayColumns[0].dayLabel.height || 0);
         if (measured <= 0 || labels <= 0)
             return px(BAR_AREA_HEIGHT_PX);
         return Math.max(px(EMPTY_BAR_HEIGHT_PX * 2), measured - labels);
@@ -313,7 +315,7 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
      * the widget width describes the space the bar actually gets.
      */
     function columnWidth() {
-        const measured = dayColumns[0]?.box?.width || 0;
+        const measured = dayColumns[0].box.width || 0;
         if (measured > 0)
             return measured;
         const inner = currentWidth - px(CONTAINER_PADDING_H_PX) * 2;
@@ -453,6 +455,9 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
         username = submitted;
         config.username = submitted;
         usernameLabel.text = `@${username}`;
+        // Cleared before the rebuild so the previous person's picture goes with the name;
+        // leaving it lets a failed fetch keep the old avatar on screen for good.
+        avatarImageUri = '';
         saveGithubUsername(config, username);
         applyLayout();
         fetchContributions();
@@ -501,7 +506,7 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
 
         const pillStyle = `${fontCss}font-size: ${scaleFontSize(PILL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${accentColor};`
-            + ` border: 1px solid ${cssColorToRgba(accentColor, GRAPHICS_OPACITY.border)};`
+            + ` border: ${PILL_BORDER_WIDTH_PX}px solid ${cssColorToRgba(accentColor, GRAPHICS_OPACITY.border)};`
             + ` border-radius: ${px(PILL_RADIUS_PX)}px; padding: ${px(3)}px ${px(10)}px;`
             + ` background-color: ${cssColorToRgba(accentColor, 0.10)};`;
         totalPill.style = pillStyle;
@@ -511,7 +516,8 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
             column.countLabel.style = `${fontCss}font-size: ${scaleFontSize(COUNT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${accentColor};`;
             column.dayLabel.style = `${fontCss}font-size: ${scaleFontSize(CAPTION_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-                + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+                + `color: ${textColor};`;
+            column.dayLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
         });
 
         // The spacing is what keeps 'this week' and 'last week' from running together as one
@@ -521,7 +527,8 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
             summary.value.style = `${fontCss}font-size: ${scaleFontSize(SUMMARY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
             summary.caption.style = `${fontCss}font-size: ${scaleFontSize(CAPTION_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-                + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+                + `color: ${textColor};`;
+            summary.caption.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
         });
 
         divider.style = `height: ${px(DIVIDER_THICKNESS_PX)}px;`
