@@ -1,4 +1,5 @@
 import St from 'gi://St';
+import Gio from 'gi://Gio';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import { toggleWidgetResizeHandle } from './widgetEditUtils.js';
 import { onWidgetResized, onWidgetDeleted } from './dragDrop.js';
