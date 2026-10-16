@@ -1,7 +1,7 @@
 import GLib from 'gi://GLib';
 import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, parseCssColor, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
-import { extractDominantColor, ensureLocalArtwork, monitorArtworkFile, clearArtworkMonitor, newestArtworkForTrack } from './artwork.js';
+import { extractDominantColor, ensureLocalArtwork, monitorArtworkFile, newestArtworkForTrack } from './artwork.js';
 import { clampWidgetScale } from '../../utils/typography.js';
 
 const COVER_TEXT_LUMINANCE_THRESHOLD = 0.55;

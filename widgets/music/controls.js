@@ -8,6 +8,8 @@ import { MIN_FONT_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, scaleFontSize } from '.
 
 const BORDER_RADIUS_PILL = 99;
 
+const CLUTTER_OPACITY_OPAQUE = 255;
+
 const SKIP_BACK_ICON = 'media-skip-backward-symbolic';
 const SKIP_FORWARD_ICON = 'media-skip-forward-symbolic';
 const FALLBACK_ICON = 'audio-x-generic-symbolic';
@@ -21,11 +23,11 @@ const BASE_PROGRESS_SPACER_HEIGHT = 8;
 const BASE_TIMER_MARGIN_TOP = 8;
 const BASE_TIMER_FONT_SIZE = 12;
 
-// Both timer labels share this so a resize cannot drop the build-time dimming.
+// Both timer labels share this so the build and the rescale cannot drift apart.
 function buildTimerLabelStyle(fontCss, textColor, scale) {
     const fontSize = scaleFontSize(BASE_TIMER_FONT_SIZE, scale, MIN_FONT_SIZE.metadata);
     return `${fontCss}color: ${textColor}; font-size: ${fontSize}px; `
-        + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; opacity: ${TEXT_OPACITY.secondary};`;
+        + `font-weight: ${TYPOGRAPHY_WEIGHT.regular};`;
 }
 
 export function createBackgroundLayer(config) {
@@ -204,15 +206,18 @@ export function buildControlsColumn(config, state, initialScale = 1) {
     progressBg.add_child(progressFill);
 
     const timerStyle = buildTimerLabelStyle(fontCss, textColor, scale);
+    const timerOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
     const timerLabelLeft = new St.Label({
         text: '00:00',
         x_align: Clutter.ActorAlign.START,
         style: timerStyle,
+        opacity: timerOpacity,
     });
     const timerLabelRight = new St.Label({
         text: '00:00',
         x_align: Clutter.ActorAlign.END,
         style: timerStyle,
+        opacity: timerOpacity,
     });
 
     const progressRow = new St.BoxLayout({

@@ -20,7 +20,8 @@ import { resetSystemMonitorEngines } from './utils/systemMonitorEngine.js';
 import { clearEnsuredDirectories } from './utils/widgetUtils.js';
 import { findThemePreset } from './utils/themePresets.js';
 import { clearMusicPlaybackState } from './widgets/music/playbackState.js';
-import { clearMusicPolls } from './widgets/music/index.js';
+import { clearMusicPolls, clearMusicRetainedState } from './widgets/music/index.js';
+import { clearPlayerControlState } from './widgets/music/mpris.js';
 import { screenTimeEngine } from './utils/screenTimeEngine.js';
 import { APP_LAUNCHERS_KEY, SHOW_APP_LAUNCHERS_KEY } from './desktopIcons/appLaunchers.js';
 import {
@@ -184,6 +185,8 @@ export default class GridgetsExtension extends Extension {
         resetSystemMonitorEngines();
         clearMusicPlaybackState();
         clearMusicPolls();
+        clearMusicRetainedState();
+        clearPlayerControlState();
         clearEnsuredDirectories();
     }
 

@@ -19,6 +19,8 @@ const CONTROLS_MARGIN_HORIZONTAL_PX = 12;
 const CONTROLS_MARGIN_TOP_PX = 18;
 const CONTROLS_MARGIN_BOTTOM_PX = 4;
 
+const CLUTTER_OPACITY_OPAQUE = 255;
+
 const scaledLabelMargin = scale => scaleFontSize(LABEL_MARGIN_BOTTOM_PX, scale);
 
 export function buildLargeLayout(config, state, width) {
@@ -71,14 +73,16 @@ export function buildLargeLayout(config, state, width) {
     const artistLabel = new St.Label({
         text: 'Unknown Artist',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${scaleFontSize(BASE_SECONDARY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle)}px; `
+        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_SECONDARY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle)}px; `
             + `margin-bottom: ${scaledLabelMargin(scale)}px;`,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
     });
     const albumLabel = new St.Label({
         text: '',
         x_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.metadata}; font-size: ${scaleFontSize(BASE_SECONDARY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle)}px; `
+        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_SECONDARY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle)}px; `
             + `margin-bottom: ${scaledLabelMargin(scale)}px;`,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
     });
 
     state.titleLabel = titleLabel;
@@ -117,9 +121,9 @@ export function buildLargeLayout(config, state, width) {
             + ` border-radius: ${cornerRadius}px 0 0 ${cornerRadius}px;`;
         titleLabel.style = `${fontCss}color: ${colors.textColor}; font-size: ${titleSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; `
             + `margin-bottom: ${scaledLabelMargin(scalerRatio)}px;`;
-        artistLabel.style = `${fontCss}color: ${colors.textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${artistSize}px; `
+        artistLabel.style = `${fontCss}color: ${colors.textColor}; font-size: ${artistSize}px; `
             + `margin-bottom: ${scaledLabelMargin(scalerRatio)}px;`;
-        albumLabel.style = `${fontCss}color: ${colors.textColor}; opacity: ${TEXT_OPACITY.metadata}; font-size: ${albumSize}px; `
+        albumLabel.style = `${fontCss}color: ${colors.textColor}; font-size: ${albumSize}px; `
             + `margin-bottom: ${scaledLabelMargin(scalerRatio)}px;`;
 
         updateControlButtonScaling(state, scalerRatio, fontFamily, colors.textColor, highlight);

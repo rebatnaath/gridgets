@@ -1,6 +1,6 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import { WIDE_MUSIC_LAYOUT_ASPECT_RATIO } from '../../utils/widgetRegistry.js';
+import { isWideMusicLayout } from '../../utils/widgetRegistry.js';
 import { connectTimerCleanup, createWidgetContainer, registerWidgetCleanup } from '../../shell/widgetUIUtils.js';
 import { DBUS_POLL_INTERVAL_MS } from './mpris.js';
 import {
@@ -16,8 +16,6 @@ import { buildSmallLayout } from './musicSmall.js';
 import { buildLargeLayout } from './musicLarge.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { clearArtworkMonitor } from './artwork.js';
-
-const LARGE_LAYOUT_BASE_HEIGHT = 240;
 
 /** Shared D-Bus pollers keyed by player-filter config, so N widgets make 1 poll/s total. */
 const activeMusicPolls = new Map();
@@ -64,6 +62,11 @@ function beginMusicPolling(config, onPollTick) {
 // start at 00:00 with no cover. Keyed by widget id, which survives a rebuild.
 const retainedStateByWidgetId = new Map();
 
+/** Clears retained playback state; called from the extension's disable(). */
+export function clearMusicRetainedState() {
+    retainedStateByWidgetId.clear();
+}
+
 // Only what describes the music. Actor handles, cancellables and timers belong to the
 // instance being torn down and must not be carried over.
 const RETAINED_STATE_FIELDS = Object.freeze([
@@ -79,7 +82,6 @@ const RETAINED_STATE_FIELDS = Object.freeze([
     'resolvedArtUrl',
     'resolvedArtPath',
     'resolvedArtMisses',
-    'lastLoggedMissingArt',
 ]);
 function retainableFields(state) {
     const retained = {};
@@ -125,9 +127,11 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
         loggedMissingArtwork: false,
     };
 
-    // Seeded before the first fetch, so the rebuild paints the same cover at once.
+    // Seeded before the first fetch, so the rebuild paints the same cover at once. The
+    // entry is consumed here: a rebuilt widget stores a fresh one when it is torn down.
     const retained = config.id ? retainedStateByWidgetId.get(config.id) : null;
     if (retained) {
+        retainedStateByWidgetId.delete(config.id);
         Object.assign(state, retained);
     }
 
@@ -146,11 +150,9 @@ export function createMusicNode(config, width, height, xPosition, yPosition) {
         }
     });
 
-    const isLargeLayout = height > 0 && width / height >= WIDE_MUSIC_LAYOUT_ASPECT_RATIO;
-    config.isLargeLayout = isLargeLayout;
+    const isLargeLayout = isWideMusicLayout(config);
 
     if (isLargeLayout) {
-        config.layoutScale = height / LARGE_LAYOUT_BASE_HEIGHT;
         buildLargeLayout(config, state, width);
     } else {
         buildSmallLayout(config, state);

@@ -177,6 +177,12 @@ export async function fetchPlayerPosition(playerName, cancellable = null) {
 // control that was never supported does not write a line on every press of it.
 const loggedUnsupportedControls = new Set();
 
+/** Clears the action lock and the log latches; called from the extension's disable(). */
+export function clearPlayerControlState() {
+    lastActionEpochMs = 0;
+    loggedUnsupportedControls.clear();
+}
+
 async function callPlayerMethod(playerName, method) {
     if (!playerName) return;
     try {

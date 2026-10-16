@@ -5,8 +5,6 @@
 // not reach for St, Clutter, Meta, Gtk, Gdk or Adw. Anything that varies per process
 // (descriptions, thumbnails) belongs to the preferences side instead.
 
-const WIDE_MUSIC_LAYOUT_ASPECT_RATIO = 1.5;
-
 const TIME_LAYOUTS = Object.freeze({
     default: 'time',
     world: 'worldClock',
@@ -165,19 +163,14 @@ export function getTopStoryFeeds(genre) {
 }
 
 export const SIZE_PRESET_TIERS = Object.freeze(['Small', 'Medium', 'Large']);
-export { WIDE_MUSIC_LAYOUT_ASPECT_RATIO };
 
 /**
- * Classifies the wide music layout. `isLargeLayout` is set by the preferences adder
- * before the widget has a size, so the intended layout can still be honoured.
- *
- * The aspect test is a fallback for a widget saved before that flag existed. Both music
- * footprints are 2:1 in cells, so on the fixed grid the ratio is 2.0 at any cell size and
- * this can only ever say yes; the flag is what actually chooses the layout.
+ * Classifies the wide music layout. The preferences adder sets `isLargeLayout` before the
+ * widget has a size and it is stored with the widget, so the flag is the only signal the
+ * layout needs.
  */
 export function isWideMusicLayout(widget) {
-    if (widget.isLargeLayout) return true;
-    return widget.height > 0 && widget.width / widget.height >= WIDE_MUSIC_LAYOUT_ASPECT_RATIO;
+    return widget.isLargeLayout === true;
 }
 
 /**

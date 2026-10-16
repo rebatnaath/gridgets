@@ -553,13 +553,6 @@ async function resolveRemoteArtwork(artUrl, state, callback) {
 }
 
 /**
- * Resolves an art URL to a path on disk, or calls back null when there is none.
- *
- * A file the player owns is looked for where the player keeps it; a remote one is
- * downloaded into the cache. A missing file is retried on timers held in
- * state.artworkRetryWaits, so they can all be cleared on widget destruction.
- */
-/**
  * The artwork a player most recently wrote into the folder it advertises paths from.
  *
  * Firefox deletes the previous file and advertises the new one seconds after a track
@@ -579,6 +572,13 @@ export async function newestArtworkForTrack(state, callback) {
     return true;
 }
 
+/**
+ * Resolves an art URL to a path on disk, or calls back null when there is none.
+ *
+ * A file the player owns is looked for where the player keeps it; a remote one is
+ * downloaded into the cache. A missing file is retried on timers held in
+ * state.artworkRetryWaits, so they can all be cleared on widget destruction.
+ */
 export async function ensureLocalArtwork(artUrl, state, callback) {
     if (!artUrl) {
         callback(null);

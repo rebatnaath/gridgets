@@ -135,17 +135,12 @@ export function applyPlayerState(properties, state) {
     } else if (isNewTrack) {
         state.trackLengthMicro = 0;
     }
+    // A track whose art URL is not advertised yet keeps the previous one: Firefox reports
+    // none for several seconds after a change, and with two profiles running the widget may
+    // be following whichever one reported Playing. Clearing here blanked the cover for most
+    // of the track.
     if (track.artUrl) {
         state.lastArtUrl = track.artUrl;
-    } else if (isNewTrack) {
-        // Firefox advertises no art URL for several seconds after a track change, and
-        // with two profiles running the widget may be following whichever one reported
-        // Playing. Clearing here left the cover blank for most of a track, so the last
-        // one is held until this track's own art arrives and replaces it.
-        if (state.lastLoggedMissingArt !== trackKey) {
-            state.lastLoggedMissingArt = trackKey;
-            console.error(`Gridgets: new track "${track.title}" has no art URL yet, holding the current cover`);
-        }
     }
 
     const positionMicro = unpackVariantValue(properties['Position']);
