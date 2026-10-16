@@ -173,9 +173,6 @@ function runCommand(commandline, description) {
     }
 }
 
-// The properties themselves are drawn in the shell: nautilus-properties is no longer
-// shipped, so there is nothing on PATH that would show them.
-
 export function showInFileManager(file) {
     if (!isInstalled(FILE_MANAGER)) {
         console.error(`Gridgets: ${FILE_MANAGER} is not installed, so ${file.get_uri()} cannot be shown in a folder`);
@@ -187,8 +184,6 @@ export function showInFileManager(file) {
         `${FILE_MANAGER} --select ${GLib.shell_quote(file.get_uri())}`,
         `Open ${file.get_basename()} in Files`);
 }
-
-
 
 /**
  * Where the extension starts, or -1 when there is none.
@@ -218,16 +213,18 @@ export function freeNameIn(directory, baseName) {
     return null;
 }
 
-/** Moves or copies an entry into a folder, under a name that is free there. */
 /**
  * Copies one entry, descending into directories.
  *
- * Gio.File.copy given a directory creates the directory and nothing inside it, so the
- * plain call hands back an empty folder and reports success. A move has no such problem
- * because it is a rename, which is why Copy to... failed on folders while Move to... on
- * the same folder worked.
+ * Gio.File.copy given a directory creates the directory and nothing inside it, so a plain
+ * call hands back an empty folder and reports success. Directories are walked instead.
  */
 function copyEntryTree(source, target) {
+    // A target inside the source is copied forever: the walk re-enters the same tree one
+    // level down each time. Callers reject this before they get here; this is the backstop.
+    if (target.has_prefix(source))
+        throw new Error('a folder cannot be copied inside itself');
+
     if (!isDirectoryEntry(source)) {
         source.copy(target, Gio.FileCopyFlags.NONE, null, null);
         return;
@@ -258,6 +255,9 @@ function transferEntry(file, destinationDirectory, shouldMove) {
         return { ok: false, message: `That folder already has too many entries called “${file.get_basename()}”.` };
 
     const target = destinationDirectory.get_child(name);
+    if (!shouldMove && target.has_prefix(file))
+        return { ok: false, message: 'A folder cannot be copied into itself.' };
+
     try {
         // No OVERWRITE flag: the free name above is what keeps this from replacing
         // anything, and the filesystem enforces it too.
@@ -276,7 +276,6 @@ function transferEntry(file, destinationDirectory, shouldMove) {
 export function pasteUrisIntoDirectory(uris, shouldMove, directory) {
     let pasted = 0;
     let lastFailure = '';
-
     let alreadyThere = 0;
 
     for (const uri of uris) {
@@ -300,11 +299,16 @@ export function pasteUrisIntoDirectory(uris, shouldMove, directory) {
         }
 
         const target = directory.get_child(name);
+        if (!shouldMove && target.has_prefix(source)) {
+            lastFailure = `“${source.get_basename()}” cannot be copied into itself`;
+            continue;
+        }
+
         try {
             if (shouldMove)
                 source.move(target, Gio.FileCopyFlags.NONE, null, null);
             else
-                source.copy(target, Gio.FileCopyFlags.NONE, null, null);
+                copyEntryTree(source, target);
             pasted++;
         } catch (error) {
             console.error(`Gridgets: ${uri} could not be pasted:`, error);
