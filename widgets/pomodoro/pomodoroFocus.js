@@ -1,7 +1,7 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetColors, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, resolveAccentColor } from '../../utils/widgetUtils.js';
-import { drawCircularArc, createWidgetContainer, connectTimerCleanup, registerWidgetCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
+import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import {
@@ -28,6 +28,17 @@ const MODE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
 const BUTTON_FONT_SIZE_PX = TYPOGRAPHY_SIZE.button;
 const COUNTER_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
 const MAIN_BOX_SPACING_PX = 14;
+const CLUTTER_OPACITY_OPAQUE = 255;
+const MODE_SELECTOR_PADDING_PX = 3;
+const BUTTON_PADDING_V_PX = 4;
+const BUTTON_MIN_HEIGHT_PX = 28;
+const COUNTER_PREFIX_MARGIN_PX = 4;
+const COUNTER_VALUE_MARGIN_PX = 2;
+const COUNTER_ROW_MARGIN_TOP_PX = 10;
+const ACTION_BUTTON_MARGIN_H_PX = 2;
+const ACTION_BUTTON_SPACING_PX = 4;
+const ACTION_BUTTON_PADDING_H_PX = 4;
+const ACTION_BUTTONS_MARGIN_TOP_PX = 6;
 
 export function createPomodoroFocusNode(config, width, height, xPosition, yPosition) {
     const {
@@ -48,8 +59,6 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         refreshControlStyles();
     });
     const state = timer.state;
-
-    registerWidgetCleanup(container, () => timer.stopTimer());
 
     const mainBox = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
@@ -85,6 +94,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     const phaseCaption = new St.Label({
         text: PHASE_CONFIG[state.phase].label,
         x_align: Clutter.ActorAlign.CENTER,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
     });
     gaugeOverlay.add_child(timerLabel);
     gaugeOverlay.add_child(phaseCaption);
@@ -132,9 +142,15 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     const counterRow = new St.BoxLayout({
         x_align: Clutter.ActorAlign.CENTER,
     });
-    const counterPrefixLabel = new St.Label({ text: 'Completed:' });
+    const counterPrefixLabel = new St.Label({
+        text: 'Completed:',
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
+    });
     const counterValueLabel = new St.Label({ text: '0' });
-    const counterTotalLabel = new St.Label({ text: `/ ${getSessionsBeforeLongBreak(config)}` });
+    const counterTotalLabel = new St.Label({
+        text: `/ ${getSessionsBeforeLongBreak(config)}`,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
+    });
     counterRow.add_child(counterPrefixLabel);
     counterRow.add_child(counterValueLabel);
     counterRow.add_child(counterTotalLabel);
@@ -160,6 +176,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         reactive: true,
         can_focus: true,
         x_expand: true,
+        opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
         child: new St.Label({
             text: 'Reset',
             x_align: Clutter.ActorAlign.CENTER,
@@ -185,40 +202,41 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         const px = value => scaleFontSize(value, scale);
         const fontPx = (value, minimum) => scaleFontSize(value, scale, minimum);
         const isWork = state.phase === PHASE_WORK;
-        const inactiveText = `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
-        const activeText = `color: ${textColor};`;
+        const inactiveOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
 
         modeSelector.style = `background-color: ${subtleBackground};`
-            + `padding: ${px(3)}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`;
+            + `padding: ${px(MODE_SELECTOR_PADDING_PX)}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`;
         const modeButtonStyle = isActive => `${fontCss}font-size: ${fontPx(MODE_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${isActive ? TYPOGRAPHY_WEIGHT.bold : TYPOGRAPHY_WEIGHT.medium};`
-            + `padding: ${px(4)}px 0; min-height: 28px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
+            + `padding: ${px(BUTTON_PADDING_V_PX)}px 0; min-height: ${BUTTON_MIN_HEIGHT_PX}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
             + `background-color: ${isActive ? highlightBackground : 'transparent'};`
-            + `${isActive ? activeText : inactiveText}`;
+            + `color: ${textColor};`;
         workBtn.style = modeButtonStyle(isWork);
         breakBtn.style = modeButtonStyle(!isWork);
+        workBtn.set_opacity(isWork ? CLUTTER_OPACITY_OPAQUE : inactiveOpacity);
+        breakBtn.set_opacity(!isWork ? CLUTTER_OPACITY_OPAQUE : inactiveOpacity);
 
         counterPrefixLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; margin-right: ${px(4)}px;`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-right: ${px(COUNTER_PREFIX_MARGIN_PX)}px;`;
         counterValueLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-right: ${px(2)}px;`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-right: ${px(COUNTER_VALUE_MARGIN_PX)}px;`;
         counterTotalLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`;
 
         startBtn.style = `${fontCss}font-size: ${fontPx(BUTTON_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`
-            + `padding: ${px(4)}px 0; min-height: 28px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
-            + `margin: 0 ${px(2)}px;`
+            + `padding: ${px(BUTTON_PADDING_V_PX)}px 0; min-height: ${BUTTON_MIN_HEIGHT_PX}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
+            + `margin: 0 ${px(ACTION_BUTTON_MARGIN_H_PX)}px;`
             + `background-color: ${accentHex};`
             + `color: ${textOnAccent};`;
         resetBtn.style = `${fontCss}font-size: ${fontPx(BUTTON_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`
-            + `padding: ${px(4)}px 0; min-height: 28px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
-            + `margin: 0 ${px(2)}px;`
+            + `padding: ${px(BUTTON_PADDING_V_PX)}px 0; min-height: ${BUTTON_MIN_HEIGHT_PX}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
+            + `margin: 0 ${px(ACTION_BUTTON_MARGIN_H_PX)}px;`
             + `background-color: ${subtleBackground};`
-            + `color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `color: ${textColor};`;
 
         timerLabel.style = `${fontCss}font-size: ${fontPx(TIMER_FONT_SIZE_PX, MIN_FONT_SIZE.primary)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
         phaseCaption.style = `${fontCss}font-size: ${fontPx(CAPTION_FONT_SIZE_PX, MIN_FONT_SIZE.metadata)}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; color: ${textColor};`;
 
         startBtn.child.text = state.isRunning ? 'Pause' : 'Start';
     };
@@ -255,8 +273,8 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         gaugeWrap.set_size(gaugeSize, gaugeSize);
         canvasActor.set_size(gaugeSize, gaugeSize);
 
-        actionButtons.style = `spacing: ${px(4)}px; margin-top: ${px(6)}px; padding: 0 ${px(4)}px;`;
-        counterRow.style = `margin-top: ${px(10)}px;`;
+        actionButtons.style = `spacing: ${px(ACTION_BUTTON_SPACING_PX)}px; margin-top: ${px(ACTION_BUTTONS_MARGIN_TOP_PX)}px; padding: 0 ${px(ACTION_BUTTON_PADDING_H_PX)}px;`;
+        counterRow.style = `margin-top: ${px(COUNTER_ROW_MARGIN_TOP_PX)}px;`;
 
         updateDisplay();
         refreshControlStyles();
