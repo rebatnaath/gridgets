@@ -11,7 +11,6 @@ const pendingMonthLoads = new Map();
 /** Generation counter — stale completions from before a clear are discarded. */
 let monthLoadGeneration = 0;
 
-
 function monthKeyOf(dateString) {
     return dateString.slice(0, 7);
 }

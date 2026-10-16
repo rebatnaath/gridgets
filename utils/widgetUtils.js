@@ -1,6 +1,9 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import { findThemePreset } from './themePresets.js';
+// Widget identity lives in widgetRegistry so the shell and the preferences cannot
+// drift apart; callers import it directly rather than through here.
+import { supportsSizePresets, resolveWidgetSizePreset } from './widgetRegistry.js';
 
 /** Empty string means no font-family override; widgets inherit the system theme font. */
 export const DEFAULT_FONT_FAMILY = '';
@@ -610,13 +613,6 @@ export function resolveExplicitFontFamily(config) {
     if (config.globalUseCustomFont === false && !config.fontFamily) return '';
     return (config.fontFamily || config.globalFontFamily) || '';
 }
-
-// Widget identity — layout classification, size tiers, the wide-music test and the
-// per-type data folders — lives in widgetRegistry so the shell and the preferences
-// process cannot drift apart. Callers import it directly rather than through here, so
-// there is one obvious place to find it.
-import { supportsSizePresets, resolveWidgetSizePreset } from './widgetRegistry.js';
-
 
 /** Validates and constrains a widget's proposed new position and size during resize operations. */
 export function calculateResizedDimensions(widgetData, newCols, newRows, newGridX, widgets = null, maxCols = COLUMNS_COUNT, maxRows = Number.POSITIVE_INFINITY) {
