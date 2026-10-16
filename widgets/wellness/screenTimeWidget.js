@@ -55,6 +55,7 @@ const APP_ICON_SIZE_PX = TYPOGRAPHY_SIZE.iconMd;
 const MAX_VISIBLE_APPS = 4;
 const SECONDARY_TEXT_OPACITY = TEXT_OPACITY.secondary;
 const CLUTTER_OPACITY_OPAQUE = 255;
+const SECONDARY_TEXT_ALPHA = Math.round(CLUTTER_OPACITY_OPAQUE * SECONDARY_TEXT_OPACITY);
 const DISABLED_CONTROL_OPACITY = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.disabled);
 const PANEL_PADDING_TOP_PX = 16;
 const PANEL_PADDING_BOTTOM_PX = 16;
@@ -87,8 +88,6 @@ function formatCompactDuration(totalSeconds) {
         return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
     return `${minutes}m`;
 }
-
-
 
 export function createScreenTimeNode(config, width, height, xPosition, yPosition) {
     const textColor = resolveWidgetForegroundColor(config);
@@ -152,25 +151,28 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     const dateLabel = new St.Label({
         text: '',
         style: `${fontCss}color: ${textColor}; font-size: ${DATE_LABEL_FONT_SIZE_PX}px; `
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`,
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`,
     });
+    dateLabel.opacity = SECONDARY_TEXT_ALPHA;
     controlsColumn.add_child(dateLabel);
 
     const navButtonsRow = new St.BoxLayout({ style: `spacing: ${NAV_BUTTONS_SPACING_PX}px;` });
     controlsColumn.add_child(navButtonsRow);
 
     const buildNavButton = (iconName, action) => {
+        const icon = new St.Icon({
+            icon_name: iconName,
+            icon_size: NAV_ICON_SIZE_PX,
+            style: `color: ${textColor};`,
+        });
+        icon.opacity = SECONDARY_TEXT_ALPHA;
         const button = new St.Button({
             reactive: true,
             can_focus: true,
             style: `width: ${NAV_BUTTON_SIZE_PX}px; height: ${NAV_BUTTON_SIZE_PX}px;`
                 + `border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
                 + `border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, 1)}px; background-color: transparent;`,
-            child: new St.Icon({
-                icon_name: iconName,
-                icon_size: NAV_ICON_SIZE_PX,
-                style: `color: ${textColor}; opacity: ${SECONDARY_TEXT_OPACITY};`,
-            }),
+            child: icon,
         });
         button.connect('button-press-event', (_actor, event) => {
             if (event.get_button() !== 1 || container.actionOverlay) return Clutter.EVENT_PROPAGATE;
@@ -314,7 +316,13 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         entry.iconSlot.height = iconSize;
         entry.appIcon.icon_size = iconSize;
         entry.valueLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`;
+        entry.valueLabel.opacity = SECONDARY_TEXT_ALPHA;
+    }
+
+    function applyEmptyLabelStyle(label, scale) {
+        label.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`;
+        label.opacity = SECONDARY_TEXT_ALPHA;
     }
 
     function buildAppRow(app, scale) {
@@ -364,8 +372,7 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
                 x_expand: true,
                 x_align: Clutter.ActorAlign.CENTER,
             });
-            emptyLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
-                + `opacity: ${SECONDARY_TEXT_OPACITY};`;
+            applyEmptyLabelStyle(emptyLabel, scale);
             appRowsBox.add_child(emptyLabel);
             state.appListEmptyLabel = emptyLabel;
             return;
@@ -384,8 +391,7 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     function updateAppListInPlace() {
         const scale = state.geometry.scale || 1;
         if (state.appListEmptyLabel) {
-            state.appListEmptyLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
-                + `opacity: ${SECONDARY_TEXT_OPACITY};`;
+            applyEmptyLabelStyle(state.appListEmptyLabel, scale);
             return;
         }
 
@@ -475,14 +481,16 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         headerBox.style = `margin-bottom: ${Math.round(HEADER_MARGIN_BOTTOM_PX * scale)}px; padding-right: ${Math.round(HEADER_PADDING_RIGHT_PX * scale)}px;`;
         totalTimeLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`;
         dateLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DATE_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`;
         yAxisLabels.forEach(label => {
             label.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(AXIS_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
-                + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+                + `font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
+            label.opacity = SECONDARY_TEXT_ALPHA;
         });
         xAxisLabels.forEach(label => {
             label.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(AXIS_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
-                + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; opacity: ${SECONDARY_TEXT_OPACITY};`;
+                + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`;
+            label.opacity = SECONDARY_TEXT_ALPHA;
         });
 
         prevButton.style = `width: ${Math.round(NAV_BUTTON_SIZE_PX * scale)}px; height: ${Math.round(NAV_BUTTON_SIZE_PX * scale)}px;`

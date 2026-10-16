@@ -57,7 +57,6 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
-
     let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
     const px = (value, minimum = 1) => scaleFontSize(value, scale, minimum);
 
@@ -72,7 +71,6 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
 
     const actionPanel = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
-        style_class: 'spacing',
     });
     mainBox.add_child(actionPanel);
 
@@ -138,7 +136,8 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
         greetingLabel.width = px(GREETING_WIDTH_PX);
         greetingLabel.clutter_text.line_wrap = false;
         dateLabel.style = `${fontCss}font-size: ${px(DATE_FONT_SIZE_PX, MIN_FONT_SIZE.subtitle)}px; `
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`;
+        dateLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
 
         faceRow.style = `background-color: ${card};`
             + `padding: ${px(PICKER_ROW_PADDING_PX)}px; border-radius: ${resolveChildCornerRadius(PICKER_ROW_RADIUS_PX, scale)}px;`;
@@ -146,8 +145,9 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
         applyMoodSelection(getMood(todayDateString()));
 
         historyLabel.style = `${fontCss}font-size: ${px(HISTORY_LABEL_FONT_SIZE_PX, MIN_FONT_SIZE.body)}px;`
-            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`
+            + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`
             + `margin-bottom: ${px(HISTORY_LABEL_MARGIN_BOTTOM_PX)}px;`;
+        historyLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
 
         dotGrid.layout_manager.column_spacing = px(DOT_GRID_GAP_PX);
         dotGrid.layout_manager.row_spacing = px(DOT_GRID_GAP_PX);
