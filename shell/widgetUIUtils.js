@@ -20,7 +20,6 @@ import {
 } from '../utils/widgetUtils.js';
 import {
     TYPOGRAPHY_WEIGHT,
-    TEXT_OPACITY,
     clampWidgetScale,
     scaleFontSize,
 } from '../utils/typography.js';
@@ -28,7 +27,7 @@ import {
 const CAPTION_PADDING_PIXELS = 14;
 const CAPTION_BOTTOM_PADDING_PIXELS = 12;
 const CAPTION_SIDE_PADDING_PIXELS = 10;
-// scaleFontSize clamps to 1px by default, which collapsed this inset on small widgets.
+// scaleFontSize floors at 1px, a smaller inset than the caption's sides can take.
 const MIN_CAPTION_SIDE_PADDING_PX = 8;
 // The caption's size at a 320px-wide widget, scaled from there by its width.
 const CAPTION_FONT_SIZE_PX = 14;
@@ -249,7 +248,7 @@ export function createCaptionOverlay(config, caption) {
         // On the label, not contentBox, whose layout would inset the scrim as well. The
         // sides scale with a floor; the top and bottom stay fixed.
         const sidePadding = scaleFontSize(CAPTION_SIDE_PADDING_PIXELS, scale, MIN_CAPTION_SIDE_PADDING_PX);
-        titleLabel.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.metadata};`
+        titleLabel.style = `${fontCss}color: ${textColor};`
             + `padding: ${CAPTION_PADDING_PIXELS}px ${sidePadding}px ${CAPTION_BOTTOM_PADDING_PIXELS}px ${sidePadding}px;`
             + `font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; text-align: left;`;
     };
