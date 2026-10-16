@@ -13,7 +13,7 @@ import {
 import { resolveDesktopAppInfo } from '../../shell/appResolution.js';
 import { createWidgetContainer, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 
 const DEFAULT_APP_ICON = 'application-x-executable-symbolic';
 const REFERENCE_WIDTH_PX = 140;
@@ -65,7 +65,7 @@ export function createAppLauncherNode(config, width, height, xPosition, yPositio
         const updateEmptyLabel = scale => {
             if (isActorDestroyed(container)) return;
             const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.body, scale, MIN_FONT_SIZE.body);
-            emptyLabel.style = `${fontCss}color: ${textColor}; opacity: ${TEXT_OPACITY.secondary}; font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
+            emptyLabel.style = `${fontCss}color: ${textColor}; font-size: ${fontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
         };
         updateEmptyLabel(clampWidgetScale(Math.min(width / REFERENCE_WIDTH_PX, height / REFERENCE_HEIGHT_PX)));
         container.add_child(emptyLabel);
