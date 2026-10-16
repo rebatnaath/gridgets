@@ -26,6 +26,7 @@ const TILE_PADDING_BASE_PX = 13;
 const TILE_RADIUS_BASE_PX = DEFAULT_CHILD_CORNER_RADIUS_PX;
 const UNIT_FONT_SIZE_RATIO = 0.45;
 const SPARK_LINE_OPACITY = 1.0;
+const CLUTTER_OPACITY_OPAQUE = 255;
 
 function createSparklineTile({
     labelText,
@@ -44,7 +45,6 @@ function createSparklineTile({
         orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         y_expand: true,
-        style_class: 'spacing',
     });
 
     const valueRow = new St.BoxLayout({
@@ -58,6 +58,10 @@ function createSparklineTile({
     valueRow.add_child(unitLabel);
 
     const nameLabel = new St.Label({ text: labelText });
+
+    const mutedOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * unitOpacity);
+    unitLabel.opacity = mutedOpacity;
+    nameLabel.opacity = mutedOpacity;
 
     const sparkArea = new St.DrawingArea({
         x_expand: true,
@@ -80,9 +84,8 @@ function createSparklineTile({
             + `border-radius: ${tileRadius}px;`
             + `padding: ${tilePadding}px;`;
         valueLabel.style = `${fontCss}color: ${textColor}; font-size: ${valueFontSize}px; font-weight: ${VALUE_FONT_WEIGHT};`;
-        unitLabel.style = `${fontCss}color: ${textColor}; opacity: ${unitOpacity}; `
-            + `font-size: ${unitFontSize}px; font-weight: ${UNIT_FONT_WEIGHT};`;
-        nameLabel.style = `${fontCss}color: ${textColor}; font-size: ${labelFontSize}px; font-weight: ${LABEL_FONT_WEIGHT}; opacity: ${unitOpacity};`;
+        unitLabel.style = `${fontCss}color: ${textColor}; font-size: ${unitFontSize}px; font-weight: ${UNIT_FONT_WEIGHT};`;
+        nameLabel.style = `${fontCss}color: ${textColor}; font-size: ${labelFontSize}px; font-weight: ${LABEL_FONT_WEIGHT};`;
     };
     applyScale(scale);
 

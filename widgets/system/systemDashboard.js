@@ -22,6 +22,8 @@ const CHART_LINE_WIDTH = 2;
 const CHART_FILL_ALPHA = 0.16;
 const CHART_PAD = 4;
 const LABEL_OPACITY = TEXT_OPACITY.secondary;
+const CLUTTER_OPACITY_OPAQUE = 255;
+const MUTED_OPACITY = Math.round(CLUTTER_OPACITY_OPAQUE * LABEL_OPACITY);
 const BASE_CONTAINER_WIDTH_PX = 240;
 const BASE_CONTAINER_HEIGHT_PX = 260;
 const BASE_CARD_PADDING_PX = 14;
@@ -54,10 +56,10 @@ function drawTrendChart(ctx, width, height, samples, accentHex) {
     const pointAt = (index) => {
         const ratio = index / (samples.length - 1);
         const value = Math.max(0, Math.min(1, samples[index]));
-            return [
-                CHART_PAD + ratio * innerWidth,
-                CHART_PAD + (1 - value) * innerHeight,
-            ];
+        return [
+            CHART_PAD + ratio * innerWidth,
+            CHART_PAD + (1 - value) * innerHeight,
+        ];
     };
 
     const { r, g, b } = parseCssColor(accentHex);
@@ -118,7 +120,9 @@ export function createSystemDashboardNode(config, width, height, xPosition, yPos
     });
 
     const secondaryLabelStyle = m =>
-        `${fontCss}color: ${textColor}; font-size: ${m.secondaryFontSize}px; opacity: ${LABEL_OPACITY};`;
+        `${fontCss}color: ${textColor}; font-size: ${m.secondaryFontSize}px;`;
+
+    const mutedRoles = new Set(['title', 'networkLabel', 'unit']);
 
     const roleStyle = (role, m) => ({
         title: () => secondaryLabelStyle(m),
@@ -137,6 +141,8 @@ export function createSystemDashboardNode(config, width, height, xPosition, yPos
     function bindRole(role, actor) {
         styleBindings.push({ actor, role });
         actor.style = roleStyle(role, metrics);
+        if (mutedRoles.has(role))
+            actor.opacity = MUTED_OPACITY;
     }
 
     function bindGeometry(actor, build) {
