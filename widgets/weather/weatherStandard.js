@@ -4,6 +4,7 @@ import { createFallbackIcon, buildFontCss, LOCATION_UNAVAILABLE_TEXT, HIGH_LOW_L
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE } from '../../utils/typography.js';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 
+const CLUTTER_OPACITY_OPAQUE = 255;
 const BASE_LAYOUT_SIZE = 180;
 
 const BASE_CITY_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
@@ -16,7 +17,6 @@ const CITY_MARGIN_BOTTOM_PX = 4;
 const TEMP_MARGIN_BOTTOM_PX = 12;
 const CONDITION_ICON_MARGIN_RIGHT_PX = 6;
 const HIGHLOW_MARGIN_TOP_PX = 4;
-
 
 export function buildStandardLayout(layout, widgetData) {
     const uiElements = {};
@@ -85,9 +85,9 @@ export function attachStandardScaler(widgetNode, uiElements, widgetData) {
         uiElements.highLowLabel.style = buildWeatherTextStyle(fontCss, {
             fontSize: highLowSize,
             fontWeight: TYPOGRAPHY_WEIGHT.regular,
-            opacity: WEATHER_METADATA_OPACITY,
             margin: `margin-top: ${highLowMargin}px;`,
         });
+        uiElements.highLowLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * WEATHER_METADATA_OPACITY);
     };
 
     // Before the scaler is attached, whose first pass is deferred to an idle: the labels

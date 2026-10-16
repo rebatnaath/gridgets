@@ -181,7 +181,7 @@ async function showGnomeWeatherLocation(widgetData, widgetNode) {
         if (isActorDestroyed(widgetNode)) return;
         await activateGnomeWeatherLocation(serializedLocation);
     } catch (error) {
-        console.error('Unable to open the selected weather location:', error);
+        console.error('Gridgets: could not open the selected weather location:', error);
         launchGnomeWeather();
     }
 }

@@ -4,6 +4,7 @@ import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { buildFontCss, WEATHER_LOADING_TEXT, scaleWeatherValue, buildWeatherTextStyle, initialScaleFor, WEATHER_SUBTLE_OPACITY } from './weatherCommon.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE } from '../../utils/typography.js';
 
+const CLUTTER_OPACITY_OPAQUE = 255;
 const BASE_LAYOUT_WIDTH = 240;
 const BASE_LAYOUT_HEIGHT = 160;
 
@@ -60,9 +61,9 @@ export function attachSimpleScaler(widgetNode, uiElements, widgetData) {
         uiElements.cityLabel.style = buildWeatherTextStyle(fontCss, {
             fontSize: citySize,
             fontWeight: TYPOGRAPHY_WEIGHT.bold,
-            opacity: WEATHER_SUBTLE_OPACITY,
             textAlign: 'center',
         });
+        uiElements.cityLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * WEATHER_SUBTLE_OPACITY);
     };
 
     // Before the scaler is attached, whose first pass is deferred to an idle: the labels

@@ -16,9 +16,8 @@ import {
     isDarkBackgroundColor,
 } from '../../utils/widgetUtils.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
-import { clampWidgetScale } from '../../utils/typography.js';
+import { clampWidgetScale, scaleFontSize, TEXT_OPACITY } from '../../utils/typography.js';
 import { addSettleAfterResize } from '../../utils/resizeSettle.js';
-import { scaleFontSize, TEXT_OPACITY } from '../../utils/typography.js';
 import { HTTP_STATUS_OK, createGetMessage } from '../../utils/httpClient.js';
 import { setWeatherIcon } from '../../utils/weatherIcons.js';
 
@@ -48,16 +47,10 @@ export function scaleWeatherValue(value, scale, minimum = 1) {
 export function buildWeatherTextStyle(fontCss, {
     fontSize,
     fontWeight,
-    color = 'inherit',
-    opacity,
     textAlign,
     margin,
 } = {}) {
-    const properties = [fontCss, `font-size: ${fontSize}px;`, `font-weight: ${fontWeight};`];
-    if (color)
-        properties.push(`color: ${color};`);
-    if (opacity !== undefined)
-        properties.push(`opacity: ${opacity};`);
+    const properties = [fontCss, `font-size: ${fontSize}px;`, `font-weight: ${fontWeight};`, 'color: inherit;'];
     if (textAlign)
         properties.push(`text-align: ${textAlign};`);
     if (margin)
@@ -563,7 +556,7 @@ export async function fetchOpenMeteoFallback(locationName, context) {
 
         if (isActorDestroyed(widgetNode) || !geoJson.results || geoJson.results.length === 0) {
             if (!isActorDestroyed(widgetNode))
-                context.markFetchFailed?.();
+                context.markFetchFailed();
             return;
         }
         const { latitude, longitude, name } = geoJson.results[0];
@@ -572,8 +565,8 @@ export async function fetchOpenMeteoFallback(locationName, context) {
         await fetchOpenMeteoWeather({ latitude, longitude, name }, context);
     } catch (error) {
         if (isCancelledError(error)) return;
-        console.error('Error geocoding location for Open-Meteo fallback:', error);
-        context.markFetchFailed?.();
+        console.error('Gridgets: could not geocode the location for the Open-Meteo fallback:', error);
+        context.markFetchFailed();
     }
 }
 
@@ -685,14 +678,14 @@ function buildOpenMeteoPayload(weatherJson, locationName) {
  */
 function snapshotMatchesWidget(snapshot, widgetData) {
     if (!snapshot) return false;
-    const widgetHasCoords = Number.isFinite(widgetData?.lat) && Number.isFinite(widgetData?.lon);
+    const widgetHasCoords = Number.isFinite(widgetData.lat) && Number.isFinite(widgetData.lon);
     if (widgetHasCoords) {
         if (!Number.isFinite(snapshot.lat) || !Number.isFinite(snapshot.lon))
             return false;
         return Math.abs(snapshot.lat - widgetData.lat) <= LOCATION_COORDINATE_TOLERANCE
             && Math.abs(snapshot.lon - widgetData.lon) <= LOCATION_COORDINATE_TOLERANCE;
     }
-    const widgetName = String(widgetData?.location || '');
+    const widgetName = String(widgetData.location || '');
     const snapshotName = String(snapshot.name || '');
     if (!widgetName || !snapshotName)
         return false;
@@ -738,7 +731,7 @@ function reindexForecastDays(json) {
 
 /** Stores a successful fetch as the widget's last good weather, tagged with its location. */
 export function cacheWeatherSnapshot(widgetData, latitude, longitude, name, json) {
-    if (!widgetData?.id || !json)
+    if (!widgetData.id || !json)
         return;
     saveLastGoodCache('weather', widgetData.id, { lat: latitude, lon: longitude, name, json });
 }
@@ -748,7 +741,7 @@ export function cacheWeatherSnapshot(widgetData, latitude, longitude, name, json
  * usable, so the widget keeps whatever it already has on screen.
  */
 export function restoreWeatherSnapshot(widgetData, apply) {
-    if (!widgetData?.id)
+    if (!widgetData.id)
         return;
     loadLastGoodCache('weather', widgetData.id, (payload, savedAtMs) => {
         if (!payload || !payload.json || !snapshotMatchesWidget(payload, widgetData))
@@ -805,31 +798,30 @@ async function fetchOpenMeteoWeather({ latitude, longitude, name }, context) {
         // without one left the widget on its placeholders with nothing in the journal to
         // tell that apart from still loading.
         if (!weatherJson.current_weather) {
-            console.error(`Error fetching Open-Meteo weather: response for ${name} had no current conditions`);
-            context.markFetchFailed?.();
+            console.error(`Gridgets: Open-Meteo response for ${name} had no current conditions`);
+            context.markFetchFailed();
             return;
         }
         const payload = buildOpenMeteoPayload(weatherJson, name);
         // Nothing to show and nothing worth keeping: the seeded placeholders stay up and
         // the previous snapshot is left alone rather than overwritten with this answer.
         if (!payload) {
-            console.error('Error fetching Open-Meteo fallback: response had no current temperature');
-            context.markFetchFailed?.();
+            console.error('Gridgets: Open-Meteo fallback response had no current temperature');
+            context.markFetchFailed();
             return;
         }
         // Marked before painting, not after, so a snapshot read that is still in flight
         // cannot land on top of this and stamp live data with an age.
-        if (context.markLiveReading)
-            context.markLiveReading();
+        context.markLiveReading();
         context.snapshotAgeText = '';
         updateWeatherUi(payload, context);
         cacheWeatherSnapshot(context.widgetData, latitude, longitude, name, payload);
     } catch (error) {
         if (isCancelledError(error)) return;
-        console.error('Error fetching Open-Meteo fallback:', error);
+        console.error('Gridgets: Open-Meteo fallback fetch failed:', error);
         // A cancelled request is the periodic reload superseding its own predecessor, so
         // it is not a failure; anything else leaves the archive as the only honest source.
-        context.markFetchFailed?.();
+        context.markFetchFailed();
     }
 }
 

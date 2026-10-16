@@ -18,6 +18,7 @@ import { WEATHER_METADATA_OPACITY, WEATHER_SUBTLE_OPACITY, isCancelledError } fr
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, ICON_OPACITY_SECONDARY, GRAPHICS_OPACITY, TEXT_OPACITY, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
+const CLUTTER_OPACITY_OPAQUE = 255;
 const REF_WIDTH_PX = 240;
 const REF_HEIGHT_PX = 240;
 const CONTAINER_PADDING_V_PX = 18;
@@ -185,7 +186,7 @@ export function createSunTimesNode(config, width, height, xPosition, yPosition) 
     arcCanvas.connect('repaint', drawArcCanvas);
     mainBox.add_child(arcCanvas);
 
-        const divider = new St.Widget({ style: '' });
+    const divider = new St.Widget({ style: '' });
     mainBox.add_child(divider);
 
     const footerBox = new St.BoxLayout({
@@ -302,7 +303,7 @@ export function createSunTimesNode(config, width, height, xPosition, yPosition) 
     function daylightMinutes() {
         if (arcSunriseMinutes !== null && arcSunsetMinutes !== null && arcSunsetMinutes > arcSunriseMinutes)
             return arcSunsetMinutes - arcSunriseMinutes;
-                return REFERENCE_DAY_MINUTES;
+        return REFERENCE_DAY_MINUTES;
     }
 
     function drawArcCanvas(canvas) {
@@ -316,7 +317,7 @@ export function createSunTimesNode(config, width, height, xPosition, yPosition) 
         const marginX = canvasWidth * ARC_MARGIN_X_RATIO;
         const lineWidth = scaleFontSize(ARC_LINE_WIDTH_PX, scale);
         const trackWidth = scaleFontSize(ARC_TRACK_WIDTH_PX, scale);
-                const leftX = marginX + lineWidth / 2;
+        const leftX = marginX + lineWidth / 2;
         const rightX = canvasWidth - marginX - lineWidth / 2;
         const spanX = Math.max(1, rightX - leftX);
         const baselineY = canvasHeight * BASELINE_RATIO;
@@ -498,19 +499,22 @@ export function createSunTimesNode(config, width, height, xPosition, yPosition) 
         const px = value => scaleFontSize(value, scale);
 
         cityLabel.style = `${fontCss}font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px;`
-            + `font-weight: ${HEADER_FONT_WEIGHT}; color: ${textColor}; opacity: ${WEATHER_SUBTLE_OPACITY};`;
+            + `font-weight: ${HEADER_FONT_WEIGHT}; color: ${textColor};`;
+        cityLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * WEATHER_SUBTLE_OPACITY);
 
         const dividerMargin = px(DIVIDER_MARGIN_VERTICAL_PX);
         divider.style = `background-color: rgba(${textRgb.r}, ${textRgb.g}, ${textRgb.b}, ${GRAPHICS_OPACITY.divider});`
             + ` height: 1px; margin-top: ${dividerMargin}px; margin-bottom: ${dividerMargin}px;`;
 
         for (const item of [sunriseItem, sunsetItem]) {
-            item.icon.style = `color: ${textColor}; opacity: ${ICON_OPACITY_SECONDARY};`;
+            item.icon.style = `color: ${textColor};`;
+            item.icon.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * ICON_OPACITY_SECONDARY);
             item.icon.set_icon_size(px(METRIC_ICON_SIZE_PX));
             item.timeLabel.style = `${fontCss}font-size: ${scaleFontSize(TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px;`
                 + `font-weight: ${TIME_FONT_WEIGHT}; color: ${textColor};`;
             item.statusLabel.style = `${fontCss}font-size: ${scaleFontSize(STATUS_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
-                + `font-weight: ${STATUS_FONT_WEIGHT}; color: ${textColor}; opacity: ${TEXT_OPACITY.secondary};`;
+                + `font-weight: ${STATUS_FONT_WEIGHT}; color: ${textColor};`;
+            item.statusLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
         }
 
         // Padding goes on the content box: assigning container.style would replace the

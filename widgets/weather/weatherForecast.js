@@ -16,6 +16,7 @@ import {
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, GRAPHICS_OPACITY } from '../../utils/typography.js';
 
+const CLUTTER_OPACITY_OPAQUE = 255;
 const BASE_LAYOUT_WIDTH = 360;
 const BASE_LAYOUT_HEIGHT = 180;
 
@@ -70,7 +71,7 @@ export function buildForecastLayout(layout, widgetData) {
 
     layout.add_child(topLayout);
     uiElements.divider = new St.Widget({
-        style: `background-color: currentColor; opacity: ${GRAPHICS_OPACITY.divider}; height: 1px; margin-top: ${DIVIDER_MARGIN_VERTICAL_PX}px; margin-bottom: ${DIVIDER_MARGIN_VERTICAL_PX}px;`
+        style: `background-color: currentColor; height: 1px; margin-top: ${DIVIDER_MARGIN_VERTICAL_PX}px; margin-bottom: ${DIVIDER_MARGIN_VERTICAL_PX}px;`
     });
     layout.add_child(uiElements.divider);
 
@@ -139,10 +140,11 @@ export function attachForecastScaler(widgetNode, uiElements, widgetData) {
         uiElements.highLowLabel.style = buildWeatherTextStyle(fontCss, {
             fontSize: highLowSize,
             fontWeight: TYPOGRAPHY_WEIGHT.regular,
-            opacity: WEATHER_METADATA_OPACITY,
             textAlign: 'right',
         });
-        uiElements.divider.style = `background-color: currentColor; opacity: ${GRAPHICS_OPACITY.divider}; height: 1px; margin-top: ${dividerMargin}px; margin-bottom: ${dividerMargin}px;`;
+        uiElements.highLowLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * WEATHER_METADATA_OPACITY);
+        uiElements.divider.style = `background-color: currentColor; height: 1px; margin-top: ${dividerMargin}px; margin-bottom: ${dividerMargin}px;`;
+        uiElements.divider.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * GRAPHICS_OPACITY.divider);
 
         uiElements.hourlyActors.forEach(actor => {
             actor.timeLbl.style = buildWeatherTextStyle(fontCss, {
