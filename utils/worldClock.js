@@ -1,8 +1,55 @@
 import GLib from 'gi://GLib';
 
-// Timezone arithmetic for the world clock, kept apart from the widget so it can be
-// exercised on its own. The pure helpers take numbers and DateTimes rather than reading
-// a clock, which is what makes them testable at all.
+// World-clock city data and timezone arithmetic. Shared by the widget and the
+// preferences process, so it must stay free of St, Clutter and the other shell
+// libraries the GTK4 preferences cannot load. The pure helpers take numbers and
+// DateTimes rather than reading a clock, which is what makes them testable.
+
+export const MIN_CITY_COUNT = 2;
+export const MAX_CITY_COUNT = 4;
+
+export const DEFAULT_CITIES = Object.freeze([
+    { name: 'London', timezone: 'Europe/London', country: 'GB' },
+    { name: 'New York', timezone: 'America/New_York', country: 'US' },
+]);
+
+/**
+ * Normalises a configured city list to the supported count.
+ *
+ * A row needs a timezone to be truthful: without one the widget falls back to the local
+ * zone and would print this city's name beside the wrong time, so an entry without one
+ * is dropped rather than repaired. Repeats are dropped so two rows can never show the
+ * same clock. A list left short is topped up from the defaults rather than rendered
+ * short, and one longer than the maximum is trimmed, so a config written before the cap
+ * cannot ask for rows the face has no room for.
+ */
+export function resolveCityList(configured) {
+    const source = Array.isArray(configured) ? configured : [];
+    const picked = [];
+    const seen = new Set();
+
+    for (const city of source) {
+        if (!city?.timezone) continue;
+        if (seen.has(city.timezone)) continue;
+        seen.add(city.timezone);
+        picked.push(city);
+        if (picked.length === MAX_CITY_COUNT) break;
+    }
+
+    // Nothing usable configured is the one case that means "no preference", and it takes
+    // the whole default set rather than the bare minimum.
+    if (picked.length === 0)
+        return [...DEFAULT_CITIES];
+
+    for (const city of DEFAULT_CITIES) {
+        if (picked.length >= MIN_CITY_COUNT) break;
+        if (seen.has(city.timezone)) continue;
+        seen.add(city.timezone);
+        picked.push(city);
+    }
+
+    return picked;
+}
 
 // The hour the sun is treated as up, and the hour it is treated as down. A real sunrise
 // table would need a latitude this widget does not have; the hour range is what the rest
@@ -81,5 +128,7 @@ export function offsetFrom(cityTimezone, localTimezone, now) {
 export function zoneFor(timezoneId) {
     if (!timezoneId)
         return GLib.TimeZone.new_local();
-    return GLib.TimeZone.new_identifier(timezoneId) || GLib.TimeZone.new(timezoneId) || GLib.TimeZone.new_local();
+    // Only new_identifier, which returns null on failure; new() would answer UTC
+    // and hide the fallback.
+    return GLib.TimeZone.new_identifier(timezoneId) || GLib.TimeZone.new_local();
 }

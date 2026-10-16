@@ -1,6 +1,6 @@
 import Gtk from 'gi://Gtk';
 import { createGnomeClocksLocationPicker, createClocksActionRow } from './gnomeClocksLocations.js';
-import { MIN_CITY_COUNT, MAX_CITY_COUNT } from '../utils/worldClockCities.js';
+import { MIN_CITY_COUNT, MAX_CITY_COUNT } from '../utils/worldClock.js';
 
 /**
  * A list of city pickers whose length follows the supported count rather than a fixed

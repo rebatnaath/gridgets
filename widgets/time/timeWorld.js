@@ -3,11 +3,10 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { resolveExplicitFontFamily, resolveUse24h, resolveWidgetSurfaces } from '../../utils/widgetUtils.js';
-import { resolveCityList } from '../../utils/worldClockCities.js';
+import { resolveCityList, dayRelationLabel, formatOffsetLabel, isDaytimeHour, offsetFrom, zoneFor } from '../../utils/worldClock.js';
 import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
 import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, formatTimeParts, startMinuteAlignedTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
-import { dayRelationLabel, formatOffsetLabel, isDaytimeHour, offsetFrom, zoneFor } from '../../utils/worldClockTime.js';
 import { setWeatherIcon } from '../../utils/weatherIcons.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 
