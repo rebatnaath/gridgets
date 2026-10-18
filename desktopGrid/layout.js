@@ -121,7 +121,10 @@ export function resolveActiveWidgets(grid) {
     // dropping them here would delete them and lose their positions.
     const rendered = widgets.filter(widget => isDesktopIconVisible(widget, grid.settings));
     const activeWidgets = getWidgetsForMonitor(rendered, getEffectiveMonitorIndex(grid.targetMonitorIndex, grid.settings), isEachMode);
-    return { widgets, activeWidgets };
+    // `rendered` is everything drawn, on every monitor; `activeWidgets` narrows it to this
+    // grid's monitor. Overlap checks use `rendered`, so a hidden entry (a dismissed desktop
+    // icon, which stays in the saved layout) reserves no space it is not drawing into.
+    return { widgets, rendered, activeWidgets };
 }
 
 /**

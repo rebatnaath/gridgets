@@ -27,7 +27,7 @@ export function applyWidgetGenre(grid, widgetId, genre) {
 
 /** Repositions if the new footprint collides. */
 export function applySizePreset(grid, widgetId, sizeIndex) {
-    const { widgets } = resolveActiveWidgets(grid);
+    const { widgets, rendered } = resolveActiveWidgets(grid);
     const target = widgets.find(widget => widget.id === widgetId);
     if (!target)
         return;
@@ -36,7 +36,8 @@ export function applySizePreset(grid, widgetId, sizeIndex) {
     if (!size)
         return;
 
-    const others = getOtherWidgets(grid, widgets, widgetId);
+    // `rendered` so a hidden entry (a dismissed desktop icon) does not force a needless move.
+    const others = getOtherWidgets(grid, rendered, widgetId);
     // Pin weather variant before resize so it doesn't silently flip.
     if (target.type === 'weather')
         target.layout = resolveWeatherLayoutVariant(target);

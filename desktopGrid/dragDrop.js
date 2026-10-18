@@ -29,6 +29,9 @@ function endDrag(state, grid, node, widgetData) {
 
         const widgets = getWidgets(grid.settings);
         const targetWidget = widgets.find(w => w.id === widgetData.id);
+        // Hidden entries (dismissed desktop icons) are drawn nowhere, so they must not block
+        // a drop. `resolveActiveWidgets` already decides what is drawn, on every monitor.
+        const { rendered } = resolveActiveWidgets(grid);
 
         if (targetWidget) {
             const monitorSetting = grid.settings.get_string('global-monitor') || 'primary';
@@ -67,7 +70,7 @@ function endDrag(state, grid, node, widgetData) {
                 const localX = widgetStageX - targetMonitor.x;
                 const localY = widgetStageY - (targetMonitor.y + topOffset);
 
-                const otherWidgetsOnTargetMon = getOtherWidgets(grid, widgets, widgetData.id, targetMonitorIndex);
+                const otherWidgetsOnTargetMon = getOtherWidgets(grid, rendered, widgetData.id, targetMonitorIndex);
 
                 const gridCols = COLUMNS_COUNT;
 
@@ -88,7 +91,7 @@ function endDrag(state, grid, node, widgetData) {
                     repositionNode(grid, targetWidget.id, targetWidget.width, targetWidget.height, state.origGridX, state.origGridY);
                 }
             } else {
-                const otherWidgets = getOtherWidgets(grid, widgets, widgetData.id);
+                const otherWidgets = getOtherWidgets(grid, rendered, widgetData.id);
                 const gridCols = grid.gridCols;
                 const gridRows = grid.gridRows;
 
@@ -208,11 +211,11 @@ export function attachDragHandlers(grid, node, widgetData, openContextMenu) {
 }
 
 export function onWidgetResized(grid, widgetId, newCols, newRows, newX) {
-    const { widgets: allWidgets, activeWidgets } = resolveActiveWidgets(grid);
+    const { widgets: allWidgets, rendered, activeWidgets } = resolveActiveWidgets(grid);
     const widget = activeWidgets.find(activeWidget => activeWidget.id === widgetId);
     if (!widget) return;
 
-    const otherWidgets = getOtherWidgets(grid, allWidgets, widgetId);
+    const otherWidgets = getOtherWidgets(grid, rendered, widgetId);
     const gridCols = grid.gridCols;
     const gridRows = grid.gridRows;
     const { validCols, validRows, validX } = calculateResizedDimensions(widget, newCols, newRows, newX, otherWidgets, gridCols, gridRows);
