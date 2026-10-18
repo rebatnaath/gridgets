@@ -22,37 +22,55 @@ const MUSIC_LAYOUTS = Object.freeze({
 });
 
 // Small/Medium/Large footprints on the fixed grid, indexed 0-2.
+//
+// Two rules hold across the whole table, and they are the point of it:
+//
+// 1. Every aspect ratio has one footprint per tier. Two widgets of the same shape read as
+//    the same size, so a row of them lines up wherever they are placed.
+// 2. Every tier's height comes from a single lattice - Small 4/6, Medium 5/7, Large 6/8 -
+//    so no two widgets at the same tier differ in height by a single cell. A whole cell is
+//    invisible, an odd one leaves the tops and bottoms ragged when they are stacked.
+//
+// A widget changes shape as it grows only to the extent a fixed gap around a growing cell
+// forces it to; the ratio in the name is the one the middle tier holds to.
+const SQUARE = Object.freeze([[4, 4], [5, 5], [6, 6]]);
+const WIDE = Object.freeze([[8, 4], [10, 5], [12, 6]]);
+const WIDE_TALL = Object.freeze([[8, 6], [10, 7], [10, 8]]);
+const LANDSCAPE_THREE_TO_TWO = Object.freeze([[6, 4], [8, 5], [9, 6]]);
+const LANDSCAPE_FIVE_TO_FOUR = Object.freeze([[5, 4], [6, 5], [8, 6]]);
+const PORTRAIT = Object.freeze([[5, 6], [6, 7], [7, 8]]);
+
 const SIZE_PRESETS = Object.freeze({
-    'time': [[4, 4], [5, 5], [6, 6]],
-    'worldClock': [[6, 4], [7, 5], [8, 6]],
-    'weatherStandard': [[4, 4], [5, 5], [6, 6]],
-    'weatherSimple': [[4, 4], [5, 5], [6, 5]],
-    'weatherForecast': [[6, 4], [8, 5], [10, 6]],
-    'sun-schedule': [[5, 4], [6, 5], [7, 6]],
-    'musicSmall': [[4, 4], [5, 5], [6, 6]],
-    'musicWide': [[8, 4], [10, 5], [12, 6]],
-    'calendar': [[4, 4], [5, 5], [5, 6]],
-    'calendar-grid': [[5, 4], [6, 5], [8, 7]],
-    'calendar-agenda': [[7, 4], [9, 5], [13, 7]],
-    'system-dashboard': [[6, 4], [9, 6], [13, 10]],
-    'pomodoro': [[4, 4], [5, 5], [6, 6]],
-    'pomodoro-focus': [[8, 4], [10, 5], [12, 6]],
-    'cpu-ram': [[4, 2], [6, 3], [8, 4]],
-    'network-speed': [[4, 2], [6, 3], [8, 4]],
-    'notes': [[5, 6], [6, 7], [7, 8]],
-    'clipboard': [[7, 8], [8, 10], [9, 12]],
-    'quotes': [[4, 4], [5, 5], [6, 6]],
-    'screen-time': [[8, 4], [10, 5], [12, 6]],
-    'todo': [[6, 4], [7, 4], [8, 5]],
+    'time': SQUARE,
+    'worldClock': LANDSCAPE_THREE_TO_TWO,
+    'weatherStandard': SQUARE,
+    'weatherSimple': SQUARE,
+    'weatherForecast': LANDSCAPE_THREE_TO_TWO,
+    'sun-schedule': LANDSCAPE_FIVE_TO_FOUR,
+    'musicSmall': SQUARE,
+    'musicWide': WIDE,
+    'calendar': SQUARE,
+    'calendar-grid': LANDSCAPE_FIVE_TO_FOUR,
+    'calendar-agenda': WIDE,
+    'system-dashboard': WIDE_TALL,
+    'pomodoro': SQUARE,
+    'pomodoro-focus': WIDE,
+    'cpu-ram': WIDE,
+    'network-speed': WIDE,
+    'notes': PORTRAIT,
+    'clipboard': PORTRAIT,
+    'quotes': SQUARE,
+    'screen-time': WIDE,
+    'todo': LANDSCAPE_THREE_TO_TWO,
     // One glyph and one label, whatever the tier, so a desktop icon cannot be resized
     // into a footprint that has nothing to put in it. It is not in the store: entries
     // appear and disappear with the files in the desktop folder.
     'desktop-icon': [[3, 3]],
-    'github': [[12, 6], [14, 7], [16, 8]],
-    'github-week': [[8, 5], [9, 6], [10, 7]],
-    'mood': [[6, 3], [8, 4], [10, 5]],
-    'rss-headlines': [[4, 4], [5, 5], [6, 6]],
-    'top-stories': [[10, 8], [11, 9], [12, 10]],
+    'github': WIDE,
+    'github-week': LANDSCAPE_FIVE_TO_FOUR,
+    'mood': WIDE,
+    'rss-headlines': SQUARE,
+    'top-stories': WIDE_TALL,
 });
 
 // Media widgets stay freely resizable instead of following the S/M/L table.
