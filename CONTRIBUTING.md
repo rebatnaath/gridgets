@@ -62,6 +62,15 @@ git push -u origin feature/my-feature
 
 Open a pull request from your branch to `main`, describing the change, the motivation, and any testing you performed.
 
+## Widget thumbnails
+
+The store and the showcase use an SVG preview for each widget. A few widgets still show a plain placeholder, and new thumbnails are always welcome. If you can design them, a pull request is a great help.
+
+- **Canvas: 1000 x 1000.** Every existing thumbnail uses this size, so keep it consistent.
+- **Format: SVG.** Any embedded screenshot should stay at or under 1000 px on its longest edge.
+- Draw the widget as it really looks, and keep it readable in both light and dark themes.
+- Add it under `assets/thumbnails/<category>/<name>.svg`. A maintainer wires it into the store and the showcase.
+
 ## Coding conventions
 
 - Write in standard ECMAScript (ES modules). The extension runs in the GJS runtime used by GNOME Shell.

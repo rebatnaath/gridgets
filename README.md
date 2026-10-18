@@ -1,9 +1,10 @@
 # Gridgets - GNOME Shell Widgets
 
-![Gridgets Showcase](github/showcase.png)
+<!-- ![Gridgets Showcase](github/showcase.png) -->
 
-| ![](github/showcase1.png) | ![](github/showcase2.png) | ![](github/showcase3.png) |
-| :---: | :---: | :---: |
+
+| ![](github/showcase1.png) | ![](github/showcase2.png) | 
+| :---: | :---: |
 
 Gridgets is a GNOME Shell extension that puts widgets on your desktop on a responsive
 grid. Add a clock, weather, notes, music, a system monitor or an image, then move, resize
@@ -190,6 +191,19 @@ That should list `org.gnome.Weather`.
 
 Open the **Extensions** app, or Extension Manager, and click the gear icon next to
 Gridgets to change grid settings and style individual widgets.
+
+## Widget Thumbnails
+
+I am looking for a contributor to design the widget thumbnails. I would be very thankful
+for the help, and a few widgets still fall back to a plain placeholder. If you are willing
+to take it on, please open a pull request with the new thumbnails.
+
+- **Canvas: 1000 x 1000.** Every existing thumbnail uses this size, so keep it consistent.
+- **Format: SVG.** Any embedded screenshot should stay at or under 1000 px on its longest
+  edge.
+- Draw the widget as it really looks, and keep it readable in both light and dark themes.
+- Add it under `assets/thumbnails/<category>/<name>.svg` and open a pull request. I will
+  wire it into the store and the showcase.
 
 ## Links
 
