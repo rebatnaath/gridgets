@@ -1,6 +1,6 @@
 import Gtk from 'gi://Gtk';
 import Adw from 'gi://Adw';
-import { createSwitchRow, createColorRow } from './aestheticControls.js';
+import { createSwitchRow } from './aestheticControls.js';
 import { getConnectedMonitorsCount, buildMonitorEntries } from './displayUtils.js';
 import { restoreDismissedDesktopIcons } from '../desktopIcons/desktopIcons.js';
 import { offerToCreateDesktopFolder } from './desktopFolderPrompt.js';
@@ -49,72 +49,17 @@ function buildMonitorGroup(settings) {
     return group;
 }
 
-function buildImageGroup(settings) {
+function buildDesktopGridGroup(settings) {
     const group = new Adw.PreferencesGroup({
-        title: 'Images',
-        description: 'Configure image and slideshow widgets.',
+        title: 'Desktop Grid',
+        description: 'Configure how widgets are aligned on the desktop.',
     });
     group.add(createSwitchRow(
-        'Animate GIFs',
-        'Play animated GIFs automatically.',
+        'Show Grid Overlay',
+        'Display alignment guides while editing the desktop.',
         settings,
-        'image-animate-gif'
+        'show-grid'
     ).row);
-    group.add(createSwitchRow(
-        'Show Image Captions',
-        'Show captions on image and GIF widgets.',
-        settings,
-        'image-show-caption'
-    ).row);
-    group.add(createSwitchRow(
-        'Show Slideshow Captions',
-        'Show captions on slideshow widgets.',
-        settings,
-        'slideshow-show-caption'
-    ).row);
-    group.add(createSwitchRow(
-        'Caption Scrim',
-        'Fade a dark gradient behind image and slideshow captions so they stay readable over a light picture.',
-        settings,
-        'image-caption-scrim'
-    ).row);
-    group.add(createColorRow(
-        'Caption Text Color',
-        'Caption colour for image and slideshow widgets that follow the global setting.',
-        settings,
-        'global-caption-color',
-        '#ffffff'
-    ));
-    return group;
-}
-
-function buildWeatherGroup(settings) {
-    const group = new Adw.PreferencesGroup({
-        title: 'Weather',
-        description: 'Configure weather widget appearance.',
-    });
-    group.add(createSwitchRow(
-        'Use Fahrenheit',
-        'Display temperatures in Fahrenheit instead of Celsius.',
-        settings,
-        'weather-use-fahrenheit'
-    ).row);
-    group.add(createSwitchRow(
-        'Dynamic Weather Color',
-        'Adjust widget colors for the current weather and time.',
-        settings,
-        'weather-dynamic-color'
-    ).row);
-    group.add(createSwitchRow(
-        'Dynamic Weather Overlay',
-        'Show an overlay image based on weather conditions.',
-        settings,
-        'weather-dynamic-image'
-    ).row);
-    group.add(new Adw.ActionRow({
-        title: 'Saved Cities',
-        subtitle: 'Manage cities in GNOME Weather.',
-    }));
     return group;
 }
 
@@ -205,30 +150,14 @@ function buildDesktopGroup(settings, page) {
     return group;
 }
 
-function buildTimeGroup(settings) {
-    const group = new Adw.PreferencesGroup({
-        title: 'Time',
-        description: 'Configure the default time format.',
-    });
-    group.add(createSwitchRow(
-        '24-Hour Format',
-        'Use 24-hour time instead of 12-hour time.',
-        settings,
-        'time-format-24h'
-    ).row);
-    return group;
-}
-
 export function buildGlobalSettingsPage(settings) {
     const page = new Adw.PreferencesPage({
-        title: 'Global Settings',
+        title: 'Desktop',
         icon_name: 'preferences-system-symbolic',
     });
 
     page.add(buildMonitorGroup(settings));
+    page.add(buildDesktopGridGroup(settings));
     page.add(buildDesktopGroup(settings, page));
-    page.add(buildImageGroup(settings));
-    page.add(buildWeatherGroup(settings));
-    page.add(buildTimeGroup(settings));
     return page;
 }

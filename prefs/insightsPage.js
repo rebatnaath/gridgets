@@ -2,11 +2,23 @@ import Gtk from 'gi://Gtk';
 import Gio from 'gi://Gio';
 import Adw from 'gi://Adw';
 import GLib from 'gi://GLib';
-import Gdk from 'gi://Gdk';
 import Pango from 'gi://Pango';
 import { DESKTOP_APP_KEY, getGridgetsDataDir, todayDateString, MOOD_LEVELS, MONTH_NAMES_ABBREVIATED } from '../utils/widgetUtils.js';
-import { listMoodDatesSync, getMood, loadDatesSync } from '../utils/moodStore.js';
-import { clearBox } from './displayUtils.js';
+import { listMoodDatesSync, getMood, loadDatesSync, clearMoodStoreCache } from '../utils/moodStore.js';
+import { clearBox, addPageStylesheet } from './displayUtils.js';
+
+// Bar, dot and breakdown fills are coloured from the same level colours the mood widgets
+// use, so a mood reads as the same colour everywhere it appears.
+const MOOD_COLOR_RULES = MOOD_LEVELS
+    .map(mood => `    .mood-fill-${mood.level} { background-color: ${mood.color}; }`)
+    .join('\n');
+
+const STAT_CARD_PADDING = '12px 14px';
+const STAT_VALUE_FONT_SIZE = '1.5rem';
+const MOOD_DOT_SIZE_PX = 10;
+const PILL_RADIUS_PX = 9999;
+const BAR_RADIUS_PX = 3;
+const TROUGH_MIN_HEIGHT_PX = 6;
 
 const CSS_DATA = `
     .mood-level-1 { color: var(--destructive-color); }
@@ -17,31 +29,36 @@ const CSS_DATA = `
     .mood-none { color: color-mix(in srgb, currentColor 55%, transparent); }
     .insights-empty-title { font-weight: bold; }
     .insights-empty-desc { color: color-mix(in srgb, currentColor 55%, transparent); }
+    .stat-card { padding: ${STAT_CARD_PADDING}; }
+    .stat-card .stat-value { font-size: ${STAT_VALUE_FONT_SIZE}; font-weight: bold; }
+    .mood-dot { min-width: ${MOOD_DOT_SIZE_PX}px; min-height: ${MOOD_DOT_SIZE_PX}px; border-radius: ${PILL_RADIUS_PX}px; }
+    .mood-fill-none { background-color: color-mix(in srgb, currentColor 18%, transparent); }
+    .mood-bar { border-radius: ${BAR_RADIUS_PX}px; }
+    .mood-trough {
+        background-color: color-mix(in srgb, currentColor 15%, transparent);
+        border-radius: ${BAR_RADIUS_PX}px;
+        min-height: ${TROUGH_MIN_HEIGHT_PX}px;
+    }
+    .st-bar { border-radius: ${BAR_RADIUS_PX}px; background-color: var(--accent-color); }
+    .st-bar-none { border-radius: ${BAR_RADIUS_PX}px; background-color: color-mix(in srgb, currentColor 18%, transparent); }
+${MOOD_COLOR_RULES}
 `;
-
-// Installed per page rather than at import time, and removed with the page so
-// the provider is not left attached to the display.
-function applyInsightsStyles(page) {
-    const provider = new Gtk.CssProvider();
-    provider.load_from_data(CSS_DATA, CSS_DATA.length);
-    Gtk.StyleContext.add_provider_for_display(
-        Gdk.Display.get_default(),
-        provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-    );
-    page.connect('destroy', () => {
-        Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(), provider);
-    });
-}
 
 const HOURS_PER_DAY = 24;
 const RANGE_REFRESH_DEBOUNCE_MS = 120;
 
+// The day's app breakdown shows this many rows before the rest collapse behind a
+// "Show all" expander, so a heavy day does not push the page into a long scroll.
+const APPS_PREVIEW_COUNT = 5;
+
+// Upper bound on bars in the Daily Mood chart, keeping each one wide enough to read.
+const MAX_CHART_DAYS = 180;
+
 const RANGE_PRESETS = [
-    { label: 'Last 7 Days', days: 7 },
-    { label: 'Last 14 Days', days: 14 },
-    { label: 'Last 30 Days', days: 30 },
-    { label: 'All Time', days: 0 },
+    { label: 'Last 7 Days', shortLabel: '7 days', days: 7 },
+    { label: 'Last 14 Days', shortLabel: '14 days', days: 14 },
+    { label: 'Last 30 Days', shortLabel: '30 days', days: 30 },
+    { label: 'All Time', shortLabel: 'All time', days: 0 },
 ];
 
 function formatCompactDuration(totalSeconds) {
@@ -55,6 +72,15 @@ function formatCompactDuration(totalSeconds) {
 function formatDateString(dateString) {
     const [y, m, d] = dateString.split('-').map(Number);
     return `${d} ${MONTH_NAMES_ABBREVIATED[m - 1]} ${y}`;
+}
+
+// The hour the summary names, in whichever clock the rest of the desktop uses.
+function formatHourOfDay(hour, use24Hour) {
+    if (use24Hour)
+        return `${hour.toString().padStart(2, '0')}:00`;
+    const suffix = hour < 12 ? 'AM' : 'PM';
+    const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+    return `${hour12} ${suffix}`;
 }
 
 function daysAgoDate(days) {
@@ -156,17 +182,20 @@ function parseDaySummary(file, dateString) {
         if (!data || typeof data.apps !== 'object') return null;
         let totalSeconds = 0;
         const appTotals = [];
+        const hourTotals = new Array(HOURS_PER_DAY).fill(0);
         for (const [key, hours] of Object.entries(data.apps)) {
             if (!Array.isArray(hours)) continue;
             let appTotal = 0;
-            for (let h = 0; h < Math.min(hours.length, HOURS_PER_DAY); h++)
+            for (let h = 0; h < Math.min(hours.length, HOURS_PER_DAY); h++) {
                 appTotal += hours[h];
+                hourTotals[h] += hours[h];
+            }
             if (appTotal > 0)
                 appTotals.push({ key, seconds: appTotal });
             totalSeconds += appTotal;
         }
         appTotals.sort((a, b) => b.seconds - a.seconds);
-        return { date: dateString, totalSeconds, apps: appTotals };
+        return { date: dateString, totalSeconds, apps: appTotals, hourTotals };
     } catch (error) {
         // A day file that will not read is expected to be skippable, but an
         // exception thrown by this function is a bug, and returning null for
@@ -180,7 +209,9 @@ function filterByRange(dates, rangeIndex) {
     const preset = RANGE_PRESETS[rangeIndex];
     if (preset.days === 0)
         return dates;
-    const cutoff = daysAgoDate(preset.days);
+    // "Last N days" spans today plus the N-1 days before it, matching the chart's window;
+    // offsetting by the full N would add an extra day the label and chart do not show.
+    const cutoff = daysAgoDate(preset.days - 1);
     return dates.filter(d => d >= cutoff);
 }
 
@@ -234,6 +265,272 @@ function buildDayNavRow(title) {
     return { row, prevBtn, nextBtn };
 }
 
+// One of the three headline figures at the top of the Screen Time section. The caption
+// is fixed at build time; only the value changes as the range or the data does.
+function buildStatCard(caption) {
+    const box = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 2,
+        css_classes: ['card', 'stat-card'],
+    });
+    const valueLabel = new Gtk.Label({
+        label: '—',
+        halign: Gtk.Align.START,
+        css_classes: ['stat-value'],
+    });
+    const captionLabel = new Gtk.Label({
+        label: caption,
+        halign: Gtk.Align.START,
+        css_classes: ['dim-label'],
+    });
+    box.append(valueLabel);
+    box.append(captionLabel);
+    return {
+        box,
+        setValue(text) {
+            valueLabel.set_text(text);
+        },
+        setCaption(text) {
+            captionLabel.set_text(text);
+        },
+    };
+}
+
+// A single application's usage for the selected day: icon, name and duration, then the
+// share of the day as a bar and a percentage.
+function buildAppRow(app, dayTotal) {
+    const appDetails = getAppDetails(app.key);
+    const gicon = appDetails ? appDetails.icon : null;
+    const percentage = dayTotal > 0 ? Math.round((app.seconds / dayTotal) * 100) : 0;
+
+    const row = new Adw.ActionRow({
+        title: resolveAppName(app.key),
+        subtitle: formatCompactDuration(app.seconds),
+    });
+    const icon = new Gtk.Image({
+        icon_name: gicon ? null : 'application-x-generic-symbolic',
+        pixel_size: 32,
+        valign: Gtk.Align.CENTER,
+    });
+    if (gicon)
+        icon.gicon = gicon;
+    const progress = new Gtk.ProgressBar({
+        fraction: dayTotal > 0 ? app.seconds / dayTotal : 0,
+        show_text: false,
+        valign: Gtk.Align.CENTER,
+        width_request: 120,
+        tooltip_text: `${percentage}% of selected day`,
+    });
+    const percentageLabel = new Gtk.Label({
+        label: `${percentage}%`,
+        valign: Gtk.Align.CENTER,
+        halign: Gtk.Align.END,
+        width_request: 42,
+    });
+    row.add_prefix(icon);
+    row.add_suffix(progress);
+    row.add_suffix(percentageLabel);
+    return row;
+}
+
+const MOOD_MAX_LEVEL = Math.max(...MOOD_LEVELS.map(mood => mood.level));
+
+// The Patterns section groups the mood scale into a positive and a negative half, so a
+// level at or above GOOD or at or below LOW is what "good" and "low" days mean there.
+const GOOD_MOOD_LEVEL = 4;
+const LOW_MOOD_LEVEL = 2;
+
+// A compact "Xh Ym avg" for a set of day totals, or a dash when there is nothing to
+// average rather than a misleading 0m.
+function averageDurationLabel(totals) {
+    if (totals.length === 0)
+        return '—';
+    const avg = Math.round(totals.reduce((sum, seconds) => sum + seconds, 0) / totals.length);
+    return `${formatCompactDuration(avg)} avg`;
+}
+
+// The chart's own labels drop the year, which the range makes redundant and which would
+// crowd the axis.
+function formatShortDate(dateString) {
+    const [, m, d] = dateString.split('-').map(Number);
+    return `${d} ${MONTH_NAMES_ABBREVIATED[m - 1]}`;
+}
+
+// One column per day, each a bar whose height is the mood level and whose colour is the
+// level colour; an unlogged day keeps a short faint stub so the axis stays evenly spaced.
+function buildMoodChart(entries) {
+    const chart = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 2,
+        height_request: 120,
+        css_classes: ['mood-chart'],
+    });
+    for (const entry of entries) {
+        const column = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            hexpand: true,
+            vexpand: true,
+        });
+        column.append(new Gtk.Box({ vexpand: true }));
+        const height = entry.level > 0
+            ? 10 + Math.round((entry.level / MOOD_MAX_LEVEL) * 100)
+            : 4;
+        const bar = new Gtk.Box({
+            height_request: height,
+            valign: Gtk.Align.END,
+            css_classes: entry.level > 0
+                ? ['mood-bar', `mood-fill-${entry.level}`]
+                : ['mood-bar', 'mood-fill-none'],
+        });
+        bar.set_tooltip_text(entry.level > 0
+            ? `${formatDateString(entry.date)}  ·  ${entry.label}`
+            : `${formatDateString(entry.date)}  ·  Not logged`);
+        column.append(bar);
+        chart.append(column);
+    }
+    return chart;
+}
+
+// The screen-time counterpart to the mood chart: one bar per day, height scaled to the
+// busiest day in the range, with a faint stub for days that were never tracked.
+function buildStChart(entries) {
+    const maxSeconds = Math.max(0, ...entries.map(entry => entry.seconds));
+    const safeMax = maxSeconds || 1;
+    const chart = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 2,
+        height_request: 120,
+    });
+
+    // GTK 4 fixes its tooltip hover delay at 500ms and no longer exposes a setting for it,
+    // so an instant readout is a popover shown on motion instead of a native tooltip.
+    const tipLabel = new Gtk.Label();
+    const tip = new Gtk.Popover({
+        autohide: false,
+        has_arrow: true,
+        position: Gtk.PositionType.TOP,
+        child: tipLabel,
+        css_classes: ['tooltip'],
+        can_focus: false,
+    });
+    const showTip = (column, text) => {
+        tipLabel.set_text(text);
+        // A popover can only point at one widget at a time, so it is detached before
+        // being re-parented to the column under the cursor.
+        if (tip.get_parent())
+            tip.unparent();
+        tip.set_parent(column);
+        tip.popup();
+    };
+    const hideTip = () => {
+        if (tip.get_parent())
+            tip.popdown();
+    };
+
+    for (const entry of entries) {
+        const column = new Gtk.Box({
+            orientation: Gtk.Orientation.VERTICAL,
+            hexpand: true,
+            vexpand: true,
+        });
+        column.append(new Gtk.Box({ vexpand: true }));
+        const height = entry.seconds > 0
+            ? 10 + Math.round((entry.seconds / safeMax) * 100)
+            : 4;
+        const bar = new Gtk.Box({
+            height_request: height,
+            valign: Gtk.Align.END,
+            css_classes: entry.seconds > 0 ? ['st-bar'] : ['st-bar-none'],
+        });
+        column.append(bar);
+
+        const text = entry.seconds > 0
+            ? `${formatDateString(entry.date)}  ·  ${formatCompactDuration(entry.seconds)}`
+            : `${formatDateString(entry.date)}  ·  No activity`;
+        const motion = new Gtk.EventControllerMotion();
+        motion.connect('enter', () => showTip(column, text));
+        motion.connect('leave', hideTip);
+        column.add_controller(motion);
+
+        chart.append(column);
+    }
+    // The popover is parented to a column, so it has to go before the chart tears those
+    // down; otherwise it would outlive its parent.
+    chart.connect('destroy', () => {
+        hideTip();
+        if (tip.get_parent())
+            tip.unparent();
+    });
+    return chart;
+}
+
+// Start, middle and end of the range, spaced evenly under the bars.
+function buildChartAxis(entries) {
+    const box = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, margin_top: 4 });
+    if (entries.length === 0)
+        return box;
+    const labels = [
+        { entry: entries[0], halign: Gtk.Align.START },
+        { entry: entries[Math.floor((entries.length - 1) / 2)], halign: Gtk.Align.CENTER },
+        { entry: entries[entries.length - 1], halign: Gtk.Align.END },
+    ];
+    for (const { entry, halign } of labels) {
+        box.append(new Gtk.Label({
+            label: formatShortDate(entry.date),
+            halign,
+            hexpand: true,
+            css_classes: ['dim-label', 'caption'],
+        }));
+    }
+    return box;
+}
+
+function buildMoodLegend() {
+    const wrap = new Adw.WrapBox({ child_spacing: 12, line_spacing: 6, margin_top: 10 });
+    const items = [
+        ...MOOD_LEVELS.map(mood => ({ label: mood.label, fillClass: `mood-fill-${mood.level}` })),
+        { label: 'Not logged', fillClass: 'mood-fill-none' },
+    ];
+    for (const item of items) {
+        const box = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 6, valign: Gtk.Align.CENTER });
+        box.append(new Gtk.Box({ css_classes: ['mood-dot', item.fillClass], valign: Gtk.Align.CENTER }));
+        box.append(new Gtk.Label({ label: item.label, css_classes: ['caption'] }));
+        wrap.append(box);
+    }
+    return wrap;
+}
+
+// A breakdown row is built once and then only its fill width and count change, so the
+// level colour and label stay put across refreshes.
+function buildMoodBreakdownRow(mood) {
+    const row = new Adw.ActionRow({ title: mood.label });
+    row.add_prefix(new Gtk.Box({ css_classes: ['mood-dot', `mood-fill-${mood.level}`], valign: Gtk.Align.CENTER }));
+
+    const trough = new Gtk.Box({ css_classes: ['mood-trough'], width_request: 150, valign: Gtk.Align.CENTER });
+    const fill = new Gtk.Box({ css_classes: ['mood-bar', `mood-fill-${mood.level}`], width_request: 2, valign: Gtk.Align.FILL });
+    trough.append(fill);
+    row.add_suffix(trough);
+
+    const countLabel = new Gtk.Label({
+        label: '0 days',
+        width_request: 60,
+        halign: Gtk.Align.END,
+        valign: Gtk.Align.CENTER,
+        css_classes: ['dim-label'],
+    });
+    row.add_suffix(countLabel);
+
+    return {
+        row,
+        setCount(count, maxCount) {
+            countLabel.set_text(`${count} ${count === 1 ? 'day' : 'days'}`);
+            fill.width_request = maxCount > 0 && count > 0
+                ? Math.max(3, Math.round((count / maxCount) * 150))
+                : 2;
+        },
+    };
+}
+
 function buildExportDialog(parentWindow, title, defaultFilename, jsonString) {
     const dialog = new Gtk.FileDialog({ title });
     const filter = new Gtk.FileFilter();
@@ -269,7 +566,7 @@ export function buildInsightsPage(settings) {
         title: 'Insights',
         icon_name: 'org.gnome.Extensions-symbolic',
     });
-    applyInsightsStyles(page);
+    addPageStylesheet(page, CSS_DATA);
 
     // Async work started by this page must not resume once the page is gone:
     // its callbacks write straight into the rows below.
@@ -284,27 +581,25 @@ export function buildInsightsPage(settings) {
     let selectedRange = 2;
     let stAvailableDates = [];
     let stSelectedDate = '';
-    let stAppPage = 0;
     let stAppEntries = [];
-    const stAppsPerPage = 5;
     let moodAvailableDates = [];
     let moodSelectedDate = '';
 
-    const filterGroup = new Adw.PreferencesGroup({
-        title: 'Date Range',
-        description: 'Filter data by time period.',
+    // The range presets read as a single segmented control across the top of the page
+    // rather than a labelled combo row, matching how the rest of the shell offers ranges.
+    const rangeGroup = new Adw.PreferencesGroup();
+    const rangeToggle = new Adw.ToggleGroup({
+        valign: Gtk.Align.CENTER,
+        halign: Gtk.Align.CENTER,
     });
-    const rangeModel = new Gtk.StringList();
-    RANGE_PRESETS.forEach(p => rangeModel.append(p.label));
-    const rangeRow = new Adw.ComboRow({
-        title: 'Range',
-        model: rangeModel,
-        selected: selectedRange,
+    RANGE_PRESETS.forEach((preset, index) => {
+        rangeToggle.add(new Adw.Toggle({ name: String(index), label: preset.shortLabel }));
     });
+    rangeToggle.set_active_name(String(selectedRange));
     // Each refresh walks the whole selected range, so stepping through the presets
     // is coalesced into one rebuild once the user settles on a value.
-    rangeRow.connect('notify::selected', () => {
-        selectedRange = rangeRow.get_selected();
+    rangeToggle.connect('notify::active-name', () => {
+        selectedRange = Number(rangeToggle.get_active_name());
         if (rangeRefreshId)
             GLib.Source.remove(rangeRefreshId);
         rangeRefreshId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, RANGE_REFRESH_DEBOUNCE_MS, () => {
@@ -313,24 +608,51 @@ export function buildInsightsPage(settings) {
             return GLib.SOURCE_REMOVE;
         });
     });
-    filterGroup.add(rangeRow);
-    page.add(filterGroup);
+    const rangeBox = new Gtk.Box({ halign: Gtk.Align.CENTER });
+    rangeBox.append(rangeToggle);
+    rangeGroup.add(rangeBox);
+    page.add(rangeGroup);
 
     const stSummaryGroup = new Adw.PreferencesGroup({
         title: 'Screen Time',
-        description: 'Overview of your desktop usage across the selected period.',
+        description: 'Desktop usage over the selected period.',
     });
-    const stTotalRow = new Adw.ActionRow({ title: 'Total Screen Time' });
-    const stAvgRow = new Adw.ActionRow({ title: 'Daily Average' });
-    const stTopAppRow = new Adw.ActionRow({ title: 'Most Used App' });
-    const stBestRow = new Adw.ActionRow({ title: 'Most Productive Day' });
-    const stDaysRow = new Adw.ActionRow({ title: 'Days Tracked' });
-    stSummaryGroup.add(stTotalRow);
-    stSummaryGroup.add(stAvgRow);
-    stSummaryGroup.add(stTopAppRow);
-    stSummaryGroup.add(stBestRow);
-    stSummaryGroup.add(stDaysRow);
+    const stCardsBox = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 12,
+        homogeneous: true,
+    });
+    const stTotalCard = buildStatCard('Total');
+    const stAvgCard = buildStatCard('Daily average');
+    const stPeakHourCard = buildStatCard('Peak hour');
+    stCardsBox.append(stTotalCard.box);
+    stCardsBox.append(stAvgCard.box);
+    stCardsBox.append(stPeakHourCard.box);
+    // A group keeps its action rows in one list and any other widget in a block after
+    // that list, so the cards cannot share a group with the two rows and still sit above
+    // them. They get the titled group, and the rows follow in their own panel.
+    stSummaryGroup.add(stCardsBox);
+    page.add(stSummaryGroup);
 
+    const stMostUsedRow = new Adw.ActionRow({ title: 'Most Used App' });
+    const stBestRow = new Adw.ActionRow({ title: 'Most Productive Day' });
+    const stRowsGroup = new Adw.PreferencesGroup();
+    stRowsGroup.add(stMostUsedRow);
+    stRowsGroup.add(stBestRow);
+    page.add(stRowsGroup);
+
+    const stChartGroup = new Adw.PreferencesGroup({ title: 'Daily Activity' });
+    const stChartBox = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        margin_top: 6,
+        margin_bottom: 6,
+    });
+    stChartGroup.add(stChartBox);
+    page.add(stChartGroup);
+
+    // Both destructive actions live together, apart from the figures, and are placed last
+    // so they sit after the export actions rather than interrupting the overview above.
+    const stClearGroup = new Adw.PreferencesGroup();
     const clearStBtn = new Adw.ActionRow({
         title: 'Clear Screen Time Data',
         activatable: true,
@@ -352,8 +674,30 @@ export function buildInsightsPage(settings) {
         });
         dialog.present(page.get_root());
     });
-    stSummaryGroup.add(clearStBtn);
-    page.add(stSummaryGroup);
+    stClearGroup.add(clearStBtn);
+
+    const clearMoodBtn = new Adw.ActionRow({
+        title: 'Clear Mood Data',
+        activatable: true,
+    });
+    clearMoodBtn.connect('activated', () => {
+        const dialog = new Adw.AlertDialog({
+            heading: 'Clear All Mood Data?',
+            body: 'This cannot be undone.',
+        });
+        dialog.add_response('cancel', 'Cancel');
+        dialog.add_response('clear', 'Clear');
+        dialog.set_response_appearance('clear', Adw.ResponseAppearance.DESTRUCTIVE);
+        dialog.set_default_response('cancel');
+        dialog.set_close_response('cancel');
+        dialog.connect('response', (_dlg, responseId) => {
+            // Dismissing changes nothing, so it must not trigger a rebuild.
+            if (responseId === 'clear')
+                clearAllMoodData(refreshAll, pageCancellable);
+        });
+        dialog.present(page.get_root());
+    });
+    stClearGroup.add(clearMoodBtn);
 
     const stEmptyBox = buildEmptyState(
         'preferences-system-time-symbolic',
@@ -368,12 +712,25 @@ export function buildInsightsPage(settings) {
         title: 'Day Detail',
         description: 'Browse daily usage breakdowns.',
     });
-    const stNav = buildDayNavRow('Selected Day');
-    stDayGroup.add(stNav.row);
-    const stDayTotalRow = new Adw.ActionRow({ title: 'Total Time' });
-    stDayGroup.add(stDayTotalRow);
-    const stAppsNav = buildDayNavRow('Applications');
-    stDayGroup.add(stAppsNav.row);
+    // The day's date and total live in the group description, and the two arrows sit in
+    // the group header, so the whole section reads as one navigable day.
+    const stNavBox = new Gtk.Box({ spacing: 6, valign: Gtk.Align.CENTER });
+    const stPrevBtn = new Gtk.Button({
+        icon_name: 'go-previous-symbolic',
+        valign: Gtk.Align.CENTER,
+        css_classes: ['circular'],
+        tooltip_text: 'Previous date',
+    });
+    const stNextBtn = new Gtk.Button({
+        icon_name: 'go-next-symbolic',
+        valign: Gtk.Align.CENTER,
+        css_classes: ['circular'],
+        tooltip_text: 'Next date',
+    });
+    stNavBox.append(stPrevBtn);
+    stNavBox.append(stNextBtn);
+    stDayGroup.set_header_suffix(stNavBox);
+
     const stAppsBox = new Gtk.ListBox({
         selection_mode: Gtk.SelectionMode.NONE,
         margin_top: 4,
@@ -383,7 +740,7 @@ export function buildInsightsPage(settings) {
     stDayGroup.add(stAppsBox);
     page.add(stDayGroup);
 
-    stNav.prevBtn.connect('clicked', () => {
+    stPrevBtn.connect('clicked', () => {
         if (stAvailableDates.length === 0) return;
         const idx = stAvailableDates.indexOf(stSelectedDate);
         const newIdx = (idx < 0) ? 0 : idx + 1;
@@ -392,7 +749,7 @@ export function buildInsightsPage(settings) {
             refreshStDayDetail();
         }
     });
-    stNav.nextBtn.connect('clicked', () => {
+    stNextBtn.connect('clicked', () => {
         if (stAvailableDates.length === 0) return;
         const idx = stAvailableDates.indexOf(stSelectedDate);
         const newIdx = (idx < 0) ? 0 : idx - 1;
@@ -401,35 +758,44 @@ export function buildInsightsPage(settings) {
             refreshStDayDetail();
         }
     });
-    stAppsNav.prevBtn.connect('clicked', () => {
-        if (stAppPage <= 0) return;
-        stAppPage--;
-        renderStApps();
-    });
-    stAppsNav.nextBtn.connect('clicked', () => {
-        const pageCount = Math.ceil(stAppEntries.length / stAppsPerPage);
-        if (stAppPage >= pageCount - 1) return;
-        stAppPage++;
-        renderStApps();
-    });
 
     const moodSummaryGroup = new Adw.PreferencesGroup({
         title: 'Mood',
-        description: 'Your emotional patterns over time.',
+        description: 'Your logged mood, summarised.',
     });
-    const moodDaysRow = new Adw.ActionRow({ title: 'Days Logged' });
-    const moodAvgRow = new Adw.ActionRow({ title: 'Average Mood' });
-    const moodBestWeekRow = new Adw.ActionRow({ title: 'Best Week' });
-    const moodWorstWeekRow = new Adw.ActionRow({ title: 'Most Challenging Week' });
-    const moodBestMonthRow = new Adw.ActionRow({ title: 'Best Month' });
-    const moodWorstMonthRow = new Adw.ActionRow({ title: 'Most Challenging Month' });
-    moodSummaryGroup.add(moodDaysRow);
-    moodSummaryGroup.add(moodAvgRow);
-    moodSummaryGroup.add(moodBestWeekRow);
-    moodSummaryGroup.add(moodWorstWeekRow);
-    moodSummaryGroup.add(moodBestMonthRow);
-    moodSummaryGroup.add(moodWorstMonthRow);
+    const moodCardsBox = new Gtk.Box({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        spacing: 12,
+        homogeneous: true,
+    });
+    const moodAvgCard = buildStatCard('Average');
+    const moodDaysCard = buildStatCard('Days logged');
+    const moodBestWeekCard = buildStatCard('Best week');
+    moodCardsBox.append(moodAvgCard.box);
+    moodCardsBox.append(moodDaysCard.box);
+    moodCardsBox.append(moodBestWeekCard.box);
+    moodSummaryGroup.add(moodCardsBox);
     page.add(moodSummaryGroup);
+
+    const moodChartGroup = new Adw.PreferencesGroup({ title: 'Daily Mood' });
+    const moodChartBox = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        margin_top: 6,
+        margin_bottom: 6,
+    });
+    moodChartGroup.add(moodChartBox);
+    page.add(moodChartGroup);
+
+    const moodBreakdownGroup = new Adw.PreferencesGroup({
+        title: 'Mood Breakdown',
+        description: 'How your logged days were spread.',
+    });
+    // One row per level, built once and reordered on refresh so the most common mood
+    // sits at the top.
+    const moodBreakdownRows = MOOD_LEVELS.map(mood => buildMoodBreakdownRow(mood));
+    for (const breakdownRow of moodBreakdownRows)
+        moodBreakdownGroup.add(breakdownRow.row);
+    page.add(moodBreakdownGroup);
 
     const moodEmptyBox = buildEmptyState(
         'face-smile-big-symbolic',
@@ -485,6 +851,28 @@ export function buildInsightsPage(settings) {
         }
     });
 
+    const patternsGroup = new Adw.PreferencesGroup({
+        title: 'Patterns',
+        description: 'Mood alongside your screen time.',
+    });
+    const patternBestRow = new Adw.ActionRow({ title: 'Best Day' });
+    const patternBestValue = new Gtk.Label({ valign: Gtk.Align.CENTER });
+    patternBestRow.add_suffix(patternBestValue);
+    const patternCommonRow = new Adw.ActionRow({ title: 'Most Common Mood' });
+    const patternCommonValue = new Gtk.Label({ valign: Gtk.Align.CENTER });
+    patternCommonRow.add_suffix(patternCommonValue);
+    const patternGoodRow = new Adw.ActionRow({ title: 'Screen Time on Good Days' });
+    const patternGoodValue = new Gtk.Label({ valign: Gtk.Align.CENTER });
+    patternGoodRow.add_suffix(patternGoodValue);
+    const patternLowRow = new Adw.ActionRow({ title: 'Screen Time on Low Days' });
+    const patternLowValue = new Gtk.Label({ valign: Gtk.Align.CENTER });
+    patternLowRow.add_suffix(patternLowValue);
+    patternsGroup.add(patternBestRow);
+    patternsGroup.add(patternCommonRow);
+    patternsGroup.add(patternGoodRow);
+    patternsGroup.add(patternLowRow);
+    page.add(patternsGroup);
+
     const exportGroup = new Adw.PreferencesGroup({
         title: 'Export Data',
         description: 'Save your insights data to a JSON file.',
@@ -513,6 +901,7 @@ export function buildInsightsPage(settings) {
     });
     exportGroup.add(exportMoodBtn);
     page.add(exportGroup);
+    page.add(stClearGroup);
 
     function buildScreenTimeExportData(dates) {
         const days = [];
@@ -595,8 +984,8 @@ export function buildInsightsPage(settings) {
     function updateNavButtons() {
         const stHasData = stAvailableDates.length > 0;
         const stIdx = stAvailableDates.indexOf(stSelectedDate);
-        stNav.prevBtn.set_sensitive(stHasData && stIdx < stAvailableDates.length - 1);
-        stNav.nextBtn.set_sensitive(stHasData && stIdx > 0);
+        stPrevBtn.set_sensitive(stHasData && stIdx < stAvailableDates.length - 1);
+        stNextBtn.set_sensitive(stHasData && stIdx > 0);
 
         const moodHasData = moodAvailableDates.length > 0;
         const moodIdx = moodAvailableDates.indexOf(moodSelectedDate);
@@ -605,23 +994,36 @@ export function buildInsightsPage(settings) {
     }
 
     function refreshStSummary() {
-        const hasData = stAvailableDates.length > 0;
-        stDaysRow.set_subtitle(hasData ? `${stAvailableDates.length}` : '0');
+        const preset = RANGE_PRESETS[selectedRange];
+        stSummaryGroup.set_description(preset.days === 0
+            ? 'Desktop usage over all time.'
+            : `Desktop usage over the last ${preset.days} days.`);
 
+        const hasData = stAvailableDates.length > 0;
+        stChartGroup.set_visible(hasData);
         if (!hasData) {
-            stTotalRow.set_subtitle('No data yet');
-            stAvgRow.set_subtitle('No data yet');
-            stTopAppRow.set_subtitle('No data yet');
+            stTotalCard.setValue('—');
+            stAvgCard.setValue('—');
+            stPeakHourCard.setValue('—');
+            stMostUsedRow.set_subtitle('No data yet');
             stBestRow.set_subtitle('No data yet');
             return;
         }
         let grandTotal = 0;
         const appAgg = {};
+        const rangeHourTotals = new Array(HOURS_PER_DAY).fill(0);
         let bestDay = { date: '', total: 0 };
+        // Days that resolve to a summary are the only ones the chart colours in; the rest
+        // of the range is drawn from this map too, so a missing day is a stub rather than
+        // another failed read.
+        const rangeTotals = new Map();
         for (const dateStr of stAvailableDates) {
             const summary = loadDaySummary(dateStr);
             if (summary) {
                 grandTotal += summary.totalSeconds;
+                rangeTotals.set(dateStr, summary.totalSeconds);
+                for (let hour = 0; hour < HOURS_PER_DAY; hour++)
+                    rangeHourTotals[hour] += summary.hourTotals[hour];
                 for (const app of summary.apps) {
                     if (app.key === DESKTOP_APP_KEY) continue;
                     appAgg[app.key] = (appAgg[app.key] || 0) + app.seconds;
@@ -630,61 +1032,38 @@ export function buildInsightsPage(settings) {
                     bestDay = { date: summary.date, total: summary.totalSeconds };
             }
         }
-        stTotalRow.set_subtitle(formatCompactDuration(grandTotal));
-        stAvgRow.set_subtitle(formatCompactDuration(Math.round(grandTotal / stAvailableDates.length)));
+        stTotalCard.setValue(formatCompactDuration(grandTotal));
+        stAvgCard.setValue(formatCompactDuration(Math.round(grandTotal / stAvailableDates.length)));
+
+        // The busiest hour of the day across the whole range. A tie keeps the earlier
+        // hour, which reads as "starts at" rather than drifting into the evening.
+        let peakHour = 0;
+        for (let hour = 1; hour < HOURS_PER_DAY; hour++) {
+            if (rangeHourTotals[hour] > rangeHourTotals[peakHour])
+                peakHour = hour;
+        }
+        stPeakHourCard.setValue(rangeHourTotals[peakHour] > 0
+            ? formatHourOfDay(peakHour, settings.get_boolean('time-format-24h'))
+            : '—');
+
         const topApp = Object.entries(appAgg).sort((a, b) => b[1] - a[1])[0];
-        stTopAppRow.set_subtitle(topApp ? resolveAppName(topApp[0]) : 'None');
+        stMostUsedRow.set_subtitle(topApp ? resolveAppName(topApp[0]) : 'None');
         stBestRow.set_subtitle(bestDay.date ? `${formatDateString(bestDay.date)}  ·  ${formatCompactDuration(bestDay.total)}` : 'None');
+
+        const stEarliest = stAvailableDates.reduce((min, date) => (date < min ? date : min), stAvailableDates[0]);
+        const chartDates = buildChartDates(stEarliest);
+        const chartEntries = chartDates.map(date => ({
+            date,
+            seconds: rangeTotals.get(date) || 0,
+        }));
+        clearBox(stChartBox);
+        stChartBox.append(buildStChart(chartEntries));
+        stChartBox.append(buildChartAxis(chartEntries));
     }
 
     function renderStApps() {
         clearBox(stAppsBox);
-        const pageCount = Math.max(1, Math.ceil(stAppEntries.length / stAppsPerPage));
-        stAppPage = Math.max(0, Math.min(stAppPage, pageCount - 1));
-        const start = stAppPage * stAppsPerPage;
-        const pageApps = stAppEntries.slice(start, start + stAppsPerPage);
         const dayTotal = stDayTotalSeconds;
-
-        stAppsNav.row.set_visible(stAppEntries.length > 0);
-        stAppsNav.row.set_subtitle(stAppEntries.length > 0
-            ? `${start + 1}–${start + pageApps.length} of ${stAppEntries.length}`
-            : 'No applications');
-        stAppsNav.prevBtn.set_sensitive(stAppPage > 0);
-        stAppsNav.nextBtn.set_sensitive(stAppPage < pageCount - 1);
-
-        for (const app of pageApps) {
-            const appDetails = getAppDetails(app.key);
-            const gicon = appDetails ? appDetails.icon : null;
-            const row = new Adw.ActionRow({
-                title: resolveAppName(app.key),
-                subtitle: `${formatCompactDuration(app.seconds)}  ·  ${Math.round((app.seconds / dayTotal) * 100)}%`,
-                width_request: 170,
-            });
-            const icon = new Gtk.Image({
-                icon_name: gicon ? null : 'application-x-generic-symbolic',
-                pixel_size: 32,
-                valign: Gtk.Align.CENTER,
-            });
-            if (gicon)
-                icon.gicon = gicon;
-            const percentage = Math.round((app.seconds / dayTotal) * 100);
-            const progress = new Gtk.ProgressBar({
-                fraction: dayTotal > 0 ? app.seconds / dayTotal : 0,
-                show_text: false,
-                valign: Gtk.Align.CENTER,
-                width_request: 120,
-                tooltip_text: `${percentage}% of selected day`,
-            });
-            const percentageLabel = new Gtk.Label({
-                label: `${percentage}%`,
-                valign: Gtk.Align.CENTER,
-                width_request: 42,
-            });
-            row.add_prefix(icon);
-            row.add_suffix(progress);
-            row.add_suffix(percentageLabel);
-            stAppsBox.append(row);
-        }
 
         if (stAppEntries.length === 0) {
             stAppsBox.append(buildEmptyState(
@@ -692,8 +1071,22 @@ export function buildInsightsPage(settings) {
                 'No application activity',
                 'Applications used on this day will appear here.'
             ));
+            return;
         }
 
+        for (const app of stAppEntries.slice(0, APPS_PREVIEW_COUNT))
+            stAppsBox.append(buildAppRow(app, dayTotal));
+
+        // The remainder collapse behind one expander row: clicking it reveals the rest
+        // instead of paging through them a handful at a time.
+        if (stAppEntries.length > APPS_PREVIEW_COUNT) {
+            const expander = new Adw.ExpanderRow({
+                title: `Show all ${stAppEntries.length} applications`,
+            });
+            for (const app of stAppEntries.slice(APPS_PREVIEW_COUNT))
+                expander.add_row(buildAppRow(app, dayTotal));
+            stAppsBox.append(expander);
+        }
     }
 
     let stDayTotalSeconds = 0;
@@ -701,12 +1094,9 @@ export function buildInsightsPage(settings) {
     function refreshStDayDetail() {
         clearBox(stAppsBox);
         stAppEntries = [];
-        stAppPage = 0;
         stDayTotalSeconds = 0;
-        stAppsNav.row.set_visible(false);
         if (!stSelectedDate) {
-            stNav.row.set_subtitle('No data');
-            stDayTotalRow.set_subtitle('—');
+            stDayGroup.set_description('No data');
             stAppsBox.append(buildEmptyState(
                 'folder-open-symbolic',
                 'No data for this day',
@@ -715,10 +1105,9 @@ export function buildInsightsPage(settings) {
             updateNavButtons();
             return;
         }
-        stNav.row.set_subtitle(formatDateString(stSelectedDate));
         const summary = loadDaySummary(stSelectedDate);
         if (!summary) {
-            stDayTotalRow.set_subtitle('—');
+            stDayGroup.set_description(`${formatDateString(stSelectedDate)}  ·  —`);
             stAppsBox.append(buildEmptyState(
                 'folder-open-symbolic',
                 'No data for this day',
@@ -727,86 +1116,116 @@ export function buildInsightsPage(settings) {
             updateNavButtons();
             return;
         }
-        stDayTotalRow.set_subtitle(formatCompactDuration(summary.totalSeconds));
+        stDayGroup.set_description(`${formatDateString(stSelectedDate)}  ·  ${formatCompactDuration(summary.totalSeconds)}`);
         stDayTotalSeconds = summary.totalSeconds;
         stAppEntries = summary.apps.filter(app => app.key !== DESKTOP_APP_KEY);
         renderStApps();
         updateNavButtons();
     }
 
+    // A chart only draws one bar per day, so a very long history would compress the bars
+    // to slivers. "All time" therefore starts at the earliest logged date and is capped
+    // to the most recent window. `earliest` is the oldest date known for the series.
+    function buildChartDates(earliest) {
+        const preset = RANGE_PRESETS[selectedRange];
+        const end = GLib.DateTime.new_now_local();
+        let start;
+        if (preset.days === 0) {
+            if (!earliest) return [];
+            const [y, m, d] = earliest.split('-').map(Number);
+            start = GLib.DateTime.new_local(y, m, d, 12, 0, 0);
+        } else {
+            start = end.add_days(-(preset.days - 1));
+        }
+        const dates = [];
+        for (let dt = start; dt.compare(end) <= 0; dt = dt.add_days(1))
+            dates.push(dt.format('%Y-%m-%d'));
+        return dates.slice(-MAX_CHART_DAYS);
+    }
+
     function refreshMoodSummary() {
         const hasData = moodAvailableDates.length > 0;
-        moodDaysRow.set_subtitle(hasData ? `${moodAvailableDates.length}` : '0');
+        moodSummaryGroup.set_visible(hasData);
+        moodChartGroup.set_visible(hasData);
+        moodBreakdownGroup.set_visible(hasData);
 
         if (!hasData) {
-            moodAvgRow.set_subtitle('No data yet');
-            moodBestWeekRow.set_subtitle('No data yet');
-            moodWorstWeekRow.set_subtitle('No data yet');
-            moodBestMonthRow.set_subtitle('No data yet');
-            moodWorstMonthRow.set_subtitle('No data yet');
+            moodAvgCard.setValue('—');
+            moodAvgCard.setCaption('Average');
+            moodDaysCard.setValue('0');
+            moodDaysCard.setCaption('Days logged');
+            moodBestWeekCard.setValue('—');
+            moodBestWeekCard.setCaption('Best week');
             return;
         }
         loadDatesSync(moodAvailableDates);
         let totalLevel = 0;
         let loggedCount = 0;
+        const levelCounts = new Map();
         const weekScores = {};
-        const monthScores = {};
         for (const dateStr of moodAvailableDates) {
             const level = getMood(dateStr);
             if (level <= 0) continue;
             totalLevel += level;
             loggedCount++;
+            levelCounts.set(level, (levelCounts.get(level) || 0) + 1);
             const [y, m, d] = dateStr.split('-').map(Number);
             const dt = GLib.DateTime.new_local(y, m, d, 12, 0, 0);
             const weekKey = `${dt.get_year()}-W${dt.get_week_of_year().toString().padStart(2, '0')}`;
-            const monthKey = `${dt.get_year()}-${dt.get_month().toString().padStart(2, '0')}`;
             if (!weekScores[weekKey]) weekScores[weekKey] = { total: 0, count: 0 };
             weekScores[weekKey].total += level;
             weekScores[weekKey].count++;
-            if (!monthScores[monthKey]) monthScores[monthKey] = { total: 0, count: 0 };
-            monthScores[monthKey].total += level;
-            monthScores[monthKey].count++;
         }
+
         if (loggedCount === 0) {
-            moodAvgRow.set_subtitle('No entries yet');
-            moodBestWeekRow.set_subtitle('No entries yet');
-            moodWorstWeekRow.set_subtitle('No entries yet');
-            moodBestMonthRow.set_subtitle('No entries yet');
-            moodWorstMonthRow.set_subtitle('No entries yet');
+            moodAvgCard.setValue('—');
+            moodAvgCard.setCaption('Average');
+            moodDaysCard.setValue('0');
+            moodDaysCard.setCaption('Days logged');
+            moodBestWeekCard.setValue('—');
+            moodBestWeekCard.setCaption('Best week');
             return;
         }
+
         const avg = totalLevel / loggedCount;
         const avgMood = MOOD_LEVELS.reduce((prev, curr) => Math.abs(curr.level - avg) < Math.abs(prev.level - avg) ? curr : prev);
-        moodAvgRow.set_subtitle(`${avgMood.label}  ·  ${avg.toFixed(1)}/5`);
+        moodAvgCard.setValue(`${avg.toFixed(1)} / 5`);
+        moodAvgCard.setCaption(`Average · ${avgMood.label}`);
+        moodDaysCard.setValue(`${loggedCount}`);
+        moodDaysCard.setCaption('Days logged');
 
         const weekEntries = Object.entries(weekScores).sort((a, b) => (b[1].total / b[1].count) - (a[1].total / a[1].count));
         if (weekEntries.length > 0) {
-            const [bestWeek, bestData] = weekEntries[0];
-            const bestAvg = bestData.total / bestData.count;
-            const bestMood = MOOD_LEVELS.reduce((prev, curr) => Math.abs(curr.level - bestAvg) < Math.abs(prev.level - bestAvg) ? curr : prev);
-            moodBestWeekRow.set_subtitle(`${bestWeek}  ·  ${bestMood.label} (${bestAvg.toFixed(1)})`);
-            const [worstWeek, worstData] = weekEntries[weekEntries.length - 1];
-            const worstAvg = worstData.total / worstData.count;
-            const worstMood = MOOD_LEVELS.reduce((prev, curr) => Math.abs(curr.level - worstAvg) < Math.abs(prev.level - worstAvg) ? curr : prev);
-            moodWorstWeekRow.set_subtitle(`${worstWeek}  ·  ${worstMood.label} (${worstAvg.toFixed(1)})`);
+            moodBestWeekCard.setValue(`W${weekEntries[0][0].split('-W')[1]}`);
+            moodBestWeekCard.setCaption('Best week');
         } else {
-            moodBestWeekRow.set_subtitle('Not enough data');
-            moodWorstWeekRow.set_subtitle('Not enough data');
+            moodBestWeekCard.setValue('—');
+            moodBestWeekCard.setCaption('Best week');
         }
 
-        const monthEntries = Object.entries(monthScores).sort((a, b) => (b[1].total / b[1].count) - (a[1].total / a[1].count));
-        if (monthEntries.length > 0) {
-            const [bestMonth, bestData] = monthEntries[0];
-            const bestAvg = bestData.total / bestData.count;
-            const bestMood = MOOD_LEVELS.reduce((prev, curr) => Math.abs(curr.level - bestAvg) < Math.abs(prev.level - bestAvg) ? curr : prev);
-            moodBestMonthRow.set_subtitle(`${bestMonth}  ·  ${bestMood.label} (${bestAvg.toFixed(1)})`);
-            const [worstMonth, worstData] = monthEntries[monthEntries.length - 1];
-            const worstAvg = worstData.total / worstData.count;
-            const worstMood = MOOD_LEVELS.reduce((prev, curr) => Math.abs(curr.level - worstAvg) < Math.abs(prev.level - worstAvg) ? curr : prev);
-            moodWorstMonthRow.set_subtitle(`${worstMonth}  ·  ${worstMood.label} (${worstAvg.toFixed(1)})`);
-        } else {
-            moodBestMonthRow.set_subtitle('Not enough data');
-            moodWorstMonthRow.set_subtitle('Not enough data');
+        const moodEarliest = moodAvailableDates.reduce((min, date) => (date < min ? date : min), moodAvailableDates[0]);
+        const chartDates = buildChartDates(moodEarliest);
+        loadDatesSync(chartDates);
+        const entries = chartDates.map(date => {
+            const level = getMood(date);
+            const mood = MOOD_LEVELS.find(item => item.level === level);
+            return { date, level, label: mood ? mood.label : '' };
+        });
+        clearBox(moodChartBox);
+        moodChartBox.append(buildMoodChart(entries));
+        moodChartBox.append(buildChartAxis(entries));
+        moodChartBox.append(buildMoodLegend());
+
+        const maxCount = Math.max(0, ...MOOD_LEVELS.map(mood => levelCounts.get(mood.level) || 0));
+        // Rows are re-added in descending count order; the sort is stable, so equal counts
+        // keep their level order.
+        const breakdownOrder = MOOD_LEVELS
+            .map((mood, index) => ({ breakdownRow: moodBreakdownRows[index], count: levelCounts.get(mood.level) || 0 }))
+            .sort((a, b) => b.count - a.count);
+        for (const { breakdownRow, count } of breakdownOrder) {
+            moodBreakdownGroup.remove(breakdownRow.row);
+            moodBreakdownGroup.add(breakdownRow.row);
+            breakdownRow.setCount(count, maxCount);
         }
     }
 
@@ -843,6 +1262,70 @@ export function buildInsightsPage(settings) {
         updateNavButtons();
     }
 
+    // Patterns is a relationship view over the whole history rather than the selected
+    // range, so it reports the same thing whichever range is active above.
+    function refreshPatterns() {
+        const allMoodDates = listMoodDatesSync();
+        patternsGroup.set_visible(allMoodDates.length > 0);
+        if (allMoodDates.length === 0)
+            return;
+        loadDatesSync(allMoodDates);
+
+        // Only days with a screen-time file carry a total; a mood logged on a day without
+        // one still counts as logged but is left out of the averages.
+        const stDates = new Set(listDayFiles());
+        const levelCounts = new Map();
+        let totalLogged = 0;
+        let best = null;
+        const goodTotals = [];
+        const lowTotals = [];
+        for (const date of allMoodDates) {
+            const level = getMood(date);
+            if (level <= 0) continue;
+            totalLogged++;
+            levelCounts.set(level, (levelCounts.get(level) || 0) + 1);
+
+            const hasScreenTime = stDates.has(date);
+            const seconds = hasScreenTime ? (loadDaySummary(date)?.totalSeconds ?? 0) : 0;
+            if (hasScreenTime) {
+                if (level >= GOOD_MOOD_LEVEL)
+                    goodTotals.push(seconds);
+                else if (level <= LOW_MOOD_LEVEL)
+                    lowTotals.push(seconds);
+            }
+            // Best day is the highest mood; ties go to the day with the most screen time,
+            // which keeps a flat scale from collapsing onto an arbitrary date.
+            if (!best || level > best.level || (level === best.level && seconds > best.seconds))
+                best = { date, level, seconds };
+        }
+        if (totalLogged === 0) {
+            patternsGroup.set_visible(false);
+            return;
+        }
+
+        const bestMood = MOOD_LEVELS.find(mood => mood.level === best.level);
+        patternBestRow.set_subtitle(formatDateString(best.date));
+        patternBestValue.set_text(bestMood ? bestMood.label : 'Unknown');
+
+        let commonLevel = 0;
+        for (const [level, count] of levelCounts) {
+            if (count > (levelCounts.get(commonLevel) || 0))
+                commonLevel = level;
+        }
+        const commonMood = MOOD_LEVELS.find(mood => mood.level === commonLevel);
+        patternCommonRow.set_subtitle(`${levelCounts.get(commonLevel)} of ${totalLogged} logged days`);
+        patternCommonValue.set_text(commonMood ? commonMood.label : 'Unknown');
+
+        // The bands are named from the levels they cover, so renaming a mood keeps the
+        // rows accurate.
+        const goodLabels = MOOD_LEVELS.filter(mood => mood.level >= GOOD_MOOD_LEVEL).map(mood => mood.label).join(' or ');
+        const lowLabels = MOOD_LEVELS.filter(mood => mood.level <= LOW_MOOD_LEVEL).map(mood => mood.label).join(' or ');
+        patternGoodRow.set_subtitle(`Days rated ${goodLabels}`);
+        patternGoodValue.set_text(averageDurationLabel(goodTotals));
+        patternLowRow.set_subtitle(`Days rated ${lowLabels}`);
+        patternLowValue.set_text(averageDurationLabel(lowTotals));
+    }
+
     function refreshAll() {
         const allFiles = listDayFiles();
         stAvailableDates = filterByRange(allFiles, selectedRange);
@@ -875,6 +1358,7 @@ export function buildInsightsPage(settings) {
 
         refreshMoodSummary();
         refreshMoodDayDetail();
+        refreshPatterns();
     }
 
     refreshAll();
@@ -906,6 +1390,54 @@ function clearAllScreenTimeData(callback, cancellable) {
                 if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
                     return;
                 console.error('Error clearing screen time data:', e);
+            }
+            if (callback) callback();
+        }
+    );
+}
+
+function clearAllMoodData(callback, cancellable) {
+    const dir = getGridgetsDataDir('mood');
+    const dirFile = Gio.File.new_for_path(dir);
+    dirFile.enumerate_children_async(
+        'standard::name,standard::type',
+        Gio.FileQueryInfoFlags.NONE,
+        GLib.PRIORITY_DEFAULT,
+        cancellable,
+        (sourceObj, res) => {
+            if (cancellable.is_cancelled()) return;
+            try {
+                // Mood history is one file per month under a year directory, so the year
+                // level is walked first and each month file deleted from there.
+                const enumerator = sourceObj.enumerate_children_finish(res);
+                let yearInfo;
+                while ((yearInfo = enumerator.next_file(null)) !== null) {
+                    if (yearInfo.get_file_type() !== Gio.FileType.DIRECTORY) continue;
+                    const yearName = yearInfo.get_name();
+                    const yearDir = Gio.File.new_for_path(GLib.build_filenamev([dir, yearName]));
+                    let monthEnum;
+                    try {
+                        monthEnum = yearDir.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+                    } catch (error) {
+                        // An unreadable year is skipped so the rest of the history still
+                        // clears, but the reason is logged rather than swallowed.
+                        console.error(`Gridgets: could not read mood year ${yearName}:`, error.message);
+                        continue;
+                    }
+                    let monthInfo;
+                    while ((monthInfo = monthEnum.next_file(null)) !== null) {
+                        const name = monthInfo.get_name();
+                        if (!name.endsWith('.json')) continue;
+                        Gio.File.new_for_path(GLib.build_filenamev([dir, yearName, name])).delete(null);
+                    }
+                }
+                // The store caches month files in memory, so it has to be told the files
+                // are gone or the cleared data would keep rendering from the cache.
+                clearMoodStoreCache();
+            } catch (e) {
+                if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                    return;
+                console.error('Error clearing mood data:', e);
             }
             if (callback) callback();
         }

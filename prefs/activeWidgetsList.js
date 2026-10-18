@@ -220,20 +220,20 @@ function createWidgetRow(window, settings, widget) {
  * AdwPreferencesGroup has no API to enumerate its children, so the rows this function
  * adds are tracked here rather than read back off the widget.
  */
-export function populateActiveWidgets(window, settings, page) {
+export function populateActiveWidgets(window, settings, host) {
     // Desktop icons are listed on the Desktop page and managed by the desktop folder
     // itself. They have no settings to edit and no size to change, so a row here would
     // offer neither, and its delete button would fight the folder monitor.
     const widgets = getWidgets(settings).filter(widget => !isDesktopIcon(widget));
 
-    const previousGroups = page.activeGroupsByKey instanceof Map
-        ? page.activeGroupsByKey
+    const previousGroups = host.activeGroupsByKey instanceof Map
+        ? host.activeGroupsByKey
         : new Map();
-    const previousRows = page.activeRowsById instanceof Map
-        ? page.activeRowsById
+    const previousRows = host.activeRowsById instanceof Map
+        ? host.activeRowsById
         : new Map();
-    const previousRowsBySection = page.activeRowsBySection instanceof Map
-        ? page.activeRowsBySection
+    const previousRowsBySection = host.activeRowsBySection instanceof Map
+        ? host.activeRowsBySection
         : new Map();
 
     const widgetsBySection = new Map();
@@ -247,7 +247,7 @@ export function populateActiveWidgets(window, settings, page) {
     for (const [sectionKey, group] of previousGroups) {
         if (widgetsBySection.has(sectionKey))
             continue;
-        page.remove(group);
+        host.removeGroup(group);
         previousGroups.delete(sectionKey);
         for (const row of previousRowsBySection.get(sectionKey) || [])
             previousRows.delete(row.widgetId);
@@ -256,7 +256,7 @@ export function populateActiveWidgets(window, settings, page) {
 
     if (widgets.length === 0) {
         for (const group of previousGroups.values())
-            page.remove(group);
+            host.removeGroup(group);
         previousGroups.clear();
         previousRows.clear();
         previousRowsBySection.clear();
@@ -266,11 +266,11 @@ export function populateActiveWidgets(window, settings, page) {
             description: 'View, edit appearance overrides, and remove currently active desktop widgets.',
         });
         emptyGroup.add(new Adw.ActionRow({ title: 'No widgets added yet.' }));
-        page.add(emptyGroup);
+        host.addGroup('desktop', emptyGroup);
         previousGroups.set(EMPTY_SECTION_KEY, emptyGroup);
-        page.activeGroupsByKey = previousGroups;
-        page.activeRowsById = previousRows;
-        page.activeRowsBySection = previousRowsBySection;
+        host.activeGroupsByKey = previousGroups;
+        host.activeRowsById = previousRows;
+        host.activeRowsBySection = previousRowsBySection;
         return;
     }
 
@@ -283,7 +283,7 @@ export function populateActiveWidgets(window, settings, page) {
                 title: section.title,
                 description: section.description,
             });
-            page.add(group);
+            host.addGroup('desktop', group);
             previousGroups.set(sectionKey, group);
         } else {
             group.set_title(section.title);
@@ -320,7 +320,7 @@ export function populateActiveWidgets(window, settings, page) {
         previousRowsBySection.set(sectionKey, sectionRows);
     }
 
-    page.activeGroupsByKey = previousGroups;
-    page.activeRowsById = previousRows;
-    page.activeRowsBySection = previousRowsBySection;
+    host.activeGroupsByKey = previousGroups;
+    host.activeRowsById = previousRows;
+    host.activeRowsBySection = previousRowsBySection;
 }

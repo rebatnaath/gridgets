@@ -1,9 +1,9 @@
 import Gdk from 'gi://Gdk';
 import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import { buildAppearancePage } from './prefs/appearancePage.js';
-import { buildStorePage } from './prefs/storePage.js';
+import { buildWidgetsPage } from './prefs/widgetsPage.js';
 import { buildGlobalSettingsPage } from './prefs/globalSettingsPage.js';
-import { buildIndividualSettingsPage } from './prefs/individualSettingsPage.js';
+import { buildRegionPage } from './prefs/regionPage.js';
 import { buildInsightsPage } from './prefs/insightsPage.js';
 import { buildShortcutsPage } from './prefs/shortcutsPage.js';
 
@@ -52,15 +52,15 @@ export default class GridgetsPreferences extends ExtensionPreferences {
         const extensionPath = this.path;
 
         const pages = [
-            ['Store', buildStorePage(window, settings, extensionPath)],
-            ['Appearance', buildAppearancePage(settings)],
-            ['Global', buildGlobalSettingsPage(settings)],
-            ['Individual', buildIndividualSettingsPage(window, settings)],
-            ['Insights', buildInsightsPage(settings)],
-            ['Shortcuts', buildShortcutsPage(settings)],
+            buildWidgetsPage(window, settings, extensionPath),
+            buildAppearancePage(settings),
+            buildGlobalSettingsPage(settings),
+            buildRegionPage(settings),
+            buildInsightsPage(settings),
+            buildShortcutsPage(settings),
         ];
 
-        for (const [name, page] of pages) {
+        for (const page of pages) {
             window.add(page);
         }
     }

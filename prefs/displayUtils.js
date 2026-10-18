@@ -1,4 +1,20 @@
 import Gdk from 'gi://Gdk';
+import Gtk from 'gi://Gtk';
+
+// Installed per page rather than at import time, and removed with the page so the provider
+// is not left attached to the display.
+export function addPageStylesheet(page, cssData) {
+    const provider = new Gtk.CssProvider();
+    provider.load_from_data(cssData, cssData.length);
+    Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default(),
+        provider,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    );
+    page.connect('destroy', () => {
+        Gtk.StyleContext.remove_provider_for_display(Gdk.Display.get_default(), provider);
+    });
+}
 
 export function clearBox(box) {
     let child = box.get_first_child();

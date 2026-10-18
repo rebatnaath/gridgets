@@ -5,28 +5,31 @@ import { populateActiveWidgets, removableWidgets, removeAllWidgets } from './act
 import { createSwitchRow } from './aestheticControls.js';
 import { confirmDestructive } from './confirmActions.js';
 
-export function buildIndividualSettingsPage(window, settings) {
-    const page = new Adw.PreferencesPage({
-        title: 'Individual Settings',
-        description: 'Configure the widgets currently placed on your desktop.',
-        icon_name: 'org.gnome.tweaks-symbolic',
-        name: 'individual-settings',
-    });
+/**
+ * Adds the On Desktop view to the shared Widgets page.
+ *
+ * The view lives behind the page's toggle, so "visible" means the Widgets page is on
+ * screen and the toggle is on On Desktop. The list is rebuilt only when it becomes
+ * visible again rather than on every widget change, so an edit panel that is open on one
+ * widget is not torn down while another widget changes.
+ */
+export function buildIndividualSettingsView(window, settings, host) {
+    const page = host.page;
 
     let isListDirty = true;
     let navigateMappedSignalId = 0;
     let navigateRetrySourceId = 0;
     let pendingNavigateWidgetId = null;
 
-    const isPageVisible = () => window.get_visible_page() === page;
+    const isViewVisible = () => host.currentView === 'desktop' && window.get_visible_page() === page;
 
     const refreshActiveWidgets = () => {
-        populateActiveWidgets(window, settings, page);
+        populateActiveWidgets(window, settings, host);
         isListDirty = false;
     };
 
     const markDirtyOnVisible = () => {
-        if (isPageVisible()) {
+        if (isViewVisible()) {
             refreshActiveWidgets();
             return;
         }
@@ -40,10 +43,11 @@ export function buildIndividualSettingsPage(window, settings) {
 
     const navigateToWidget = widgetId => {
         window.set_visible_page(page);
+        host.setView('desktop');
         if (isListDirty)
             refreshActiveWidgets();
 
-        const rowsById = page.activeRowsById instanceof Map ? page.activeRowsById : new Map();
+        const rowsById = host.activeRowsById instanceof Map ? host.activeRowsById : new Map();
         const targetRow = rowsById.get(widgetId);
         if (targetRow)
             targetRow.set_expanded(true);
@@ -108,11 +112,17 @@ export function buildIndividualSettingsPage(window, settings) {
     const widgetsChangedId = settings.connect('changed::widgets', markDirtyOnVisible);
     const globalMonitorChangedId = settings.connect('changed::global-monitor', markDirtyOnVisible);
     const visiblePageChangedId = window.connect('notify::visible-page', () => {
-        if (isPageVisible() && isListDirty)
+        if (isViewVisible() && isListDirty)
             refreshActiveWidgets();
     });
     const openEditChangedId = settings.connect('changed::open-edit-widget-id', consumePendingEditRequest);
     const pendingEditMapId = window.connect('map', consumePendingEditRequest);
+
+    // Switching the toggle onto this view is the other way the list becomes visible.
+    host.addViewListener('desktop', () => {
+        if (isListDirty)
+            refreshActiveWidgets();
+    });
 
     page.connect('destroy', () => {
         settings.disconnect(widgetsChangedId);
@@ -167,12 +177,11 @@ export function buildIndividualSettingsPage(window, settings) {
     clearRow.add_suffix(clearButton);
     refreshClearButton();
     dangerGroup.add(clearRow);
-    page.add(dangerGroup);
+    host.addGroup('desktop', dangerGroup);
 
     const widgetsChangedForClearId = settings.connect('changed::widgets', refreshClearButton);
     page.connect('destroy', () => settings.disconnect(widgetsChangedForClearId));
 
     refreshActiveWidgets();
     consumePendingEditRequest();
-    return page;
 }

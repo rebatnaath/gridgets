@@ -52,10 +52,10 @@ export function createSwitchRow(title, subtitle, settings, key) {
     return { row };
 }
 
-export function buildGlobalAestheticsGroup(settings) {
+export function buildTypographyGroup(settings) {
     const group = new Adw.PreferencesGroup({
-        title: 'Aesthetics',
-        description: 'Tweak the default visual style applied to all widgets.',
+        title: 'Typography',
+        description: 'Choose the font used across all widgets.',
     });
 
     const useCustomFontRow = new Adw.SwitchRow({

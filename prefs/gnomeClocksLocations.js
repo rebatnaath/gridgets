@@ -2,16 +2,13 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import Pango from 'gi://Pango';
-import { loadGWeather } from './appAvailability.js';
-import { normalizeName, hasValidCoordinates, getLocationDisplayName, locationKey } from './locationCommon.js';
-
-const CLOCKS_BUS_NAME = 'org.gnome.clocks';
-const CLOCKS_OBJECT_PATH = '/org/gnome/clocks';
-const CLOCKS_INTERFACE = 'org.gnome.Shell.ClocksIntegration';
+import { loadMergedLocations } from './locationSources.js';
+import { normalizeName, getLocationDisplayName } from './locationCommon.js';
 
 function launchGnomeClocks() {
     return new Promise(resolve => {
-        // (commandline, working_directory, flags). Passing the flags second throws.
+        // create_from_commandline takes (commandline, application_name, flags); the flags
+        // enum is last, so passing it in the second slot throws.
         const appInfo = Gio.AppInfo.create_from_commandline('gnome-clocks', null, GLib.SpawnFlags.SEARCH_PATH);
         if (!appInfo) {
             resolve(false);
@@ -34,63 +31,6 @@ function launchGnomeClocks() {
     });
 }
 
-async function getGnomeClocksLocations() {
-    const GWeather = await loadGWeather();
-    if (!GWeather)
-        return { locations: [], message: 'GNOME Clocks locations could not be loaded in this environment.' };
-
-    return new Promise(resolve => {
-        const parameters = new GLib.Variant('(ss)', [CLOCKS_INTERFACE, 'Locations']);
-        Gio.DBus.session.call(
-            CLOCKS_BUS_NAME,
-            CLOCKS_OBJECT_PATH,
-            'org.freedesktop.DBus.Properties',
-            'Get',
-            parameters,
-            new GLib.VariantType('(v)'),
-            Gio.DBusCallFlags.NONE,
-            -1,
-            null,
-            (connection, result) => {
-                try {
-                    const reply = connection.call_finish(result).deep_unpack();
-                    const serializedLocations = reply[0].deep_unpack();
-                    const world = GWeather.Location.get_world();
-                    const locations = [];
-                    const locationKeys = new Set();
-
-                    for (const serializedLocation of serializedLocations) {
-                        const location = world.deserialize(serializedLocation);
-                        if (!location?.has_coords()) continue;
-
-                        const name = location.get_name() || location.get_city_name();
-                        const [latitude, longitude] = location.get_coords();
-                        if (!name || !hasValidCoordinates(latitude, longitude)) continue;
-
-                        const normalizedLocation = {
-                            name,
-                            latitude,
-                            longitude,
-                            countryName: location.get_country_name() || '',
-                            timezone: location.get_timezone_str() || '',
-                        };
-                        const key = locationKey(name, latitude, longitude);
-                        if (locationKeys.has(key)) continue;
-
-                        locationKeys.add(key);
-                        locations.push(normalizedLocation);
-                    }
-
-                    resolve({ locations, message: locations.length === 0 ? 'No world clocks found in GNOME Clocks.' : '' });
-                } catch (error) {
-                    console.error('Unable to load GNOME Clocks locations:', error);
-                    resolve({ locations: [], message: 'GNOME Clocks could not be reached. Open it and try again.' });
-                }
-            }
-        );
-    });
-}
-
 /**
  * The GNOME Clocks buttons, shared so a list of pickers carries one pair rather than a
  * pair per row. `reload` is supplied by the caller, which is what lets the list refresh
@@ -105,7 +45,7 @@ export function createClocksActionRow(reload, onError = null) {
     });
     const refreshButton = new Gtk.Button({
         icon_name: 'view-refresh-symbolic',
-        tooltip_text: 'Check GNOME Clocks for saved world clocks',
+        tooltip_text: 'Check GNOME Weather and GNOME Clocks for saved cities',
     });
     const box = new Gtk.Box({
         orientation: Gtk.Orientation.HORIZONTAL,
@@ -200,7 +140,7 @@ export function createGnomeClocksLocationPicker(savedLocation = null, onLocation
         const selectedIndex = dropdown.get_selected();
         const currentLocation = selectedIndex >= offset ? locations[selectedIndex - offset] || null : null;
 
-        const result = await getGnomeClocksLocations();
+        const result = await loadMergedLocations();
         locations = result.locations;
         const labels = locations.map(getLocationDisplayName);
         dropdown.set_model(Gtk.StringList.new(allowLocal ? [localEntryLabel, ...labels] : labels));

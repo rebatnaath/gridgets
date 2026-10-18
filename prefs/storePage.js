@@ -37,12 +37,20 @@ import {
 
 import { STORE_WIDGETS } from './widgetCatalog.js';
 import { isGnomeWeatherAvailable } from './appAvailability.js';
+import { addPageStylesheet } from './displayUtils.js';
 
 const PREVIEW_SIZE_PX = 104;
-const CARD_WIDTH_PX = 204;
 const CARD_HEIGHT_PX = 244;
 const MAX_CARDS_PER_ROW = 3;
 const SEARCH_DEBOUNCE_MS = 60;
+
+// app pill sets a large padding for a full-width action button. The filter chips are a
+// row of small toggles, so they get their own tighter padding.
+const STORE_CHIP_PADDING = '4px 12px';
+const STORE_CHIP_MIN_HEIGHT_PX = 24;
+const STORE_CSS = `
+    button.store-filter-chip { padding: ${STORE_CHIP_PADDING}; min-height: ${STORE_CHIP_MIN_HEIGHT_PX}px; }
+`;
 
 function buildPreview(extensionPath, thumbnail, fallbackIconName) {
     const preview = new Gtk.Box({
@@ -79,10 +87,13 @@ function buildPreview(extensionPath, thumbnail, fallbackIconName) {
 
 function buildStoreCard(extensionPath, widgetEntry, onAdd, buttonState = {}) {
     const { title, description, thumbnail, fallbackIconName } = widgetEntry;
+    // The card has no fixed width: the grid shares the preferences clamp width with every
+    // other page, so the store cannot force the window (and the view toggle above it) wider
+    // than Appearance or On Desktop do.
     const card = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 0,
-        width_request: CARD_WIDTH_PX,
+        hexpand: true,
         height_request: CARD_HEIGHT_PX,
         margin_start: 4,
         margin_end: 4,
@@ -165,6 +176,7 @@ function buildStoreCategories(window, settings, weatherState) {
     return [
         {
             title: 'Weather',
+            chipLabel: 'Weather',
             entries: [
                 card(STORE_WIDGETS.weatherStandard, () => openAddWeatherDialog(window, settings, 'standard'), weatherState),
                 card(STORE_WIDGETS.weatherMinimal, () => openAddWeatherDialog(window, settings, 'simple'), weatherState),
@@ -174,6 +186,7 @@ function buildStoreCategories(window, settings, weatherState) {
         },
         {
             title: 'Media',
+            chipLabel: 'Media',
             entries: [
                 card(STORE_WIDGETS.musicPlayer, () => addMusicWidget(settings)),
                 card(STORE_WIDGETS.musicPlayerWide, () => addMusicWidget(settings, true)),
@@ -183,6 +196,7 @@ function buildStoreCategories(window, settings, weatherState) {
         },
         {
             title: 'System',
+            chipLabel: 'System',
             entries: [
                 card(STORE_WIDGETS.systemDashboard, () => addSystemDashboardWidget(settings)),
                 card(STORE_WIDGETS.systemMonitor, () => addCpuRamWidget(settings)),
@@ -192,6 +206,7 @@ function buildStoreCategories(window, settings, weatherState) {
         },
         {
             title: 'Focus and Productivity',
+            chipLabel: 'Productivity',
             entries: [
                 card(STORE_WIDGETS.pomodoroTimer, () => addPomodoroWidget(settings)),
                 card(STORE_WIDGETS.pomodoroFocus, () => addPomodoroFocusWidget(settings)),
@@ -203,6 +218,7 @@ function buildStoreCategories(window, settings, weatherState) {
         },
         {
             title: 'Time and Calendar',
+            chipLabel: 'Time',
             entries: [
                 card(STORE_WIDGETS.timeAndDate, () => openAddTimeDialog(window, settings)),
                 card(STORE_WIDGETS.worldClock, () => openAddWorldClockDialog(window, settings)),
@@ -213,6 +229,7 @@ function buildStoreCategories(window, settings, weatherState) {
         },
         {
             title: 'Personal',
+            chipLabel: 'Personal',
             entries: [
                 card(STORE_WIDGETS.githubWidget,
                     () => openAddGithubDialog(window, settings, addGithubWidget)),
@@ -253,11 +270,8 @@ function buildNoResultsGroup(query) {
     return group;
 }
 
-export function buildStorePage(window, settings, extensionPath) {
-    const page = new Adw.PreferencesPage({
-        title: 'Widget Store',
-        icon_name: 'system-software-install-symbolic',
-    });
+export function buildStoreView(window, settings, extensionPath, host) {
+    addPageStylesheet(host.page, STORE_CSS);
 
     const weatherAvailable = isGnomeWeatherAvailable();
 
@@ -276,17 +290,64 @@ export function buildStorePage(window, settings, extensionPath) {
         hexpand: true,
     });
 
+    // The chips are a coarse filter over the same categories search matches against:
+    // selecting one narrows the results to that category, All clears it, and the two
+    // compose so a chip plus a query searches inside the chosen category.
+    let activeCategory = null;
+    let suppressFilterRender = true;
+    const filterChips = [];
+    // A WrapBox flows the chips onto another line when they no longer fit, rather than
+    // hiding them behind a horizontal scroll.
+    const filterRow = new Adw.WrapBox({
+        child_spacing: 6,
+        line_spacing: 6,
+    });
+
+    const selectFilterChip = chip => {
+        for (const other of filterChips)
+            other.set_active(other === chip);
+    };
+
+    const addFilterChip = (label, categoryTitle) => {
+        const chip = new Gtk.ToggleButton({
+            label,
+            css_classes: ['pill', 'store-filter-chip'],
+            valign: Gtk.Align.CENTER,
+        });
+        chip.connect('toggled', () => {
+            if (chip.get_active()) {
+                selectFilterChip(chip);
+                activeCategory = categoryTitle;
+                if (!suppressFilterRender)
+                    renderResults();
+            } else if (!filterChips.some(other => other.get_active())) {
+                // One chip always stays on, so clicking the active chip cannot leave the
+                // store unfiltered with nothing showing which filter is applied.
+                chip.set_active(true);
+            }
+        });
+        filterChips.push(chip);
+        filterRow.append(chip);
+    };
+
+    addFilterChip('All', null);
+    for (const category of categories)
+        addFilterChip(category.chipLabel, category.title);
+    filterChips[0].set_active(true);
+
     const searchGroup = new Adw.PreferencesGroup();
     const searchBox = new Gtk.Box({
         orientation: Gtk.Orientation.VERTICAL,
+        spacing: 8,
         margin_top: 12,
         margin_bottom: 4,
         margin_start: 8,
         margin_end: 8,
     });
     searchBox.append(searchEntry);
+    searchBox.append(filterRow);
     searchGroup.add(searchBox);
-    page.add(searchGroup);
+    host.addGroup('library', searchGroup);
 
     if (!weatherAvailable) {
         const unavailableGroup = new Adw.PreferencesGroup();
@@ -299,7 +360,7 @@ export function buildStorePage(window, settings, extensionPath) {
             pixel_size: 28,
         }));
         unavailableGroup.add(unavailableRow);
-        page.add(unavailableGroup);
+        host.addGroup('library', unavailableGroup);
     }
 
     const resultGroups = [];
@@ -331,7 +392,7 @@ export function buildStorePage(window, settings, extensionPath) {
         for (const group of resultGroups) {
             // remove() only detaches, so without unparent() each discarded result set
             // would stay alive for as long as the window is open.
-            page.remove(group);
+            host.removeGroup(group);
             group.unparent();
         }
         resultGroups.length = 0;
@@ -344,6 +405,8 @@ export function buildStorePage(window, settings, extensionPath) {
         let matchCount = 0;
 
         for (const category of categories) {
+            if (activeCategory && category.title !== activeCategory)
+                continue;
             const entries = category.entries.filter(({ entry }) => storeEntryMatches(entry, category.title, query));
             if (entries.length === 0)
                 continue;
@@ -351,13 +414,13 @@ export function buildStorePage(window, settings, extensionPath) {
             const cards = entries.map(getCard);
             attachedCards.push(...cards);
             const group = buildCategoryGroup(category.title, cards);
-            page.add(group);
+            host.addGroup('library', group);
             resultGroups.push(group);
         }
 
         if (matchCount === 0) {
             const group = buildNoResultsGroup(searchEntry.get_text().trim());
-            page.add(group);
+            host.addGroup('library', group);
             resultGroups.push(group);
         }
     };
@@ -373,7 +436,8 @@ export function buildStorePage(window, settings, extensionPath) {
         });
     });
 
+    // The chips are wired now, so later toggles should re-render. The initial render
+    // happens below instead, once, rather than once per chip as they are activated.
+    suppressFilterRender = false;
     renderResults();
-
-    return page;
 }
