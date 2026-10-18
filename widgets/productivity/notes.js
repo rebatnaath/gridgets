@@ -3,15 +3,20 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveAccentColor, cssColorToRgba, resolveWidgetCornerRadius, saveJsonToFile, saveJsonToFileSync, resolveChildCornerRadius } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { relativeTimeFromIso } from '../../utils/feedText.js';
 import { createWidgetContainer, registerWidgetCleanup, connectTimerCleanup, scheduleDeferredUpdate, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
-const BASE_HEADER_FONT_SIZE = TYPOGRAPHY_SIZE.label;
-const BASE_TITLE_FONT_SIZE = 24;
+// The card title, its date line and its saved/editing line sit above the note body, so
+// they carry a touch more than their shared tier alone would give them.
+const CARD_TEXT_BOOST = 1.4;
+// The titlebar's "QUICK NOTES" sits above the card, so it carries its own boost.
+const HEADER_TEXT_BOOST = 1.4;
+const BASE_HEADER_FONT_SIZE = TYPOGRAPHY_SIZE.label * HEADER_TEXT_BOOST;
+const BASE_TITLE_FONT_SIZE = 24 * CARD_TEXT_BOOST;
 const BASE_CONTENT_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
-const BASE_FOOTER_FONT_SIZE = TYPOGRAPHY_SIZE.compact;
+const BASE_FOOTER_FONT_SIZE = TYPOGRAPHY_SIZE.compact * CARD_TEXT_BOOST;
 const BASE_ICON_SIZE = 16;
 const BASE_SWATCH_SIZE = 22;
 const BASE_EDIT_BUTTON_SIZE = 34;
@@ -461,40 +466,41 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     container.add_child(menuPanel);
 
     function cardMetrics(scale) {
+        const { px } = createWidgetMetrics(scale);
         return {
-            contentPadding: Math.round(BASE_CONTENT_PADDING_PX * scale),
-            cardPadding: Math.round(BASE_CARD_PADDING_PX * scale),
+            contentPadding: px(BASE_CONTENT_PADDING_PX),
+            cardPadding: px(BASE_CARD_PADDING_PX),
             cardRadius: resolveChildCornerRadius(BASE_CARD_RADIUS_PX, scale),
-            cardSpacing: Math.round(BASE_CARD_SPACING_PX * scale),
-            cardGap: Math.round(BASE_CARD_SPACING_PX * scale),
-            colorRowGap: Math.round(BASE_COLOR_ROW_GAP_PX * scale),
-            swatchGap: Math.round(BASE_SWATCH_GAP_PX * scale),
-            swatchSize: Math.round(BASE_SWATCH_SIZE * scale),
-            editButtonSize: Math.round(BASE_EDIT_BUTTON_SIZE * scale),
-            headerFontSize: scaleFontSize(BASE_HEADER_FONT_SIZE, scale, MIN_FONT_SIZE.metadata),
-            titleFontSize: scaleFontSize(BASE_TITLE_FONT_SIZE, scale, MIN_FONT_SIZE.title),
-            contentFontSize: scaleFontSize(BASE_CONTENT_FONT_SIZE, scale, MIN_FONT_SIZE.body),
-            footerFontSize: scaleFontSize(BASE_FOOTER_FONT_SIZE, scale, MIN_FONT_SIZE.metadata),
-            iconSize: scaleFontSize(BASE_ICON_SIZE, scale),
-            menuIconSize: scaleFontSize(BASE_MENU_ICON_SIZE, scale),
-            menuButtonSize: Math.round(BASE_EDIT_BUTTON_SIZE * scale),
-            panelPadding: Math.round(BASE_PANEL_PADDING_PX * scale),
-            panelSpacing: Math.round(BASE_PANEL_SPACING_PX * scale),
-            panelTitleFontSize: scaleFontSize(BASE_PANEL_TITLE_FONT_SIZE, scale, MIN_FONT_SIZE.title),
-            panelRowFontSize: scaleFontSize(BASE_PANEL_ROW_FONT_SIZE, scale, MIN_FONT_SIZE.label),
-            panelPreviewFontSize: scaleFontSize(BASE_PANEL_PREVIEW_FONT_SIZE, scale, MIN_FONT_SIZE.label),
-            panelMetaFontSize: scaleFontSize(BASE_PANEL_META_FONT_SIZE, scale, MIN_FONT_SIZE.metadata),
-            panelSectionFontSize: scaleFontSize(BASE_PANEL_SECTION_FONT_SIZE, scale, MIN_FONT_SIZE.metadata),
-            panelRowPaddingV: scaleFontSize(BASE_PANEL_ROW_PADDING_V_PX, scale),
-            panelRowPaddingH: scaleFontSize(BASE_PANEL_ROW_PADDING_H_PX, scale),
+            cardSpacing: px(BASE_CARD_SPACING_PX),
+            cardGap: px(BASE_CARD_SPACING_PX),
+            colorRowGap: px(BASE_COLOR_ROW_GAP_PX),
+            swatchGap: px(BASE_SWATCH_GAP_PX),
+            swatchSize: px(BASE_SWATCH_SIZE),
+            editButtonSize: px(BASE_EDIT_BUTTON_SIZE),
+            headerFontSize: px(BASE_HEADER_FONT_SIZE),
+            titleFontSize: px(BASE_TITLE_FONT_SIZE),
+            contentFontSize: px(BASE_CONTENT_FONT_SIZE),
+            footerFontSize: px(BASE_FOOTER_FONT_SIZE),
+            iconSize: px(BASE_ICON_SIZE),
+            menuIconSize: px(BASE_MENU_ICON_SIZE),
+            menuButtonSize: px(BASE_EDIT_BUTTON_SIZE),
+            panelPadding: px(BASE_PANEL_PADDING_PX),
+            panelSpacing: px(BASE_PANEL_SPACING_PX),
+            panelTitleFontSize: px(BASE_PANEL_TITLE_FONT_SIZE),
+            panelRowFontSize: px(BASE_PANEL_ROW_FONT_SIZE),
+            panelPreviewFontSize: px(BASE_PANEL_PREVIEW_FONT_SIZE),
+            panelMetaFontSize: px(BASE_PANEL_META_FONT_SIZE),
+            panelSectionFontSize: px(BASE_PANEL_SECTION_FONT_SIZE),
+            panelRowPaddingV: px(BASE_PANEL_ROW_PADDING_V_PX),
+            panelRowPaddingH: px(BASE_PANEL_ROW_PADDING_H_PX),
             panelRowRadius: resolveChildCornerRadius(BASE_PANEL_ROW_RADIUS_PX, scale),
-            panelTileSize: Math.round(BASE_PANEL_TILE_SIZE_PX * scale),
-            panelTileRadius: Math.max(2, Math.round(BASE_PANEL_TILE_SIZE_PX * scale * BASE_PANEL_TILE_CORNER_RATIO)),
-            panelTileFontSize: Math.max(1, Math.round(BASE_PANEL_TILE_SIZE_PX * scale * BASE_PANEL_TILE_LETTER_RATIO)),
-            panelPinSize: scaleFontSize(BASE_PANEL_PIN_SIZE_PX, scale),
-            panelIconButtonSize: Math.round(BASE_PANEL_ICON_BUTTON_PX * scale),
-            panelIconSize: scaleFontSize(BASE_PANEL_ICON_SIZE_PX, scale),
-            panelCloseIconSize: scaleFontSize(BASE_PANEL_CLOSE_ICON_SIZE, scale),
+            panelTileSize: px(BASE_PANEL_TILE_SIZE_PX),
+            panelTileRadius: Math.max(2, px(BASE_PANEL_TILE_SIZE_PX * BASE_PANEL_TILE_CORNER_RATIO)),
+            panelTileFontSize: Math.max(1, px(BASE_PANEL_TILE_SIZE_PX * BASE_PANEL_TILE_LETTER_RATIO)),
+            panelPinSize: px(BASE_PANEL_PIN_SIZE_PX),
+            panelIconButtonSize: px(BASE_PANEL_ICON_BUTTON_PX),
+            panelIconSize: px(BASE_PANEL_ICON_SIZE_PX),
+            panelCloseIconSize: px(BASE_PANEL_CLOSE_ICON_SIZE),
         };
     }
 
@@ -531,6 +537,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     function restyle(scale) {
         currentScale = scale;
         metrics = cardMetrics(scale);
+        const { px } = createWidgetMetrics(scale);
         const palette = resolveNoteColor(noteColorId);
 
         contentBox.set_style(`padding: ${metrics.contentPadding}px; spacing: ${metrics.cardGap}px;`);
@@ -594,7 +601,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
         panelCountLabel.set_style(
             `background-color: ${surfaceHighlight};`
             + `border-radius: ${Math.round(metrics.panelMetaFontSize * 0.9)}px;`
-            + `padding: ${Math.round(3 * currentScale)}px ${Math.round(8 * currentScale)}px;`
+            + `padding: ${px(3)}px ${px(8)}px;`
             + `${fontCss}color: ${themeTextColor}; font-size: ${metrics.panelMetaFontSize}px;`);
         panelCountLabel.set_opacity(CLUTTER_OPACITY_OPAQUE);
         newNoteButton.set_style(panelIconButtonStyle(false, true));
@@ -739,18 +746,20 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
     }
 
     function buildSectionHeader(label) {
+        const { px } = createWidgetMetrics(currentScale);
         return new St.Label({
             text: label.toUpperCase(),
             style: `${fontCss}color: ${themeTextColor};`
                 + `font-size: ${metrics.panelSectionFontSize}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`
-                + `letter-spacing: ${Math.round(1 * currentScale)}px;`
-                + `margin-top: ${Math.round(4 * currentScale)}px;`,
+                + `letter-spacing: ${px(1)}px;`
+                + `margin-top: ${px(4)}px;`,
             opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
         });
     }
 
     function buildNoteRow(note, rowRadius) {
+        const { px } = createWidgetMetrics(currentScale);
         const isActive = note.id === state.activeNoteId;
         const rowPadding = `${metrics.panelRowPaddingV}px ${metrics.panelRowPaddingH}px`;
         // The open note keeps a faint accent wash; the others rest on the plain card surface.
@@ -833,7 +842,7 @@ export function createNotesNode(config, width, height, xPosition, yPosition) {
         });
         row.add_child(timeLabel);
 
-        const pinPad = Math.round(4 * currentScale);
+        const pinPad = px(4);
         const pinRadius = resolveChildCornerRadius(BASE_PANEL_ROW_RADIUS_PX, currentScale);
         const pinNormalStyle = `padding: ${pinPad}px; border-radius: ${pinRadius}px; background-color: transparent;`;
         const pinHoverStyle = `padding: ${pinPad}px; border-radius: ${pinRadius}px; background-color: ${cssColorToRgba(accentHex, PIN_HOVER_ALPHA)};`;

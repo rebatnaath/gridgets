@@ -3,7 +3,7 @@ import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetColors, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, resolveAccentColor } from '../../utils/widgetUtils.js';
 import { drawCircularArc, createWidgetContainer, connectTimerCleanup, attachButtonFeedback, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import {
     PHASE_WORK,
     PHASE_SHORT_BREAK,
@@ -199,14 +199,13 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     };
 
     const refreshControlStyles = () => {
-        const px = value => scaleFontSize(value, scale);
-        const fontPx = (value, minimum) => scaleFontSize(value, scale, minimum);
+        const { px } = createWidgetMetrics(scale);
         const isWork = state.phase === PHASE_WORK;
         const inactiveOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
 
         modeSelector.style = `background-color: ${subtleBackground};`
             + `padding: ${px(MODE_SELECTOR_PADDING_PX)}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`;
-        const modeButtonStyle = isActive => `${fontCss}font-size: ${fontPx(MODE_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${isActive ? TYPOGRAPHY_WEIGHT.bold : TYPOGRAPHY_WEIGHT.medium};`
+        const modeButtonStyle = isActive => `${fontCss}font-size: ${px(MODE_FONT_SIZE_PX)}px; font-weight: ${isActive ? TYPOGRAPHY_WEIGHT.bold : TYPOGRAPHY_WEIGHT.medium};`
             + `padding: ${px(BUTTON_PADDING_V_PX)}px 0; min-height: ${BUTTON_MIN_HEIGHT_PX}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
             + `background-color: ${isActive ? highlightBackground : 'transparent'};`
             + `color: ${textColor};`;
@@ -215,27 +214,27 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
         workBtn.set_opacity(isWork ? CLUTTER_OPACITY_OPAQUE : inactiveOpacity);
         breakBtn.set_opacity(!isWork ? CLUTTER_OPACITY_OPAQUE : inactiveOpacity);
 
-        counterPrefixLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
+        counterPrefixLabel.style = `${fontCss}font-size: ${px(COUNTER_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-right: ${px(COUNTER_PREFIX_MARGIN_PX)}px;`;
-        counterValueLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
+        counterValueLabel.style = `${fontCss}font-size: ${px(COUNTER_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-right: ${px(COUNTER_VALUE_MARGIN_PX)}px;`;
-        counterTotalLabel.style = `${fontCss}font-size: ${fontPx(COUNTER_FONT_SIZE_PX, MIN_FONT_SIZE.label)}px;`
+        counterTotalLabel.style = `${fontCss}font-size: ${px(COUNTER_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`;
 
-        startBtn.style = `${fontCss}font-size: ${fontPx(BUTTON_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`
+        startBtn.style = `${fontCss}font-size: ${px(BUTTON_FONT_SIZE_PX)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`
             + `padding: ${px(BUTTON_PADDING_V_PX)}px 0; min-height: ${BUTTON_MIN_HEIGHT_PX}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
             + `margin: 0 ${px(ACTION_BUTTON_MARGIN_H_PX)}px;`
             + `background-color: ${accentHex};`
             + `color: ${textOnAccent};`;
-        resetBtn.style = `${fontCss}font-size: ${fontPx(BUTTON_FONT_SIZE_PX, MIN_FONT_SIZE.button)}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`
+        resetBtn.style = `${fontCss}font-size: ${px(BUTTON_FONT_SIZE_PX)}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`
             + `padding: ${px(BUTTON_PADDING_V_PX)}px 0; min-height: ${BUTTON_MIN_HEIGHT_PX}px; border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
             + `margin: 0 ${px(ACTION_BUTTON_MARGIN_H_PX)}px;`
             + `background-color: ${subtleBackground};`
             + `color: ${textColor};`;
 
-        timerLabel.style = `${fontCss}font-size: ${fontPx(TIMER_FONT_SIZE_PX, MIN_FONT_SIZE.primary)}px;`
+        timerLabel.style = `${fontCss}font-size: ${px(TIMER_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
-        phaseCaption.style = `${fontCss}font-size: ${fontPx(CAPTION_FONT_SIZE_PX, MIN_FONT_SIZE.metadata)}px;`
+        phaseCaption.style = `${fontCss}font-size: ${px(CAPTION_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; color: ${textColor};`;
 
         startBtn.child.text = state.isRunning ? 'Pause' : 'Start';
@@ -265,7 +264,7 @@ export function createPomodoroFocusNode(config, width, height, xPosition, yPosit
     function applyLayout(currentWidth, currentHeight, currentScale) {
         if (!currentWidth || !currentHeight) return;
         scale = currentScale ?? clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
-        const px = v => scaleFontSize(v, scale);
+        const { px } = createWidgetMetrics(scale);
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
 

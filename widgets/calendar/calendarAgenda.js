@@ -9,7 +9,7 @@ import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { watchCalendarSettings, watchCalendarEvents, eventDatesInMonth, watchDayRollover, toDateKey, DATE_POLL_INTERVAL_MS } from './calendarCommon.js';
 import { createMonthGrid, AGENDA_TYPE_SCALE } from './monthGridPanel.js';
 import { createDayColumn } from './dayColumnPanel.js';
-import { clampWidgetScale } from '../../utils/typography.js';
+import { clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 
 
 const REF_WIDTH_PX = 420;
@@ -128,7 +128,8 @@ export function createCalendarAgendaNode(config, width, height, xPosition, yPosi
         // only the build-time call has to derive one.
         const scale = currentScale ?? clampWidgetScale(
             Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
-        const spacing = Math.round(PANEL_SPACING_PX * scale);
+        const { px } = createWidgetMetrics(scale);
+        const spacing = px(PANEL_SPACING_PX);
         const available = Math.max(2, currentWidth - spacing);
         const halfWidth = Math.floor(available / 2);
 

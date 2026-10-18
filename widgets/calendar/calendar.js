@@ -5,7 +5,7 @@ import { resolveExplicitFontFamily, resolveWidgetBackgroundColor, resolveWidgetF
 import { createWidgetContainer, connectTimerCleanup, startPollingTimer, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
 import { MONTH_NAMES, DATE_POLL_INTERVAL_MS, weekdayIndex } from './calendarCommon.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 
 const BASE_SCALE_SIZE = 200;
 const DAY_FONT_SIZE_PX = TYPOGRAPHY_SIZE.title;
@@ -81,16 +81,17 @@ export function createCalendarNode(config, width, height, xPosition, yPosition) 
 
     function applyScale(newScale) {
         scale = newScale;
+        const { px } = createWidgetMetrics(scale);
         // The container's own radius, unscaled: buildBaseWidgetStyle sets it once from the
         // config, so a scaled or separately-defaulted panel would round differently from
         // the corners it is supposed to meet.
         topBar.style = `border-radius: ${borderRadius}px ${borderRadius}px 0 0;`;
         contentPanel.style = `background-color: ${card};`
             + `border-radius: 0 0 ${borderRadius}px ${borderRadius}px;`;
-        dayLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${SECONDARY_FONT_WEIGHT};`;
-        dateNumber.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DATE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; font-weight: ${TYPOGRAPHY_WEIGHT.black};`;
-        monthLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(MONTH_FONT_SIZE_PX, scale, MIN_FONT_SIZE.title)}px; font-weight: ${MONTH_FONT_WEIGHT}; `
-            + `margin-bottom: ${Math.round(MONTH_MARGIN_BOTTOM_PX * scale)}px;`;
+        dayLabel.style = `${fontCss}color: ${textColor}; font-size: ${px(DAY_FONT_SIZE_PX)}px; font-weight: ${SECONDARY_FONT_WEIGHT};`;
+        dateNumber.style = `${fontCss}color: ${textColor}; font-size: ${px(DATE_FONT_SIZE_PX)}px; font-weight: ${TYPOGRAPHY_WEIGHT.black};`;
+        monthLabel.style = `${fontCss}color: ${textColor}; font-size: ${px(MONTH_FONT_SIZE_PX)}px; font-weight: ${MONTH_FONT_WEIGHT}; `
+            + `margin-bottom: ${px(MONTH_MARGIN_BOTTOM_PX)}px;`;
     }
 
     function render() {

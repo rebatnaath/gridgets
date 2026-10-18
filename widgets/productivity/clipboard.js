@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveChildCornerRadius, resolveAccentColor, cssColorToRgba, DEFAULT_CHILD_CORNER_RADIUS_PX, saveJsonToFile, resolveWidgetCornerRadius, GRID_GAP_PX } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { relativeTimeFromIso } from '../../utils/feedText.js';
 import {
     createWidgetContainer,
@@ -52,9 +52,11 @@ const PILL_RADIUS_PX = 9999;
 const REF_WIDTH_PX = 240;
 const REF_HEIGHT_PX = 160;
 // The list grows by footprint, not by text: every preset renders at the scale the middle
-// tier would, so switching to a bigger size fits more rows instead of bigger rows.
-const MIDDLE_PRESET_COLS = 8;
-const MIDDLE_PRESET_ROWS = 10;
+// tier would, so switching to a bigger size fits more rows instead of bigger rows. These
+// mirror the clipboard Medium footprint in the size table and must move with it, or a
+// smaller preset keeps the larger tier's text and shows fewer rows than it has room for.
+const MIDDLE_PRESET_COLS = 6;
+const MIDDLE_PRESET_ROWS = 7;
 // The title alone tracks the footprint: a touch smaller than usual on Small, larger on
 // Medium and Large, so it reads as a heading without the body text growing with it.
 const TITLE_BOOST = 1.1;
@@ -275,11 +277,12 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
     };
 
     const buildItemRow = (entry, itemRadius) => {
+        const { px } = createWidgetMetrics(currentScale);
         const typeId = classifyClipboardText(entry.text);
         const meta = ITEM_TYPE_META[typeId];
         const badgeColor = ITEM_TYPE_COLORS[typeId] || accentHex;
 
-        const itemPadding = `${scaleFontSize(ITEM_PADDING_V_PX, currentScale)}px ${scaleFontSize(ITEM_PADDING_H_PX, currentScale)}px`;
+        const itemPadding = `${px(ITEM_PADDING_V_PX)}px ${px(ITEM_PADDING_H_PX)}px`;
         const itemNormalStyle = `padding: ${itemPadding}; border-radius: ${itemRadius}px;`
             + `background-color: ${card};`;
         const itemHoverStyle = `padding: ${itemPadding}; border-radius: ${itemRadius}px;`
@@ -296,7 +299,7 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         const row = new St.BoxLayout({
             orientation: Clutter.Orientation.HORIZONTAL,
             x_expand: true,
-            style: `spacing: ${scaleFontSize(ITEM_SPACING_PX, currentScale)}px;`,
+            style: `spacing: ${px(ITEM_SPACING_PX)}px;`,
         });
         rowButton.set_child(row);
 
@@ -309,18 +312,18 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
             return Clutter.EVENT_PROPAGATE;
         });
 
-        const badgeSize = scaleFontSize(BADGE_SIZE_PX, currentScale);
+        const badgeSize = px(BADGE_SIZE_PX);
         const badge = new St.BoxLayout({
             orientation: Clutter.Orientation.HORIZONTAL,
             y_align: Clutter.ActorAlign.CENTER,
             style: `background-color: ${cssColorToRgba(badgeColor, BADGE_TINT_ALPHA)};`
-                + `border-radius: ${scaleFontSize(BADGE_RADIUS_PX, currentScale)}px;`
+                + `border-radius: ${px(BADGE_RADIUS_PX)}px;`
                 + `width: ${badgeSize}px; height: ${badgeSize}px;`,
         });
         const badgeGlyph = new St.Label({
             text: meta.glyph,
             style: `${fontCss}color: ${badgeColor};`
-                + `font-size: ${scaleFontSize(BASE_BADGE_FONT_SIZE, currentScale, MIN_FONT_SIZE.metadata)}px;`
+                + `font-size: ${px(BASE_BADGE_FONT_SIZE)}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.bold};`,
             x_expand: true,
             x_align: Clutter.ActorAlign.CENTER,
@@ -337,7 +340,7 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
 
         const titleLabel = new St.Label({
             text: entry.text.replace(/\n/g, ' '),
-            style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_ITEM_FONT_SIZE, currentScale, MIN_FONT_SIZE.label)}px;`,
+            style: `${fontCss}color: ${textColor}; font-size: ${px(BASE_ITEM_FONT_SIZE)}px;`,
             x_expand: true,
         });
         titleLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -346,7 +349,7 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         const subtitle = `${meta.label} \u00b7 ${relativeTimeLabel(entry.timestamp)}`.replace(/\s+\u00b7\s*$/, '');
         const subtitleLabel = new St.Label({
             text: subtitle,
-            style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_META_FONT_SIZE, currentScale, MIN_FONT_SIZE.metadata)}px;`,
+            style: `${fontCss}color: ${textColor}; font-size: ${px(BASE_META_FONT_SIZE)}px;`,
             opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
         });
         textColumn.add_child(subtitleLabel);
@@ -356,8 +359,8 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         // A pinned row keeps the pin lit in the accent; an unpinned one shows it faint so
         // it reads as an action waiting to be taken. Hovering fills a rounded chip behind
         // it, since the row's own hover highlight sits underneath and would hide the icon.
-        const pinPadding = scaleFontSize(PIN_PADDING_PX, currentScale);
-        const pinRadius = scaleFontSize(ITEM_RADIUS_PX, currentScale);
+        const pinPadding = px(PIN_PADDING_PX);
+        const pinRadius = px(ITEM_RADIUS_PX);
         const pinNormalStyle = `padding: ${pinPadding}px; border-radius: ${pinRadius}px;`
             + `background-color: transparent;`;
         const pinHoverStyle = `padding: ${pinPadding}px; border-radius: ${pinRadius}px;`
@@ -366,7 +369,7 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         const pinButton = new St.Button({
             child: new St.Icon({
                 icon_name: 'view-pin-symbolic',
-                icon_size: scaleFontSize(PIN_ICON_SIZE_PX, currentScale),
+                icon_size: px(PIN_ICON_SIZE_PX),
                 style: `color: ${entry.pinned ? accentHex : textColor};`,
             }),
             reactive: true,
@@ -407,10 +410,11 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
     };
 
     const buildSectionHeader = (label) => {
+        const { px } = createWidgetMetrics(currentScale);
         const headerLabel = new St.Label({
             text: label.toUpperCase(),
             style: `${fontCss}color: ${textColor};`
-                + `font-size: ${scaleFontSize(BASE_SECTION_FONT_SIZE, currentScale, MIN_FONT_SIZE.metadata)}px;`
+                + `font-size: ${px(BASE_SECTION_FONT_SIZE)}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`,
             opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
         });
@@ -419,6 +423,7 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
 
     const renderClipboardItems = () => {
         if (isActorDestroyed(container)) return;
+        const { px } = createWidgetMetrics(currentScale);
         itemContainer.destroy_all_children();
 
         const total = state.clipboardHistory.length;
@@ -427,7 +432,7 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         if (total === 0) {
             const emptyLabel = new St.Label({
                 text: 'No history yet.',
-                style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_ITEM_FONT_SIZE, currentScale, MIN_FONT_SIZE.label)}px;`,
+                style: `${fontCss}color: ${textColor}; font-size: ${px(BASE_ITEM_FONT_SIZE)}px;`,
                 opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
             });
             itemContainer.add_child(emptyLabel);
@@ -441,7 +446,7 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
         if (pinnedEntries.length === 0 && recentEntries.length === 0) {
             const noMatchLabel = new St.Label({
                 text: 'No matches.',
-                style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_ITEM_FONT_SIZE, currentScale, MIN_FONT_SIZE.label)}px;`,
+                style: `${fontCss}color: ${textColor}; font-size: ${px(BASE_ITEM_FONT_SIZE)}px;`,
                 opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
             });
             itemContainer.add_child(noMatchLabel);
@@ -495,22 +500,22 @@ export function createClipboardNode(config, width, height, xPosition, yPosition)
 
     function applyScale(scale) {
         currentScale = scale;
+        const { px } = createWidgetMetrics(scale);
         // `scale` is the middle-tier density every row uses; the title alone leans by the
         // widget's column span, so Small shrinks it and Medium/Large grow it.
-        const titleScale = scale * (presetCols / MIDDLE_PRESET_COLS) * TITLE_BOOST;
-        const titleFontSize = scaleFontSize(BASE_TITLE_FONT_SIZE, titleScale, MIN_FONT_SIZE.metadata);
+        const titleFontSize = px(BASE_TITLE_FONT_SIZE * (presetCols / MIDDLE_PRESET_COLS) * TITLE_BOOST);
         headerLabel.set_style(`${fontCss}color: ${textColor}; font-size: ${titleFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`);
-        countLabel.set_style(`${fontCss}color: ${textColor}; font-size: ${scaleFontSize(BASE_COUNT_FONT_SIZE, scale, MIN_FONT_SIZE.metadata)}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`);
+        countLabel.set_style(`${fontCss}color: ${textColor}; font-size: ${px(BASE_COUNT_FONT_SIZE)}px; font-weight: ${TYPOGRAPHY_WEIGHT.medium};`);
         countPill.set_style(`background-color: ${highlight}; border-radius: ${PILL_RADIUS_PX}px;`
-            + `padding: ${scaleFontSize(COUNT_PILL_PADDING_V_PX, scale)}px ${scaleFontSize(COUNT_PILL_PADDING_H_PX, scale)}px;`);
-        searchEntry.primary_icon.icon_size = scaleFontSize(SEARCH_ICON_SIZE_PX, scale);
+            + `padding: ${px(COUNT_PILL_PADDING_V_PX)}px ${px(COUNT_PILL_PADDING_H_PX)}px;`);
+        searchEntry.primary_icon.icon_size = px(SEARCH_ICON_SIZE_PX);
         searchEntry.set_style(`background-color: ${highlight}; color: ${textColor};`
-            + `font-size: ${scaleFontSize(BASE_SEARCH_FONT_SIZE, scale, MIN_FONT_SIZE.label)}px;`
-            + `border-radius: ${scaleFontSize(SEARCH_FIELD_RADIUS_PX, scale)}px;`
-            + `padding: ${scaleFontSize(SEARCH_FIELD_PADDING_V_PX, scale)}px ${scaleFontSize(SEARCH_FIELD_PADDING_H_PX, scale)}px;`
-            + `margin: ${scaleFontSize(SEARCH_FIELD_MARGIN_PX, scale)}px ${scaleFontSize(CONTENT_PADDING_PX, scale)}px;`);
-        scrollArea.set_style(`padding: ${scaleFontSize(CONTENT_PADDING_PX, scale)}px;`);
-        itemContainer.set_style(`spacing: ${scaleFontSize(LIST_SPACING_PX, scale)}px;`);
+            + `font-size: ${px(BASE_SEARCH_FONT_SIZE)}px;`
+            + `border-radius: ${px(SEARCH_FIELD_RADIUS_PX)}px;`
+            + `padding: ${px(SEARCH_FIELD_PADDING_V_PX)}px ${px(SEARCH_FIELD_PADDING_H_PX)}px;`
+            + `margin: ${px(SEARCH_FIELD_MARGIN_PX)}px ${px(CONTENT_PADDING_PX)}px;`);
+        scrollArea.set_style(`padding: ${px(CONTENT_PADDING_PX)}px;`);
+        itemContainer.set_style(`spacing: ${px(LIST_SPACING_PX)}px;`);
         renderClipboardItems();
     }
 

@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { cssColorToRgba, resolveExplicitFontFamily, resolveWidgetColors, resolveWidgetCornerRadius } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { subscribeToFeed } from '../../utils/rssEngine.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
@@ -270,20 +270,20 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
     function applyLayout(currentWidth, currentHeight, currentScale) {
         if (!currentWidth || !currentHeight) return;
         scale = currentScale ?? clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
-        const px = (v) => scaleFontSize(v, scale);
+        const { px } = createWidgetMetrics(scale);
 
         titleBar.style = `padding: ${px(TITLEBAR_PADDING_V_PX)}px ${px(TITLEBAR_PADDING_H_PX)}px;`
             + `background-color: ${subtleBackground};`
             + `border-radius: ${borderRadius}px ${borderRadius}px 0 0;`
             + `border-bottom: ${BORDER_WIDTH_PX}px solid ${highlightBackground};`;
-        sourceLabel.style = `${fontCss}font-size: ${scaleFontSize(SOURCE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+        sourceLabel.style = `${fontCss}font-size: ${px(SOURCE_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
         sourceLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
 
         contentArea.style = `padding: ${px(CONTENT_PADDING_PX)}px;`;
         emptyState.applyScale(scale);
-        articleTitle.style = `${fontCss}font-size: ${scaleFontSize(TITLE_DISPLAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
-        articleSnippet.style = `${fontCss}font-size: ${scaleFontSize(SNIPPET_DISPLAY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`
+        articleTitle.style = `${fontCss}font-size: ${px(TITLE_DISPLAY_FONT_SIZE_PX)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
+        articleSnippet.style = `${fontCss}font-size: ${px(SNIPPET_DISPLAY_FONT_SIZE_PX)}px;`
             + `color: ${textColor};`;
         articleSnippet.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
         articleSnippet.clutter_text.line_wrap = true;
@@ -292,9 +292,9 @@ export function createRssHeadlinesNode(config, width, height, xPosition, yPositi
         footerBar.style = `padding: ${px(FOOTER_PADDING_V_PX)}px ${px(TITLEBAR_PADDING_H_PX)}px;`
             + `border-top: ${BORDER_WIDTH_PX}px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.divider)};`;
         const footerOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata);
-        timeLabel.style = `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; color: ${textColor};`;
+        timeLabel.style = `${fontCss}font-size: ${px(FOOTER_FONT_SIZE_PX)}px; color: ${textColor};`;
         timeLabel.opacity = footerOpacity;
-        articlePositionLabel.style = `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; color: ${textColor};`;
+        articlePositionLabel.style = `${fontCss}font-size: ${px(FOOTER_FONT_SIZE_PX)}px; color: ${textColor};`;
         articlePositionLabel.opacity = footerOpacity;
 
         applyArticle();

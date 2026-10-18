@@ -10,7 +10,7 @@ import {
     resolveChildCornerRadius,
     DEFAULT_CHILD_CORNER_RADIUS_PX } from '../../utils/widgetUtils.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, traceRoundedRect } from '../../shell/widgetUIUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { cpuRamEngine, networkEngine, systemStatsEngine } from '../../utils/systemMonitorEngine.js';
 import { formatBytesPerSecond } from './network.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
@@ -173,22 +173,25 @@ export function createSystemDashboardNode(config, width, height, xPosition, yPos
     const repaintAreas = [];
     let metrics = null;
 
-    const computeMetrics = (scale) => ({
-        scale,
-        contentPadding: Math.round(BASE_CONTENT_PADDING_PX * scale),
-        cardGap: Math.round(BASE_CARD_GAP_PX * scale),
-        cardPadding: Math.round(BASE_CARD_PADDING_PX * scale),
-        cardRadius: resolveChildCornerRadius(BASE_CARD_RADIUS_PX, scale),
-        cardSpacing: Math.round(BASE_CARD_SPACING_PX * scale),
-        valueRowSpacing: Math.round(BASE_VALUE_ROW_SPACING_PX * scale),
-        progressHeight: Math.round(BASE_PROGRESS_HEIGHT_PX * scale),
-        progressRadius: Math.round(BASE_PROGRESS_RADIUS_PX * scale),
-        titleFontSize: scaleFontSize(TYPOGRAPHY_SIZE.body, scale, MIN_FONT_SIZE.body),
-        subtitleFontSize: scaleFontSize(BASE_SUBINFO_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata),
-        valueFontSize: scaleFontSize(TYPOGRAPHY_SIZE.displayMD, scale, MIN_FONT_SIZE.primary),
-        unitFontSize: scaleFontSize(TYPOGRAPHY_SIZE.subtitle, scale, MIN_FONT_SIZE.label),
-        badgeFontSize: scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label),
-    });
+    const computeMetrics = (rawScale) => {
+        const { scale, px } = createWidgetMetrics(rawScale);
+        return {
+            scale,
+            contentPadding: px(BASE_CONTENT_PADDING_PX),
+            cardGap: px(BASE_CARD_GAP_PX),
+            cardPadding: px(BASE_CARD_PADDING_PX),
+            cardRadius: resolveChildCornerRadius(BASE_CARD_RADIUS_PX, scale),
+            cardSpacing: px(BASE_CARD_SPACING_PX),
+            valueRowSpacing: px(BASE_VALUE_ROW_SPACING_PX),
+            progressHeight: px(BASE_PROGRESS_HEIGHT_PX),
+            progressRadius: px(BASE_PROGRESS_RADIUS_PX),
+            titleFontSize: px(TYPOGRAPHY_SIZE.body),
+            subtitleFontSize: px(BASE_SUBINFO_FONT_SIZE_PX),
+            valueFontSize: px(TYPOGRAPHY_SIZE.displayMD),
+            unitFontSize: px(TYPOGRAPHY_SIZE.subtitle),
+            badgeFontSize: px(TYPOGRAPHY_SIZE.label),
+        };
+    };
 
     const roleStyle = (role, m) => {
         const valueStyle = `${fontCss}color: ${textColor}; font-size: ${m.valueFontSize}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`;

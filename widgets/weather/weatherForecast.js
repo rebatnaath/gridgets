@@ -8,13 +8,12 @@ import {
     LOCATION_UNAVAILABLE_TEXT,
     HIGH_LOW_LOADING_TEXT,
     WEATHER_LOADING_TEXT,
-    scaleWeatherValue,
     buildWeatherTextStyle,
     initialScaleFor,
     WEATHER_METADATA_OPACITY,
 } from './weatherCommon.js';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, GRAPHICS_OPACITY } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, createWidgetMetrics, GRAPHICS_OPACITY } from '../../utils/typography.js';
 
 const CLUTTER_OPACITY_OPAQUE = 255;
 const BASE_LAYOUT_WIDTH = 360;
@@ -110,16 +109,17 @@ export function attachForecastScaler(widgetNode, uiElements, widgetData) {
     const applyLayout = (scale) => {
         if (!uiElements || !uiElements.cityLabel) return;
 
-        const citySize = scaleWeatherValue(BASE_CITY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle);
-        const tempSize = scaleWeatherValue(BASE_TEMP_FONT_SIZE, scale, MIN_FONT_SIZE.primary);
-        const iconSize = scaleWeatherValue(BASE_ICON_SIZE, scale);
-        const conditionSize = scaleWeatherValue(BASE_CONDITION_FONT_SIZE, scale, MIN_FONT_SIZE.body);
-        const highLowSize = scaleWeatherValue(BASE_HIGHLOW_FONT_SIZE, scale, MIN_FONT_SIZE.metadata);
-        const hourlyTextSize = scaleWeatherValue(BASE_HOURLY_TEXT_SIZE, scale, MIN_FONT_SIZE.metadata);
-        const hourlyIconSize = scaleWeatherValue(BASE_HOURLY_ICON_SIZE, scale);
-        const cityMargin = scaleWeatherValue(CITY_MARGIN_BOTTOM_PX, scale);
-        const dividerMargin = scaleWeatherValue(DIVIDER_MARGIN_VERTICAL_PX, scale);
-        const hourlyMargin = scaleWeatherValue(HOURLY_ITEM_MARGIN_BOTTOM_PX, scale);
+        const { px } = createWidgetMetrics(scale);
+        const citySize = px(BASE_CITY_FONT_SIZE);
+        const tempSize = px(BASE_TEMP_FONT_SIZE);
+        const iconSize = px(BASE_ICON_SIZE);
+        const conditionSize = px(BASE_CONDITION_FONT_SIZE);
+        const highLowSize = px(BASE_HIGHLOW_FONT_SIZE);
+        const hourlyTextSize = px(BASE_HOURLY_TEXT_SIZE);
+        const hourlyIconSize = px(BASE_HOURLY_ICON_SIZE);
+        const cityMargin = px(CITY_MARGIN_BOTTOM_PX);
+        const dividerMargin = px(DIVIDER_MARGIN_VERTICAL_PX);
+        const hourlyMargin = px(HOURLY_ITEM_MARGIN_BOTTOM_PX);
 
         uiElements.cityLabel.style = buildWeatherTextStyle(fontCss, {
             fontSize: citySize,

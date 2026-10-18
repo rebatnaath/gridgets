@@ -16,7 +16,7 @@ import {
     isDarkBackgroundColor,
 } from '../../utils/widgetUtils.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
-import { clampWidgetScale, scaleFontSize, TEXT_OPACITY } from '../../utils/typography.js';
+import { clampWidgetScale, TEXT_OPACITY } from '../../utils/typography.js';
 import { addSettleAfterResize } from '../../utils/resizeSettle.js';
 import { HTTP_STATUS_OK, createGetMessage } from '../../utils/httpClient.js';
 import { setWeatherIcon } from '../../utils/weatherIcons.js';
@@ -39,10 +39,6 @@ const LOCATION_COORDINATE_TOLERANCE = 0.0001;
 export const WEATHER_LOADING_TEXT = 'Loading…';
 export const LOCATION_UNAVAILABLE_TEXT = 'Location unavailable';
 export const HIGH_LOW_LOADING_TEXT = 'H:--° L:--°';
-
-export function scaleWeatherValue(value, scale, minimum = 1) {
-    return scaleFontSize(value, scale, minimum);
-}
 
 export function buildWeatherTextStyle(fontCss, {
     fontSize,

@@ -1,8 +1,8 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { buildFontCss, WEATHER_LOADING_TEXT, scaleWeatherValue, buildWeatherTextStyle, initialScaleFor, WEATHER_SUBTLE_OPACITY } from './weatherCommon.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE } from '../../utils/typography.js';
+import { buildFontCss, WEATHER_LOADING_TEXT, buildWeatherTextStyle, initialScaleFor, WEATHER_SUBTLE_OPACITY } from './weatherCommon.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, createWidgetMetrics } from '../../utils/typography.js';
 
 const CLUTTER_OPACITY_OPAQUE = 255;
 const BASE_LAYOUT_WIDTH = 240;
@@ -48,9 +48,10 @@ export function attachSimpleScaler(widgetNode, uiElements, widgetData) {
     const applyLayout = (scale) => {
         if (!uiElements || !uiElements.tempLabel || !uiElements.cityLabel) return;
 
-        const tempSize = scaleWeatherValue(BASE_TEMP_FONT_SIZE, scale, MIN_FONT_SIZE.primary);
-        const citySize = scaleWeatherValue(BASE_CITY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle);
-        const marginBottom = scaleWeatherValue(TEMP_MARGIN_BOTTOM_PX, scale);
+        const { px } = createWidgetMetrics(scale);
+        const tempSize = px(BASE_TEMP_FONT_SIZE);
+        const citySize = px(BASE_CITY_FONT_SIZE);
+        const marginBottom = px(TEMP_MARGIN_BOTTOM_PX);
 
         uiElements.tempLabel.style = buildWeatherTextStyle(fontCss, {
             fontSize: tempSize,

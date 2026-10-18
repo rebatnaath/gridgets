@@ -1,7 +1,7 @@
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import { createFallbackIcon, buildFontCss, LOCATION_UNAVAILABLE_TEXT, HIGH_LOW_LOADING_TEXT, WEATHER_LOADING_TEXT, scaleWeatherValue, buildWeatherTextStyle, initialScaleFor, WEATHER_METADATA_OPACITY } from './weatherCommon.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE } from '../../utils/typography.js';
+import { createFallbackIcon, buildFontCss, LOCATION_UNAVAILABLE_TEXT, HIGH_LOW_LOADING_TEXT, WEATHER_LOADING_TEXT, buildWeatherTextStyle, initialScaleFor, WEATHER_METADATA_OPACITY } from './weatherCommon.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, createWidgetMetrics } from '../../utils/typography.js';
 import { attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 
 const CLUTTER_OPACITY_OPAQUE = 255;
@@ -56,15 +56,16 @@ export function attachStandardScaler(widgetNode, uiElements, widgetData) {
     const applyLayout = (scale) => {
         if (!uiElements || !uiElements.cityLabel) return;
 
-        const citySize = scaleWeatherValue(BASE_CITY_FONT_SIZE, scale, MIN_FONT_SIZE.subtitle);
-        const tempSize = scaleWeatherValue(BASE_TEMP_FONT_SIZE, scale, MIN_FONT_SIZE.primary);
-        const iconSize = scaleWeatherValue(BASE_ICON_SIZE, scale);
-        const conditionSize = scaleWeatherValue(BASE_CONDITION_FONT_SIZE, scale, MIN_FONT_SIZE.body);
-        const highLowSize = scaleWeatherValue(BASE_HIGHLOW_FONT_SIZE, scale, MIN_FONT_SIZE.metadata);
-        const cityMargin = scaleWeatherValue(CITY_MARGIN_BOTTOM_PX, scale);
-        const tempMargin = scaleWeatherValue(TEMP_MARGIN_BOTTOM_PX, scale);
-        const conditionMargin = scaleWeatherValue(CONDITION_ICON_MARGIN_RIGHT_PX, scale);
-        const highLowMargin = scaleWeatherValue(HIGHLOW_MARGIN_TOP_PX, scale);
+        const { px } = createWidgetMetrics(scale);
+        const citySize = px(BASE_CITY_FONT_SIZE);
+        const tempSize = px(BASE_TEMP_FONT_SIZE);
+        const iconSize = px(BASE_ICON_SIZE);
+        const conditionSize = px(BASE_CONDITION_FONT_SIZE);
+        const highLowSize = px(BASE_HIGHLOW_FONT_SIZE);
+        const cityMargin = px(CITY_MARGIN_BOTTOM_PX);
+        const tempMargin = px(TEMP_MARGIN_BOTTOM_PX);
+        const conditionMargin = px(CONDITION_ICON_MARGIN_RIGHT_PX);
+        const highLowMargin = px(HIGHLOW_MARGIN_TOP_PX);
 
         uiElements.cityLabel.style = buildWeatherTextStyle(fontCss, {
             fontSize: citySize,

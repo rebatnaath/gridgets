@@ -2,7 +2,7 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Clutter from 'gi://Clutter';
 import { resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, MOOD_LEVELS } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, ICON_OPACITY_SECONDARY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { createWidgetContainer, attachResponsiveScaler, attachButtonFeedback, connectTimerCleanup, startPollingTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { todayDateString, toDateString, loadDatesAsync, getMood, saveMood } from '../../utils/moodStore.js';
@@ -58,7 +58,7 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
 
     let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
-    const px = (value, minimum = 1) => scaleFontSize(value, scale, minimum);
+    let px = createWidgetMetrics(scale).px;
 
     const state = { dateKeys: buildTrailingDateKeys(), moodButtons: [] };
 
@@ -128,14 +128,15 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
 
     function applyScale(newScale) {
         scale = newScale;
+        ({ px } = createWidgetMetrics(scale));
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_PX)}px; spacing: ${px(PANEL_GAP_PX)}px;`;
         actionPanel.style = `width: ${px(LEFT_COLUMN_WIDTH_PX)}px; spacing: ${px(ACTION_PANEL_SPACING_PX)}px;`;
-        greetingLabel.style = `${fontCss}font-size: ${px(GREETING_FONT_SIZE_PX, MIN_FONT_SIZE.title)}px; `
+        greetingLabel.style = `${fontCss}font-size: ${px(GREETING_FONT_SIZE_PX)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.extrabold}; color: ${textColor};`;
         greetingLabel.width = px(GREETING_WIDTH_PX);
         greetingLabel.clutter_text.line_wrap = false;
-        dateLabel.style = `${fontCss}font-size: ${px(DATE_FONT_SIZE_PX, MIN_FONT_SIZE.subtitle)}px; `
+        dateLabel.style = `${fontCss}font-size: ${px(DATE_FONT_SIZE_PX)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`;
         dateLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
 
@@ -144,7 +145,7 @@ export function createMoodNode(config, width, height, xPosition, yPosition) {
 
         applyMoodSelection(getMood(todayDateString()));
 
-        historyLabel.style = `${fontCss}font-size: ${px(HISTORY_LABEL_FONT_SIZE_PX, MIN_FONT_SIZE.body)}px;`
+        historyLabel.style = `${fontCss}font-size: ${px(HISTORY_LABEL_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`
             + `margin-bottom: ${px(HISTORY_LABEL_MARGIN_BOTTOM_PX)}px;`;
         historyLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);

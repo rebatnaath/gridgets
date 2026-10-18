@@ -4,7 +4,7 @@ import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { getGridgetsDataDir, loadJsonFromFileAsync, resolveExplicitFontFamily, resolveTextOnAccentColor, resolveWidgetForegroundColor, resolveWidgetSurfaces, resolveAccentColor, resolveChildCornerRadius, DEFAULT_CHILD_CORNER_RADIUS_PX, saveJsonToFile, saveJsonToFileSync } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, attachButtonFeedback } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
@@ -181,13 +181,13 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
 
     function applyScale(newScale) {
         scale = newScale;
-        const px = (v) => scaleFontSize(v, scale);
+        const { px } = createWidgetMetrics(scale);
 
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px;`;
         leftColumn.set_style(`width: ${px(LEFT_COLUMN_WIDTH_PX)}px;`);
-        titleLabel.style = `${fontCss}font-size: ${scaleFontSize(TITLE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px; `
+        titleLabel.style = `${fontCss}font-size: ${px(TITLE_FONT_SIZE_PX)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor};`;
-        countLabel.style = `${fontCss}font-size: ${scaleFontSize(COUNT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; `
+        countLabel.style = `${fontCss}font-size: ${px(COUNT_FONT_SIZE_PX)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.black}; color: ${textColor};`;
         listIcon.icon_size = px(LIST_ICON_SIZE_PX);
         addButton.style = rowBackgroundStyle + ` border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px;`
@@ -208,8 +208,8 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     }
 
     function buildTaskRow(task) {
-        const px = (v) => scaleFontSize(v, scale);
-        const fontSize = scaleFontSize(TASK_TEXT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.body);
+        const { px } = createWidgetMetrics(scale);
+        const fontSize = px(TASK_TEXT_FONT_SIZE_PX);
         const checkboxSize = px(CHECKBOX_SIZE_PX);
 
         const row = new St.BoxLayout({
@@ -291,12 +291,13 @@ export function createTodoNode(config, width, height, xPosition, yPosition) {
     function renderTasks() {
         renderCounter();
 
+        const { px } = createWidgetMetrics(scale);
         taskList.destroy_all_children();
         if (tasks.length === 0) {
             const emptyLabel = new St.Label({
                 text: 'No tasks yet — press + to add one',
                 x_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}font-size: ${scaleFontSize(TASK_TEXT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.body)}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`
+                style: `${fontCss}font-size: ${px(TASK_TEXT_FONT_SIZE_PX)}px; font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`
                     + `color: ${textColor};`,
                 opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
             });

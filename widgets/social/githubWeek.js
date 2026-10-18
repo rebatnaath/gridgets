@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, DEFAULT_CHILD_CORNER_RADIUS_PX, cssColorToRgba, parseCssColor, resolveAccentColor, resolveChildCornerRadius, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { createOfflineNotice, OFFLINE_NOTICE_MESSAGES } from '../../components/offline/offlineNotice/offlineNotice.js';
 import { isNetworkAvailable, subscribeToSettledConnectivity } from '../../utils/connectivity.js';
@@ -27,11 +27,14 @@ const CONTAINER_PADDING_H_PX = 22;
 const MAIN_BOX_SPACING_PX = 10;
 const SUMMARY_SPACING_PX = 26;
 const AVATAR_SIZE_PX = 40;
-const USERNAME_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle;
-const PILL_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
-const CAPTION_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata;
-const COUNT_FONT_SIZE_PX = TYPOGRAPHY_SIZE.label;
-const SUMMARY_FONT_SIZE_PX = 28;
+// The whole strip reads slightly small against its neighbours, so every text size in it is
+// lifted by the same factor rather than only the headings.
+const TEXT_SIZE_BOOST = 1.4;
+const USERNAME_FONT_SIZE_PX = TYPOGRAPHY_SIZE.subtitle * TEXT_SIZE_BOOST;
+const PILL_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata * TEXT_SIZE_BOOST;
+const CAPTION_FONT_SIZE_PX = TYPOGRAPHY_SIZE.metadata * TEXT_SIZE_BOOST;
+const COUNT_FONT_SIZE_PX = TYPOGRAPHY_SIZE.label * TEXT_SIZE_BOOST;
+const SUMMARY_FONT_SIZE_PX = 28 * TEXT_SIZE_BOOST;
 const BAR_AREA_HEIGHT_PX = 104;
 const BAR_WIDTH_RATIO = 0.80;
 /** Taken off the share of the column, so the bars sit in it rather than filling it. */
@@ -114,7 +117,7 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
     /** Tracked apart from the parameter: a resize only reaches the scaler callback. */
     let currentWidth = width;
     let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
-    const px = v => scaleFontSize(v, scale);
+    let px = createWidgetMetrics(scale).px;
     /** file:// URI of the stored avatar, empty until one has been fetched. */
     let avatarImageUri = '';
     let latestByDate = null;
@@ -362,7 +365,7 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
         const accent = parseCssColor(accentColor);
 
         ctx.setSourceRGBA(accent.r, accent.g, accent.b, GRAPHICS_OPACITY.border);
-        ctx.setLineWidth(Math.max(1, Math.round(scale)));
+        ctx.setLineWidth(px(1));
         for (const [fromX, fromY, toX, toY] of
             dashedSegments(roundedOutline(x, y, width_, height_, radius), px(PLACEHOLDER_DASH_PX), px(PLACEHOLDER_GAP_PX))) {
             ctx.moveTo(fromX, fromY);
@@ -488,6 +491,7 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
     usernameEntry.clutter_text.connect('key-focus-out', () => endEdit(false));
 
     function applyLayout() {
+        ({ px } = createWidgetMetrics(scale));
         offlineNotice.applyScale(scale);
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px;`
             + ` spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
@@ -499,12 +503,12 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
                 ? ` background-image: url("${avatarImageUri}");`
                     + ' background-size: cover; background-position: center;'
                 : '');
-        usernameLabel.style = `${fontCss}font-size: ${scaleFontSize(USERNAME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+        usernameLabel.style = `${fontCss}font-size: ${px(USERNAME_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-left: ${px(10)}px;`;
-        usernameEntry.style = `${fontCss}font-size: ${scaleFontSize(USERNAME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+        usernameEntry.style = `${fontCss}font-size: ${px(USERNAME_FONT_SIZE_PX)}px;`
             + `color: ${textColor}; width: ${px(150)}px;`;
 
-        const pillStyle = `${fontCss}font-size: ${scaleFontSize(PILL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+        const pillStyle = `${fontCss}font-size: ${px(PILL_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${accentColor};`
             + ` border: ${PILL_BORDER_WIDTH_PX}px solid ${cssColorToRgba(accentColor, GRAPHICS_OPACITY.border)};`
             + ` border-radius: ${px(PILL_RADIUS_PX)}px; padding: ${px(3)}px ${px(10)}px;`
@@ -513,9 +517,9 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
         deltaPill.style = pillStyle;
 
         dayColumns.forEach(column => {
-            column.countLabel.style = `${fontCss}font-size: ${scaleFontSize(COUNT_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`
+            column.countLabel.style = `${fontCss}font-size: ${px(COUNT_FONT_SIZE_PX)}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${accentColor};`;
-            column.dayLabel.style = `${fontCss}font-size: ${scaleFontSize(CAPTION_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            column.dayLabel.style = `${fontCss}font-size: ${px(CAPTION_FONT_SIZE_PX)}px;`
                 + `color: ${textColor};`;
             column.dayLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
         });
@@ -524,9 +528,9 @@ export function createGithubWeekNode(config, width, height, xPosition, yPosition
         // word: the two columns are packed edge to edge otherwise.
         summaryRow.style = `spacing: ${px(SUMMARY_SPACING_PX)}px;`;
         summaries.forEach(summary => {
-            summary.value.style = `${fontCss}font-size: ${scaleFontSize(SUMMARY_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px;`
+            summary.value.style = `${fontCss}font-size: ${px(SUMMARY_FONT_SIZE_PX)}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
-            summary.caption.style = `${fontCss}font-size: ${scaleFontSize(CAPTION_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            summary.caption.style = `${fontCss}font-size: ${px(CAPTION_FONT_SIZE_PX)}px;`
                 + `color: ${textColor};`;
             summary.caption.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
         });

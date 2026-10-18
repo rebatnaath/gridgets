@@ -12,7 +12,7 @@ import {
     CAIRO_OPERATOR_OVER,
     CAIRO_LINE_CAP_ROUND,
 } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, formatTimeParts, startMinuteAlignedTimer, startPollingTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
@@ -251,15 +251,16 @@ export function createDigitalTimeNode(widgetData, width, height, xPosition, yPos
     let timeElements = null;
 
     const applyScale = (scale, face) => {
+        const { px } = createWidgetMetrics(scale);
         const is24h = resolveUse24h(widgetData);
         const typography = {
             fontCss,
             textColor,
             timeFontSize: Math.min(
-                scaleFontSize(BASE_TIME_FONT_SIZE, scale, MIN_FONT_SIZE.primary),
+                px(BASE_TIME_FONT_SIZE),
                 Math.round(face * MAX_TIME_FONT_RATIO)),
-            meridiemFontSize: scaleFontSize(BASE_MERIDIEM_FONT_SIZE, scale, MIN_FONT_SIZE.metadata),
-            cityFontSize: scaleFontSize(BASE_CITY_FONT_SIZE, scale, MIN_FONT_SIZE.metadata),
+            meridiemFontSize: px(BASE_MERIDIEM_FONT_SIZE),
+            cityFontSize: px(BASE_CITY_FONT_SIZE),
         };
 
         // The actor tree only depends on 12/24h, so restyle in place until that changes.

@@ -5,7 +5,7 @@ import { createAnimatedImageNode } from './gif.js';
 import { listImagesInFolder, attachCaptionOverlay, resolveCaptionText, backgroundImageStyle } from './mediaCommon.js';
 import { resolveWidgetBackgroundColor, resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetCornerRadius, buildBaseWidgetStyle } from '../../utils/widgetUtils.js';
 import { WidgetActor, connectTimerCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { isActorDestroyed, watchActorLifecycle } from '../../utils/actorLifecycle.js';
 
 const DEFAULT_SLIDE_INTERVAL_SECONDS = 10;
@@ -83,7 +83,8 @@ export function createSlideshowNode(widgetData, width, height, xPosition, yPosit
     watchActorLifecycle(placeholderLabel);
     const updatePlaceholderScale = scale => {
         if (isActorDestroyed(placeholderLabel)) return;
-        const fontSize = scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label);
+        const { px } = createWidgetMetrics(scale);
+        const fontSize = px(TYPOGRAPHY_SIZE.label);
         placeholderLabel.style = `${fontCss}color: ${textColor}; font-size: ${fontSize}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
     };

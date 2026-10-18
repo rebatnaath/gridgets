@@ -5,7 +5,7 @@ import {
     CALENDAR_WEEKDAY_NAMES, resolveAccentColor, resolveTextOnAccentColor,
     resolveWidgetSurfaces, resolveWidgetBackgroundColor, blendCssColor,
 } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, createWidgetMetrics } from '../../utils/typography.js';
 import { MONTH_NAMES, GRID_REF_PADDING_PX, getDaysInMonth, getColumnForDate, isWeekend, toDateKey } from './calendarCommon.js';
 import { connectDoubleClick } from '../../utils/widgetInteractions.js';
 
@@ -23,33 +23,25 @@ const HEADER_ROW_GAP_PX = 6;
  */
 const COMPACT_TYPE_SCALE = Object.freeze({
     headerSize: TYPOGRAPHY_SIZE.compact,
-    headerMinSize: MIN_FONT_SIZE.metadata,
     headerWeight: TYPOGRAPHY_WEIGHT.bold,
     weekdaySize: TYPOGRAPHY_SIZE.metadata,
-    weekdayMinSize: MIN_FONT_SIZE.metadata,
     weekdayWeight: TYPOGRAPHY_WEIGHT.semibold,
     daySize: TYPOGRAPHY_SIZE.metadata,
-    dayMinSize: MIN_FONT_SIZE.metadata,
     dayWeight: TYPOGRAPHY_WEIGHT.regular,
     todayWeight: TYPOGRAPHY_WEIGHT.bold,
     eventSize: TYPOGRAPHY_SIZE.metadata,
-    eventMinSize: MIN_FONT_SIZE.metadata,
     eventWeight: TYPOGRAPHY_WEIGHT.regular,
 });
 
 const AGENDA_TYPE_SCALE = Object.freeze({
     headerSize: TYPOGRAPHY_SIZE.title,
-    headerMinSize: MIN_FONT_SIZE.subtitle,
     headerWeight: TYPOGRAPHY_WEIGHT.extrabold,
     weekdaySize: TYPOGRAPHY_SIZE.body,
-    weekdayMinSize: MIN_FONT_SIZE.body,
     weekdayWeight: TYPOGRAPHY_WEIGHT.extrabold,
     daySize: TYPOGRAPHY_SIZE.body,
-    dayMinSize: MIN_FONT_SIZE.body,
     dayWeight: TYPOGRAPHY_WEIGHT.regular,
     todayWeight: TYPOGRAPHY_WEIGHT.extrabold,
     eventSize: TYPOGRAPHY_SIZE.body,
-    eventMinSize: MIN_FONT_SIZE.body,
     eventWeight: TYPOGRAPHY_WEIGHT.medium,
 });
 
@@ -203,7 +195,8 @@ export function createMonthGrid({
      * whichever mark it carries.
      */
     function pillStyle(fontSizePx, background, textOnBackground) {
-        const pad = Math.round(4 * state.scale);
+        const { px } = createWidgetMetrics(state.scale);
+        const pad = px(4);
         return `${fontCss}font-size: ${fontSizePx}px; font-weight: ${typeScale.todayWeight};`
             + `color: ${textOnBackground};`
             + `background-color: ${background};`
@@ -222,7 +215,8 @@ export function createMonthGrid({
 
         const firstDayCol = getColumnForDate(GLib.DateTime.new_local(year, month, 1, 12, 0, 0), calendarState.firstDay);
         const daysInMonth = getDaysInMonth(year, month);
-        const fontSize = scaleFontSize(typeScale.daySize, state.scale, typeScale.dayMinSize);
+        const { px } = createWidgetMetrics(state.scale);
+        const fontSize = px(typeScale.daySize);
         const accentHex = resolveAccentColor(config);
 
         // All six rows are always built so the columns stay pinned; hiding the unused
@@ -283,7 +277,8 @@ export function createMonthGrid({
      */
     function styleWeekdayRow() {
         const accentHex = resolveAccentColor(config);
-        const fontSize = scaleFontSize(typeScale.weekdaySize, state.scale, typeScale.weekdayMinSize);
+        const { px } = createWidgetMetrics(state.scale);
+        const fontSize = px(typeScale.weekdaySize);
         state.weekdaySlots.forEach((label, index) => {
             const dayName = CALENDAR_WEEKDAY_NAMES[(calendarState.firstDay + index) % 7].toLowerCase();
             const isAccentDay = calendarState.accentWeekends
@@ -303,10 +298,11 @@ export function createMonthGrid({
     /** @param currentScale Passed in so the caller need not reach into this state. */
     function applyLayout(currentWidth, currentScale) {
         state.scale = currentScale;
-        const pad = Math.round(GRID_REF_PADDING_PX * currentScale);
+        const { px } = createWidgetMetrics(currentScale);
+        const pad = px(GRID_REF_PADDING_PX);
         const accentHex = resolveAccentColor(config);
 
-        contentBox.style = `padding: ${pad}px ${pad}px ${pad + Math.max(3, Math.round(6 * currentScale))}px;`;
+        contentBox.style = `padding: ${pad}px ${pad}px ${pad + px(6)}px;`;
 
         // Pinned so every row shares identical geometry; left to itself each row's
         // BoxLayout sizes from its own content and the columns drift out of alignment.
@@ -322,20 +318,20 @@ export function createMonthGrid({
         });
 
         headerLabel.style = `${fontCss}color: ${accentHex};`
-            + `font-size: ${scaleFontSize(typeScale.headerSize, currentScale, typeScale.headerMinSize)}px; font-weight: ${typeScale.headerWeight};`;
-        headerBox.style = `spacing: ${Math.round(HEADER_BOX_SPACING_PX * currentScale)}px;`
-            + `margin-bottom: ${Math.round(HEADER_ROW_GAP_PX * currentScale)}px;`;
+            + `font-size: ${px(typeScale.headerSize)}px; font-weight: ${typeScale.headerWeight};`;
+        headerBox.style = `spacing: ${px(HEADER_BOX_SPACING_PX)}px;`
+            + `margin-bottom: ${px(HEADER_ROW_GAP_PX)}px;`;
 
         styleWeekdayRow();
 
-        const dotSize = Math.max(2, Math.round(3 * currentScale));
+        const dotSize = px(3);
         state.eventDotSlots.forEach(dot => {
             dot.style = `width: ${dotSize}px;`
                 + `height: ${dotSize}px;`
                 + `border-radius: 999px; background-color: ${accentHex};`;
         });
 
-        daysGrid.style = `spacing: ${Math.round(ROW_GAP_PX * currentScale)}px;`;
+        daysGrid.style = `spacing: ${px(ROW_GAP_PX)}px;`;
 
         fillDays();
     }

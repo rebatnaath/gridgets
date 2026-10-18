@@ -20,7 +20,7 @@ import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { resolveDesktopAppInfo } from '../../shell/appResolution.js';
 import { toDateString } from '../../utils/moodStore.js';
 import { connectShortClick, launchApplication } from '../../utils/widgetInteractions.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, GRAPHICS_OPACITY, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 
 const REF_WIDTH = 360;
 const REF_HEIGHT = 170;
@@ -311,17 +311,19 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
     }
 
     function applyAppRowScale(entry, scale) {
-        const iconSize = scaleFontSize(APP_ICON_SIZE_PX, scale);
+        const { px } = createWidgetMetrics(scale);
+        const iconSize = px(APP_ICON_SIZE_PX);
         entry.iconSlot.width = iconSize;
         entry.iconSlot.height = iconSize;
         entry.appIcon.icon_size = iconSize;
-        entry.valueLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px; `
+        entry.valueLabel.style = `${fontCss}color: ${textColor}; font-size: ${px(APP_TIME_FONT_SIZE_PX)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`;
         entry.valueLabel.opacity = SECONDARY_TEXT_ALPHA;
     }
 
     function applyEmptyLabelStyle(label, scale) {
-        label.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(APP_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label)}px;`;
+        const { px } = createWidgetMetrics(scale);
+        label.style = `${fontCss}color: ${textColor}; font-size: ${px(APP_TIME_FONT_SIZE_PX)}px;`;
         label.opacity = SECONDARY_TEXT_ALPHA;
     }
 
@@ -409,6 +411,7 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         const [canvasWidth, canvasHeight] = area.get_surface_size();
         const { r, g, b } = parseCssColor(textColor);
         const scale = state.geometry.scale || 1;
+        const { px } = createWidgetMetrics(scale);
 
         ctx.setOperator(CAIRO_OPERATOR_CLEAR);
         ctx.paint();
@@ -434,8 +437,8 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         const scaleMax = computeScaleMaxSeconds(hours);
         const accent = parseCssColor(accentHex);
         ctx.setSourceRGBA(accent.r, accent.g, accent.b, 1);
-        const barWidth = Math.round(BAR_WIDTH_PX * scale);
-        const barRadius = Math.round(BAR_WIDTH_PX / 2 * scale);
+        const barWidth = px(BAR_WIDTH_PX);
+        const barRadius = px(BAR_WIDTH_PX / 2);
 
         for (let hour = 0; hour < hours.length; hour++) {
             if (hours[hour] <= 0) continue;
@@ -462,38 +465,39 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         const scale = currentScale ?? clampWidgetScale(Math.min(currentWidth / REF_WIDTH, currentHeight / REF_HEIGHT));
         if (!isFinite(scale) || scale <= 0) return;
         state.geometry.scale = scale;
+        const { px } = createWidgetMetrics(scale);
 
         const totalWidth = currentWidth;
         const mainWidth = Math.round(totalWidth * MAIN_PANEL_WIDTH_RATIO);
         leftPanel.set_width(mainWidth);
         rightPanel.set_width(totalWidth - mainWidth);
 
-        const padTop = Math.round(PANEL_PADDING_TOP_PX * scale);
-        const padBottom = Math.round(PANEL_PADDING_BOTTOM_PX * scale);
-        const padLeft = Math.round(PANEL_PADDING_LEFT_PX * scale);
-        const padRight = Math.round(PANEL_PADDING_RIGHT_PX * scale);
+        const padTop = px(PANEL_PADDING_TOP_PX);
+        const padBottom = px(PANEL_PADDING_BOTTOM_PX);
+        const padLeft = px(PANEL_PADDING_LEFT_PX);
+        const padRight = px(PANEL_PADDING_RIGHT_PX);
         leftPanel.style = `background-color: ${backgroundColor}; border-radius: ${borderRadius}px 0 0 ${borderRadius}px;`
             + `padding: ${padTop}px ${padRight}px ${padBottom}px ${padLeft}px;`;
 
         rightPanel.style = `background-color: ${card}; border-radius: 0 ${borderRadius}px ${borderRadius}px 0;`
             + `padding: ${padTop}px ${padLeft}px;`;
 
-        headerBox.style = `margin-bottom: ${Math.round(HEADER_MARGIN_BOTTOM_PX * scale)}px; padding-right: ${Math.round(HEADER_PADDING_RIGHT_PX * scale)}px;`;
-        totalTimeLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`;
-        dateLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(DATE_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
+        headerBox.style = `margin-bottom: ${px(HEADER_MARGIN_BOTTOM_PX)}px; padding-right: ${px(HEADER_PADDING_RIGHT_PX)}px;`;
+        totalTimeLabel.style = `${fontCss}color: ${textColor}; font-size: ${px(HEADER_FONT_SIZE_PX)}px; font-weight: ${TYPOGRAPHY_WEIGHT.bold};`;
+        dateLabel.style = `${fontCss}color: ${textColor}; font-size: ${px(DATE_LABEL_FONT_SIZE_PX)}px; `
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`;
         yAxisLabels.forEach(label => {
-            label.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(AXIS_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
+            label.style = `${fontCss}color: ${textColor}; font-size: ${px(AXIS_LABEL_FONT_SIZE_PX)}px; `
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
             label.opacity = SECONDARY_TEXT_ALPHA;
         });
         xAxisLabels.forEach(label => {
-            label.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(AXIS_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px; `
+            label.style = `${fontCss}color: ${textColor}; font-size: ${px(AXIS_LABEL_FONT_SIZE_PX)}px; `
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold};`;
             label.opacity = SECONDARY_TEXT_ALPHA;
         });
 
-        prevButton.style = `width: ${Math.round(NAV_BUTTON_SIZE_PX * scale)}px; height: ${Math.round(NAV_BUTTON_SIZE_PX * scale)}px;`
+        prevButton.style = `width: ${px(NAV_BUTTON_SIZE_PX)}px; height: ${px(NAV_BUTTON_SIZE_PX)}px;`
             + `border: 1px solid ${cssColorToRgba(textColor, GRAPHICS_OPACITY.border)};`
             + `border-radius: ${resolveChildCornerRadius(DEFAULT_CHILD_CORNER_RADIUS_PX, scale)}px; background-color: transparent;`;
         nextButton.style = prevButton.style;
@@ -502,10 +506,10 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         // Reserve only what the tallest header column actually occupies, so the plot
         // top — and the max scale mark — rises to the prev/next button level.
         const chartWrapHeight = currentHeight - padTop - padBottom
-            - Math.round((HEADER_RESERVED_HEIGHT_PX + HEADER_MARGIN_BOTTOM_PX) * scale);
-        const plotWidth = Math.max(1, chartWrapWidth - Math.round(Y_AXIS_WIDTH_PX * scale));
-        const axisBottomMargin = scale < 1 ? Math.round(AXIS_MARGIN_BOTTOM_PX * scale) : 0;
-        const axisSpace = Math.round(X_AXIS_HEIGHT_PX * scale) + axisBottomMargin;
+            - px(HEADER_RESERVED_HEIGHT_PX + HEADER_MARGIN_BOTTOM_PX);
+        const plotWidth = Math.max(1, chartWrapWidth - px(Y_AXIS_WIDTH_PX));
+        const axisBottomMargin = scale < 1 ? px(AXIS_MARGIN_BOTTOM_PX) : 0;
+        const axisSpace = px(X_AXIS_HEIGHT_PX) + axisBottomMargin;
         const plotHeight = Math.max(1, chartWrapHeight - axisSpace);
         Object.assign(state.geometry, { plotWidth });
 
@@ -513,13 +517,13 @@ export function createScreenTimeNode(config, width, height, xPosition, yPosition
         chartCanvas.set_size(plotWidth, plotHeight);
 
         yAxisBox.set_position(plotWidth, 0);
-        yAxisBox.set_size(Math.round(Y_AXIS_WIDTH_PX * scale), plotHeight);
+        yAxisBox.set_size(px(Y_AXIS_WIDTH_PX), plotHeight);
 
-        xAxisBox.set_position(0, plotHeight + Math.round(AXIS_LABEL_SPACING_PX * scale));
-        xAxisBox.set_size(plotWidth, Math.round(X_AXIS_HEIGHT_PX * scale));
+        xAxisBox.set_position(0, plotHeight + px(AXIS_LABEL_SPACING_PX));
+        xAxisBox.set_size(plotWidth, px(X_AXIS_HEIGHT_PX));
         xAxisBox.style = `margin-bottom: ${axisBottomMargin}px;`;
 
-        appRowsBox.style = `spacing: ${Math.round(APP_ROWS_SPACING_PX * scale)}px;`;
+        appRowsBox.style = `spacing: ${px(APP_ROWS_SPACING_PX)}px;`;
 
         renderDynamic();
     }

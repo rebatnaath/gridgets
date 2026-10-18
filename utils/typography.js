@@ -83,3 +83,27 @@ export function scaleFontSize(baseSize, scale, minimum = 1) {
         return minimum;
     return Math.max(minimum, Math.round(baseSize * scale));
 }
+
+/**
+ * One scale for a widget's whole composition.
+ *
+ * The widget is laid out once at a reference size, and every internal length -
+ * font size, icon size, margin, padding, radius - is a base length that this
+ * multiplies by the same factor. Because a single factor drives all of them, the
+ * proportions are identical at every widget size: the composition is the same
+ * picture, just zoomed. Per-element minimums would each freeze at their own size
+ * and skew those proportions, so the only floor is `minScale`, applied before any
+ * length is computed.
+ *
+ * `px` rounds to a whole pixel, which St requires for a CSS length, and floors at
+ * 1 so a length never collapses to zero.
+ */
+export function createWidgetMetrics(rawScale, minScale = MIN_WIDGET_SCALE) {
+    const scale = Math.max(clampWidgetScale(rawScale), minScale);
+    const px = base => {
+        const scaled = base * scale;
+        // Last line of defence: a non-finite product here would reach St as a length.
+        return Number.isFinite(scaled) ? Math.max(1, Math.round(scaled)) : 1;
+    };
+    return { scale, px };
+}

@@ -4,7 +4,7 @@ import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { resolveExplicitFontFamily, resolveUse24h, resolveWidgetSurfaces } from '../../utils/widgetUtils.js';
 import { resolveCityList, dayRelationLabel, formatOffsetLabel, isDaytimeHour, offsetFrom, zoneFor, LOCAL_TIME_LABEL } from '../../utils/worldClock.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { attachResponsiveScaler, connectTimerCleanup, createWidgetContainer, formatTimeParts, startMinuteAlignedTimer } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { setWeatherIcon } from '../../utils/weatherIcons.js';
@@ -23,7 +23,7 @@ const TIME_BASE_FONT_SIZE = TYPOGRAPHY_SIZE.displayMD;
 // maths, so this only bites when the rows are crowded.
 const TIME_MIN_FONT_SIZE = 11;
 const CITY_BASE_FONT_SIZE = TYPOGRAPHY_SIZE.subtitle;
-// The one label below MIN_FONT_SIZE.metadata: two letters naming the half-day, and
+// The one label below the metadata size: two letters naming the half-day, and
 // 24-hour mode hides it entirely.
 const MER_MIN_FONT_SIZE = 8;
 const MER_TIME_RATIO = 0.3;
@@ -61,11 +61,11 @@ const NIGHT_BADGE_COLOR = 'rgba(129, 140, 248, 0.22)';
 
 /** Everything one row is measured from, at a given type reduction. */
 function measureRows(scale, reduction) {
+    const { px } = createWidgetMetrics(scale);
     const typeScale = ROW_SIZE_RATIO * reduction;
     const time = Math.max(TIME_MIN_FONT_SIZE,
-        Math.round(scaleFontSize(TIME_BASE_FONT_SIZE, scale, TIME_MIN_FONT_SIZE) * typeScale));
-    const city = Math.max(MIN_FONT_SIZE.metadata,
-        Math.round(scaleFontSize(CITY_BASE_FONT_SIZE, scale, MIN_FONT_SIZE.metadata) * typeScale));
+        Math.round(px(TIME_BASE_FONT_SIZE) * typeScale));
+    const city = Math.round(px(CITY_BASE_FONT_SIZE) * typeScale);
 
     const padding = Math.max(MIN_PADDING_PX, Math.round(time * PADDING_RATIO));
     const rowPadding = Math.max(MIN_PADDING_PX, Math.round(time * ROW_PADDING_RATIO));

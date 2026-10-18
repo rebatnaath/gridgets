@@ -10,14 +10,17 @@ import {
     DEFAULT_CHILD_CORNER_RADIUS_PX,
 } from '../../utils/widgetUtils.js';
 import { createWidgetContainer, SPARK_SAMPLE_CAPACITY, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 
 const BASE_CONTAINER_WIDTH = 260;
 const BASE_CONTAINER_HEIGHT = 130;
 const TILE_GAP_PX = 10;
 const TILE_MARGIN_PX = 10;
 
-const VALUE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.displayLG;
+// The reading is deliberately lighter than the shared display size: at full displayLG two
+// tiles of a 4x2 widget spend most of the footprint on the number and crowd the sparkline.
+const VALUE_FONT_SIZE_RATIO = 0.8;
+const VALUE_FONT_SIZE_PX = TYPOGRAPHY_SIZE.displayLG * VALUE_FONT_SIZE_RATIO;
 const VALUE_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.extrabold;
 const LABEL_FONT_SIZE_PX = TYPOGRAPHY_SIZE.compact;
 const LABEL_FONT_WEIGHT = TYPOGRAPHY_WEIGHT.medium;
@@ -74,11 +77,12 @@ function createSparklineTile({
 
     // Every dimension derives from the widget's scale, so a resize restyles the tile here.
     const applyScale = (newScale) => {
-        const tilePadding = scaleFontSize(TILE_PADDING_BASE_PX, newScale);
+        const { px } = createWidgetMetrics(newScale);
+        const tilePadding = px(TILE_PADDING_BASE_PX);
         const tileRadius = resolveChildCornerRadius(TILE_RADIUS_BASE_PX, newScale);
-        const valueFontSize = scaleFontSize(VALUE_FONT_SIZE_PX, newScale, MIN_FONT_SIZE.primary);
-        const unitFontSize = scaleFontSize(VALUE_FONT_SIZE_PX * UNIT_FONT_SIZE_RATIO, newScale, MIN_FONT_SIZE.metadata);
-        const labelFontSize = scaleFontSize(LABEL_FONT_SIZE_PX, newScale, MIN_FONT_SIZE.label);
+        const valueFontSize = px(VALUE_FONT_SIZE_PX);
+        const unitFontSize = px(VALUE_FONT_SIZE_PX * UNIT_FONT_SIZE_RATIO);
+        const labelFontSize = px(LABEL_FONT_SIZE_PX);
 
         tile.style = `background-color: ${cardColor};`
             + `border-radius: ${tileRadius}px;`
@@ -133,6 +137,7 @@ export function createSparkTileRow({ config, width, height, xPosition, yPosition
     const { card } = resolveWidgetSurfaces(config);
     const container = createWidgetContainer(config, width, height, xPosition, yPosition);
     const scale = clampWidgetScale(Math.min(width / BASE_CONTAINER_WIDTH, height / BASE_CONTAINER_HEIGHT));
+    let px = createWidgetMetrics(scale).px;
 
     const tiles = tileSpecs.map(spec => createSparklineTile({
         lineColor: accentRgb,
@@ -148,16 +153,17 @@ export function createSparkTileRow({ config, width, height, xPosition, yPosition
 
     const tilesBox = createTilesRow(
         tiles.map(tile => tile.tile),
-        scaleFontSize(TILE_GAP_PX, scale),
-        scaleFontSize(TILE_MARGIN_PX, scale));
+        px(TILE_GAP_PX),
+        px(TILE_MARGIN_PX));
     container.add_child(tilesBox);
 
     // Without this the padding, corner radius and font sizes stay frozen at construction.
     attachResponsiveScaler(container, BASE_CONTAINER_WIDTH, BASE_CONTAINER_HEIGHT, (newScale) => {
+        ({ px } = createWidgetMetrics(newScale));
         for (const tile of tiles)
             tile.applyScale(newScale);
-        tilesBox.layout_manager.spacing = scaleFontSize(TILE_GAP_PX, newScale);
-        tilesBox.style = `margin: ${scaleFontSize(TILE_MARGIN_PX, newScale)}px;`;
+        tilesBox.layout_manager.spacing = px(TILE_GAP_PX);
+        tilesBox.style = `margin: ${px(TILE_MARGIN_PX)}px;`;
     });
 
     return { container, tiles };

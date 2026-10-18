@@ -10,7 +10,7 @@ import {
 import { GRID_REF_PADDING_PX, weekdayIndex } from './calendarCommon.js';
 import { COMPACT_TYPE_SCALE } from './monthGridPanel.js';
 import { connectShortClick } from '../../utils/widgetInteractions.js';
-import { TYPOGRAPHY_WEIGHT, GRAPHICS_OPACITY, MIN_FONT_SIZE, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_WEIGHT, GRAPHICS_OPACITY, createWidgetMetrics } from '../../utils/typography.js';
 
 // Spacing between the boxes stacked in the column. Kept small so the weekday and the
 // date read as one heading, and so the list gets the height.
@@ -35,7 +35,6 @@ const MAX_EXTRA_GAP_PX = 6;
 const EVENT_RULE_WIDTH_PX = 3;
 const EVENT_BLOCK_PADDING_PX = 2;
 
-const scaledBlockPadding = scale => Math.max(2, Math.round(EVENT_BLOCK_PADDING_PX * scale));
 const EVENT_BLOCK_RADIUS_PX = 6;
 const NO_EVENTS_TEXT = 'No events today';
 const MORE_EVENTS_LABEL = 'more';
@@ -296,6 +295,7 @@ export function createDayColumn({
     // Resolved once per layout rather than per scroll tick, which meant re-parsing the
     // accent and background CSS ten times a second for the length of a scroll.
     function refreshEventStyle() {
+        const { px } = createWidgetMetrics(state.scale);
         const accentHex = resolveAccentColor(config);
         const { highlight } = resolveWidgetSurfaces(config);
         // Both blocks below are translucent, so their text has to suit the colour they
@@ -310,11 +310,12 @@ export function createDayColumn({
             highlight,
             onAccentText,
             onHighlight,
-            fontSize: scaleFontSize(typeScale.eventSize, state.scale, typeScale.eventMinSize),
-            blockPadding: scaledBlockPadding(state.scale),
+            fontSize: px(typeScale.eventSize),
+            blockPadding: px(EVENT_BLOCK_PADDING_PX),
             blockRadius: resolveChildCornerRadius(EVENT_BLOCK_RADIUS_PX, state.scale),
-            ruleWidth: Math.max(2, Math.round(EVENT_RULE_WIDTH_PX * state.scale)),
-            morePadding: scaleFontSize(MORE_LINE_PADDING_PX, state.scale),
+            ruleWidth: px(EVENT_RULE_WIDTH_PX),
+            morePadding: px(MORE_LINE_PADDING_PX),
+            moreFontSize: px(typeScale.eventSize * MORE_LINE_FONT_SCALE),
         };
     }
 
@@ -363,8 +364,7 @@ export function createDayColumn({
             state.eventRows[i].row.visible = false;
 
         if (remaining > 0) {
-            const { onHighlight, highlight, morePadding } = state.eventStyle;
-            const moreFontSize = scaleFontSize(fontSize * MORE_LINE_FONT_SCALE, 1, MIN_FONT_SIZE.metadata);
+            const { onHighlight, highlight, morePadding, moreFontSize } = state.eventStyle;
 
             moreLineBox.visible = true;
             moreLineLabel.text = `+${remaining} ${MORE_EVENTS_LABEL}`;
@@ -402,50 +402,49 @@ export function createDayColumn({
     function applyLayout(currentScale, availableHeight = -1) {
         state.scale = currentScale;
         refreshEventStyle();
-        const pad = Math.round(GRID_REF_PADDING_PX * currentScale);
+        const { px } = createWidgetMetrics(currentScale);
+        const pad = px(GRID_REF_PADDING_PX);
         const accentHex = resolveAccentColor(config);
 
         // Sides are set separately from top and bottom, so the extra inset costs the
         // event list no vertical room.
         column.style = `padding: ${pad}px ${Math.max(pad, CONTENT_SIDE_PADDING_PX)}px;`
-            + ` spacing: ${Math.round(COLUMN_SPACING_PX * currentScale)}px;`;
+            + ` spacing: ${px(COLUMN_SPACING_PX)}px;`;
         // Nested rather than a sibling of the column, so it does not inherit the column's
         // spacing and needs its own.
-        eventAreaBox.style = `spacing: ${Math.round(COLUMN_SPACING_PX * currentScale)}px;`;
+        eventAreaBox.style = `spacing: ${px(COLUMN_SPACING_PX)}px;`;
 
         weekdayLabel.style = `${fontCss}color: ${accentHex};`
-            + `font-size: ${scaleFontSize(typeScale.headerSize, currentScale, typeScale.headerMinSize)}px;`
+            + `font-size: ${px(typeScale.headerSize)}px;`
             + `font-weight: ${typeScale.headerWeight};`
-            + `margin-bottom: ${Math.round(WEEKDAY_GAP_PX * currentScale)}px;`;
+            + `margin-bottom: ${px(WEEKDAY_GAP_PX)}px;`;
 
         dateLabel.style = `${fontCss}color: ${textColor};`
-            + `font-size: ${scaleFontSize(DATE_FONT_SIZE_PX, currentScale, MIN_FONT_SIZE.primary)}px;`
+            + `font-size: ${px(DATE_FONT_SIZE_PX)}px;`
             + `font-weight: ${DATE_FONT_WEIGHT};`
-            + `margin-bottom: ${Math.round(DATE_GAP_PX * currentScale)}px;`;
+            + `margin-bottom: ${px(DATE_GAP_PX)}px;`;
 
         noEventsLabel.style = `${fontCss}color: ${textColor};`
-            + `font-size: ${scaleFontSize(typeScale.eventSize, currentScale, typeScale.eventMinSize)}px;`
+            + `font-size: ${px(typeScale.eventSize)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.regular};`;
 
-        const rowGap = Math.round(EVENT_ROW_GAP_PX * currentScale);
+        const rowGap = px(EVENT_ROW_GAP_PX);
 
         // Being out on any of the three measurements clips the list or stops it scrolling.
         const measured = state.heights && state.heightsScale === currentScale
             ? state.heights
             : null;
-        const eventFontSize = scaleFontSize(typeScale.eventSize, currentScale, typeScale.eventMinSize);
+        const eventFontSize = px(typeScale.eventSize);
         const rowHeight = measured
             ? measured.row
-            : (eventFontSize * LINE_HEIGHT_RATIO) + (scaledBlockPadding(currentScale) * 2);
+            : (eventFontSize * LINE_HEIGHT_RATIO) + (px(EVENT_BLOCK_PADDING_PX) * 2);
 
         const weekdayHeight = measured
             ? measured.weekday
-            : scaleFontSize(typeScale.headerSize, currentScale, typeScale.headerMinSize)
-                * LINE_HEIGHT_RATIO;
+            : px(typeScale.headerSize) * LINE_HEIGHT_RATIO;
         const dateHeight = measured
             ? measured.date
-            : scaleFontSize(DATE_FONT_SIZE_PX, currentScale, MIN_FONT_SIZE.primary)
-                * LINE_HEIGHT_RATIO;
+            : px(DATE_FONT_SIZE_PX) * LINE_HEIGHT_RATIO;
         const aboveList = (pad * 2)
             + weekdayHeight + (WEEKDAY_GAP_PX * currentScale)
             + dateHeight + (DATE_GAP_PX * currentScale)
@@ -455,7 +454,7 @@ export function createDayColumn({
         // The footer is reserved whether needed or not; deriving it from the leftover
         // meant estimating its height, and a low estimate drew the chip into space that
         // was not there.
-        const lineHeight = (scaleFontSize(eventFontSize * MORE_LINE_FONT_SCALE, 1, MIN_FONT_SIZE.metadata) * LINE_HEIGHT_RATIO)
+        const lineHeight = (state.eventStyle.moreFontSize * LINE_HEIGHT_RATIO)
             + (state.eventStyle.morePadding * 2);
         const forEvents = forRows - lineHeight;
         // Whole rows only, so a floor rather than a rounding.

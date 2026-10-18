@@ -5,7 +5,7 @@ import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import Soup from 'gi://Soup?version=3.0';
 import { resolveExplicitFontFamily, resolveWidgetForegroundColor } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 import { loadLastGoodCache, saveLastGoodCache } from '../../utils/lastGoodCache.js';
@@ -32,8 +32,8 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
     const REF_WIDTH = 220;
     const REF_HEIGHT = 220;
     let scale = clampWidgetScale(Math.min(width / REF_WIDTH, height / REF_HEIGHT));
-    const px = value => scaleFontSize(value, scale);
-    const authorStyle = () => `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.label, scale, MIN_FONT_SIZE.label)}px; `
+    let px = createWidgetMetrics(scale).px;
+    const authorStyle = () => `${fontCss}color: ${textColor}; font-size: ${px(TYPOGRAPHY_SIZE.label)}px; `
         + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; padding-right: ${px(QUOTE_SIDE_PADDING_PX)}px;`;
 
     const outerBox = new St.BoxLayout({
@@ -49,7 +49,7 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.START,
         x_expand: true,
-        style: `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.subtitle, scale, MIN_FONT_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; padding: 0 ${QUOTE_SIDE_PADDING_PX}px;`,
+        style: `${fontCss}color: ${textColor}; font-size: ${px(TYPOGRAPHY_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; padding: 0 ${QUOTE_SIDE_PADDING_PX}px;`,
     });
     quoteLabel.clutter_text.line_wrap = true;
     quoteLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
@@ -190,9 +190,10 @@ export function createQuotesNode(config, width, height, xPosition, yPosition) {
 
     function applyScale(newScale) {
         scale = newScale;
+        ({ px } = createWidgetMetrics(scale));
         offlineNotice.applyScale(scale);
         outerBox.style = `padding: ${px(OUTER_PADDING_PX)}px;`;
-        quoteLabel.style = `${fontCss}color: ${textColor}; font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.subtitle, scale, MIN_FONT_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; padding: 0 ${QUOTE_SIDE_PADDING_PX}px;`;
+        quoteLabel.style = `${fontCss}color: ${textColor}; font-size: ${px(TYPOGRAPHY_SIZE.subtitle)}px; font-weight: ${TYPOGRAPHY_WEIGHT.regular}; padding: 0 ${QUOTE_SIDE_PADDING_PX}px;`;
         authorLabel.style = authorStyle();
     }
 

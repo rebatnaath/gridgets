@@ -30,11 +30,10 @@ import { moonIllumination, moonSetMinutes } from '../../utils/moonTimes.js';
 import {
     TYPOGRAPHY_SIZE,
     TYPOGRAPHY_WEIGHT,
-    MIN_FONT_SIZE,
     TEXT_OPACITY,
     GRAPHICS_OPACITY,
     clampWidgetScale,
-    scaleFontSize,
+    createWidgetMetrics,
 } from '../../utils/typography.js';
 import { isActorDestroyed } from '../../utils/actorLifecycle.js';
 
@@ -181,6 +180,7 @@ export function drawSunScene(context, options) {
     if (width <= 0 || height <= 0)
         return;
 
+    const { px } = createWidgetMetrics(scale);
     const bandHeight = Math.max(1, height * bandRatio);
     const baselineY = height - bandHeight;
     const corner = Math.max(0, Math.min(cornerRadius, bandHeight));
@@ -194,9 +194,9 @@ export function drawSunScene(context, options) {
     context.setSourceRGBA(0, 0, 0, BAND_DARKEN_ALPHA);
     context.fill();
 
-    const lineWidth = scaleFontSize(ARC_LINE_WIDTH_PX, scale, 1);
-    const trackWidth = scaleFontSize(ARC_TRACK_WIDTH_PX, scale, 1);
-    const orbRadius = scaleFontSize(ORB_RADIUS_PX, scale, 1);
+    const lineWidth = px(ARC_LINE_WIDTH_PX);
+    const trackWidth = px(ARC_TRACK_WIDTH_PX);
+    const orbRadius = px(ORB_RADIUS_PX);
     const marginX = width * ARC_MARGIN_X_RATIO;
     const leftX = marginX + lineWidth / 2;
     const rightX = width - marginX - lineWidth / 2;
@@ -526,34 +526,34 @@ export function createSunTimesNode(config, width, height, xPosition, yPosition, 
 
     function applyLayout(nextScale) {
         scale = nextScale;
-        const px = value => scaleFontSize(value, scale);
+        const { px } = createWidgetMetrics(scale);
 
         topBox.style = `padding: ${px(CONTENT_PADDING_TOP_PX)}px ${px(CONTENT_PADDING_X_PX)}px 0 ${px(CONTENT_PADDING_X_PX)}px;`
             + ` spacing: ${px(CONTENT_SPACING_PX)}px;`;
 
         const headerStyle = `${fontCss}color: ${textColor};`
-            + ` font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            + ` font-size: ${px(HEADER_FONT_SIZE_PX)}px;`
             + ` font-weight: ${HEADER_FONT_WEIGHT};`;
         cityLabel.style = headerStyle;
         clockLabel.style = headerStyle;
         clockLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.subtle);
 
         eventLabel.style = `${fontCss}color: ${textColor};`
-            + ` font-size: ${scaleFontSize(EVENT_LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            + ` font-size: ${px(EVENT_LABEL_FONT_SIZE_PX)}px;`
             + ` font-weight: ${HEADER_FONT_WEIGHT}; letter-spacing: 1px;`;
         eventLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
 
         eventTimeLabel.style = `${fontCss}color: ${textColor};`
-            + ` font-size: ${scaleFontSize(EVENT_TIME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px;`
+            + ` font-size: ${px(EVENT_TIME_FONT_SIZE_PX)}px;`
             + ` font-weight: ${EVENT_TIME_FONT_WEIGHT};`;
 
         countdownLabel.style = `${fontCss}color: ${textColor};`
-            + ` font-size: ${scaleFontSize(COUNTDOWN_FONT_SIZE_PX, scale, MIN_FONT_SIZE.body)}px;`
+            + ` font-size: ${px(COUNTDOWN_FONT_SIZE_PX)}px;`
             + ` font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
         countdownLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
 
         moonLabel.style = `${fontCss}color: ${textColor};`
-            + ` font-size: ${scaleFontSize(MOON_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            + ` font-size: ${px(MOON_FONT_SIZE_PX)}px;`
             + ` font-weight: ${TYPOGRAPHY_WEIGHT.medium};`;
         moonLabel.opacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.subtle);
         const glyphSize = px(MOON_GLYPH_SIZE_PX);
@@ -562,7 +562,7 @@ export function createSunTimesNode(config, width, height, xPosition, yPosition, 
 
         footerRow.style = `padding: 0 ${px(CONTENT_PADDING_X_PX)}px ${px(FOOTER_PADDING_BOTTOM_PX)}px;`;
         const footerStyle = `${fontCss}color: ${textColor};`
-            + ` font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            + ` font-size: ${px(FOOTER_FONT_SIZE_PX)}px;`
             + ` font-weight: ${FOOTER_FONT_WEIGHT};`;
         footerSunriseLabel.style = footerStyle;
         footerSunsetLabel.style = footerStyle;

@@ -4,7 +4,7 @@ import { resolveWidgetForegroundColor, resolveExplicitFontFamily, resolveWidgetS
 import { attachButtonFeedback } from '../../shell/widgetUIUtils.js';
 import { skipToNext, skipToPrevious, togglePlayPause } from './mpris.js';
 import { notifyPlayPauseAllInstances } from './playbackState.js';
-import { MIN_FONT_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_WEIGHT, TEXT_OPACITY, createWidgetMetrics } from '../../utils/typography.js';
 
 const BORDER_RADIUS_PILL = 99;
 
@@ -24,8 +24,8 @@ const BASE_TIMER_MARGIN_TOP = 8;
 const BASE_TIMER_FONT_SIZE = 12;
 
 // Both timer labels share this so the build and the rescale cannot drift apart.
-function buildTimerLabelStyle(fontCss, textColor, scale) {
-    const fontSize = scaleFontSize(BASE_TIMER_FONT_SIZE, scale, MIN_FONT_SIZE.metadata);
+function buildTimerLabelStyle(fontCss, textColor, px) {
+    const fontSize = px(BASE_TIMER_FONT_SIZE);
     return `${fontCss}color: ${textColor}; font-size: ${fontSize}px; `
         + `font-weight: ${TYPOGRAPHY_WEIGHT.regular};`;
 }
@@ -80,16 +80,17 @@ function connectControlButton(button, action) {
 
 // Shared by the build and the rescale, which had drifted apart when each computed its
 // own margin.
-const scaledButtonMargin = (scale, isLargeLayout) => scaleFontSize(
-    isLargeLayout ? BASE_BUTTON_MARGIN_LARGE : BASE_BUTTON_MARGIN_SMALL, scale);
+const scaledButtonMargin = (px, isLargeLayout) => px(
+    isLargeLayout ? BASE_BUTTON_MARGIN_LARGE : BASE_BUTTON_MARGIN_SMALL);
 
 export function updateControlButtonScaling(state, scale, fontFamily, textColor, trackColor) {
-    const seekSize = scaleFontSize(BASE_SEEK_ICON_SIZE, scale);
-    const playSize = scaleFontSize(BASE_PLAY_ICON_SIZE, scale);
-    const buttonMargin = scaledButtonMargin(scale, state.config.isLargeLayout === true);
+    const { px } = createWidgetMetrics(scale);
+    const seekSize = px(BASE_SEEK_ICON_SIZE);
+    const playSize = px(BASE_PLAY_ICON_SIZE);
+    const buttonMargin = scaledButtonMargin(px, state.config.isLargeLayout === true);
     const fontCss = fontFamily ? `font-family: ${fontFamily}; ` : '';
 
-    const timerStyle = buildTimerLabelStyle(fontCss, textColor, scale);
+    const timerStyle = buildTimerLabelStyle(fontCss, textColor, px);
     const buttonStyle = (margin) => `margin: 0px ${margin}px; border-radius: ${BORDER_RADIUS_PILL}px;`;
     const iconStyle = `color: ${textColor};`;
     const applyButton = (button, iconSize) => {
@@ -106,7 +107,7 @@ export function updateControlButtonScaling(state, scale, fontFamily, textColor, 
     if (state.timerLabelLeft) state.timerLabelLeft.style = timerStyle;
     if (state.timerLabelRight) state.timerLabelRight.style = timerStyle;
 
-    const barH = scaleFontSize(BASE_PROGRESS_BAR_HEIGHT, scale);
+    const barH = px(BASE_PROGRESS_BAR_HEIGHT);
     if (state.progressBg) {
         state.progressBg.style = `background-color: ${trackColor}; border-radius: ${Math.floor(barH / 2)}px;`;
         state.progressBg.set_height(barH);
@@ -116,10 +117,10 @@ export function updateControlButtonScaling(state, scale, fontFamily, textColor, 
         state.progressFill.set_height(barH);
     }
     if (state.progressSpacer) {
-        state.progressSpacer.set_height(scaleFontSize(BASE_PROGRESS_SPACER_HEIGHT, scale));
+        state.progressSpacer.set_height(px(BASE_PROGRESS_SPACER_HEIGHT));
     }
     if (state.timerRow) {
-        state.timerRow.style = `margin-top: ${scaleFontSize(BASE_TIMER_MARGIN_TOP, scale)}px;`;
+        state.timerRow.style = `margin-top: ${px(BASE_TIMER_MARGIN_TOP)}px;`;
     }
 }
 
@@ -131,6 +132,7 @@ export function buildControlsColumn(config, state, initialScale = 1) {
     // already the size the widget settles at; a flat 1 would be far too large for a
     // small widget.
     const scale = initialScale;
+    const { px } = createWidgetMetrics(scale);
     const textColor = resolveWidgetForegroundColor(config);
     const { highlight } = resolveWidgetSurfaces(config);
     const fontFamily = resolveExplicitFontFamily(config);
@@ -155,9 +157,9 @@ export function buildControlsColumn(config, state, initialScale = 1) {
         y_align: Clutter.ActorAlign.CENTER,
     });
 
-    const seekIconSize = scaleFontSize(BASE_SEEK_ICON_SIZE, scale);
-    const playIconSize = scaleFontSize(BASE_PLAY_ICON_SIZE, scale);
-    const buttonMargin = scaledButtonMargin(scale, isLargeLayout);
+    const seekIconSize = px(BASE_SEEK_ICON_SIZE);
+    const playIconSize = px(BASE_PLAY_ICON_SIZE);
+    const buttonMargin = scaledButtonMargin(px, isLargeLayout);
 
     const seekBackBtn = createIconButton(
         SKIP_BACK_ICON,
@@ -189,7 +191,7 @@ export function buildControlsColumn(config, state, initialScale = 1) {
         buttonRow.add_child(seekForwardBtn);
     }
 
-    const progressBarHeight = scaleFontSize(BASE_PROGRESS_BAR_HEIGHT, scale);
+    const progressBarHeight = px(BASE_PROGRESS_BAR_HEIGHT);
     const progressBg = new St.Widget({
         style: `background-color: ${highlight}; border-radius: ${Math.floor(progressBarHeight / 2)}px;`,
         x_expand: true,
@@ -205,7 +207,7 @@ export function buildControlsColumn(config, state, initialScale = 1) {
     });
     progressBg.add_child(progressFill);
 
-    const timerStyle = buildTimerLabelStyle(fontCss, textColor, scale);
+    const timerStyle = buildTimerLabelStyle(fontCss, textColor, px);
     const timerOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
     const timerLabelLeft = new St.Label({
         text: '00:00',
@@ -231,14 +233,14 @@ export function buildControlsColumn(config, state, initialScale = 1) {
 
     const progressSpacer = new St.Widget({
         y_expand: false,
-        height: scaleFontSize(BASE_PROGRESS_SPACER_HEIGHT, scale),
+        height: px(BASE_PROGRESS_SPACER_HEIGHT),
     });
     controlsColumn.add_child(progressSpacer);
     controlsColumn.add_child(progressRow);
     const timerRow = new St.BoxLayout({
         orientation: Clutter.Orientation.HORIZONTAL,
         x_expand: true,
-        style: `margin-top: ${scaleFontSize(BASE_TIMER_MARGIN_TOP, scale)}px;`,
+        style: `margin-top: ${px(BASE_TIMER_MARGIN_TOP)}px;`,
     });
     timerRow.add_child(timerLabelLeft);
     const timerSpacer = new St.Widget({ x_expand: true });

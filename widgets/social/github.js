@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 import { CAIRO_OPERATOR_CLEAR, CAIRO_OPERATOR_OVER, parseCssColor, resolveExplicitFontFamily, resolveWidgetForegroundColor, resolveWidgetSurfaces, cssColorToRgba, resolveAccentColor, MONTH_NAMES_ABBREVIATED as MONTH_NAMES } from '../../utils/widgetUtils.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler, traceRoundedRect, connectTimerCleanup } from '../../shell/widgetUIUtils.js';
 import { createOfflineNotice, OFFLINE_NOTICE_MESSAGES } from '../../components/offline/offlineNotice/offlineNotice.js';
 import { isNetworkAvailable, subscribeToSettledConnectivity } from '../../utils/connectivity.js';
@@ -62,7 +62,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
 
     let username = typeof config.username === 'string' ? config.username : '';
     let scale = clampWidgetScale(Math.min(width / REF_WIDTH_PX, height / REF_HEIGHT_PX));
-    const px = (v) => scaleFontSize(v, scale);
+    let px = createWidgetMetrics(scale).px;
     let latestByDate = new Map();
     /** file:// URI of the stored avatar, empty until one has been fetched. */
     let avatarImageUri = '';
@@ -231,7 +231,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     const statusLabel = new St.Label({
         text: username ? 'Syncing…' : 'Click the username to configure',
         y_align: Clutter.ActorAlign.CENTER,
-        style: `${fontCss}font-size: ${scaleFontSize(FOOTER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+        style: `${fontCss}font-size: ${px(FOOTER_FONT_SIZE_PX)}px;`
             + `color: ${textColor};`,
         opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.metadata),
     });
@@ -266,6 +266,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     const persistUsername = () => saveGithubUsername(config, username);
 
     function applyLayout() {
+        ({ px } = createWidgetMetrics(scale));
         offlineNotice.applyScale(scale);
         mainBox.style = `padding: ${px(CONTAINER_PADDING_V_PX)}px ${px(CONTAINER_PADDING_H_PX)}px; spacing: ${px(MAIN_BOX_SPACING_PX)}px;`;
         // Rebuilt rather than appended to, so dropping the picture removes the
@@ -276,29 +277,29 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
                 ? ` background-image: url("${avatarImageUri}");`
                     + ' background-size: cover; background-position: center;'
                 : '');
-        initialsLabel.style = `${fontCss}font-size: ${scaleFontSize(TYPOGRAPHY_SIZE.metadata, scale, MIN_FONT_SIZE.metadata)}px;`
+        initialsLabel.style = `${fontCss}font-size: ${px(TYPOGRAPHY_SIZE.metadata)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.regular}; color: ${textColor};`;
-        usernameLabel.style = `${fontCss}font-size: ${scaleFontSize(USERNAME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+        usernameLabel.style = `${fontCss}font-size: ${px(USERNAME_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.semibold}; color: ${textColor}; margin-left: ${px(8)}px;`;
-        usernameEntry.style = `${fontCss}font-size: ${scaleFontSize(USERNAME_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+        usernameEntry.style = `${fontCss}font-size: ${px(USERNAME_FONT_SIZE_PX)}px;`
             + `color: ${textColor}; width: ${px(150)}px;`;
-        totalLabel.style = `${fontCss}font-size: ${scaleFontSize(TOTAL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.primary)}px;`
+        totalLabel.style = `${fontCss}font-size: ${px(TOTAL_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${accentColor};`;
         const secondaryOpacity = Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary);
-        totalCaptionLabel.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+        totalCaptionLabel.style = `${fontCss}font-size: ${px(LABEL_FONT_SIZE_PX)}px;`
             + `color: ${textColor};`;
         totalCaptionLabel.opacity = secondaryOpacity;
         statRows.forEach((row, index) => {
-            row.name.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+            row.name.style = `${fontCss}font-size: ${px(LABEL_FONT_SIZE_PX)}px;`
                 + `color: ${textColor};`;
             row.name.opacity = secondaryOpacity;
-            row.value.style = `${fontCss}font-size: ${scaleFontSize(STAT_VALUE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+            row.value.style = `${fontCss}font-size: ${px(STAT_VALUE_FONT_SIZE_PX)}px;`
                 + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${textColor};`;
         });
-        weeklyCaption.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+        weeklyCaption.style = `${fontCss}font-size: ${px(LABEL_FONT_SIZE_PX)}px;`
             + `color: ${textColor};`;
         weeklyCaption.opacity = secondaryOpacity;
-        thisWeekCaption.style = `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+        thisWeekCaption.style = `${fontCss}font-size: ${px(LABEL_FONT_SIZE_PX)}px;`
             + `color: ${textColor};`;
         thisWeekCaption.opacity = secondaryOpacity;
 
@@ -341,7 +342,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
                 text: MONTH_NAMES[month],
                 x_align: Clutter.ActorAlign.START,
                 y_align: Clutter.ActorAlign.CENTER,
-                style: `${fontCss}font-size: ${scaleFontSize(LABEL_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+                style: `${fontCss}font-size: ${px(LABEL_FONT_SIZE_PX)}px;`
                     + `color: ${textColor};`,
                 opacity: Math.round(CLUTTER_OPACITY_OPAQUE * TEXT_OPACITY.secondary),
             });
@@ -352,7 +353,7 @@ export function createGithubNode(config, width, height, xPosition, yPosition) {
     }
 
     function cellSize() {
-        return scaleFontSize(CELL_SIZE_PX, scale);
+        return px(CELL_SIZE_PX);
     }
 
     function cellGap() {

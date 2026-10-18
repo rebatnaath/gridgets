@@ -4,7 +4,7 @@ import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import { cssColorToRgba, resolveAccentColor, resolveExplicitFontFamily, resolveWidgetColors } from '../../utils/widgetUtils.js';
 import { getTopStoryFeeds, getTopStoryGenreIcon, getTopStoryGenreLabel } from '../../utils/widgetRegistry.js';
-import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, MIN_FONT_SIZE, clampWidgetScale, scaleFontSize } from '../../utils/typography.js';
+import { TYPOGRAPHY_SIZE, TYPOGRAPHY_WEIGHT, TEXT_OPACITY, GRAPHICS_OPACITY, clampWidgetScale, createWidgetMetrics } from '../../utils/typography.js';
 import { createWidgetContainer, registerWidgetCleanup, attachResponsiveScaler } from '../../shell/widgetUIUtils.js';
 import { subscribeToFeed } from '../../utils/rssEngine.js';
 import { resolveArticleImageUrl, fetchImageBytes } from '../../utils/articleImage.js';
@@ -100,7 +100,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
         fetchFailureMessage: '',
     };
     let scale = 1;
-    const px = value => scaleFontSize(value, scale);
+    let px = createWidgetMetrics(scale).px;
 
     const rootBox = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
@@ -250,7 +250,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
      */
     function styleCard(entry) {
         const thumbnailPx = px(THUMBNAIL_SIZE_PX);
-        const metaStyle = `${fontCss}font-size: ${scaleFontSize(SOURCE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.metadata)}px;`
+        const metaStyle = `${fontCss}font-size: ${px(SOURCE_FONT_SIZE_PX)}px;`
             + `color: ${textColor};`;
 
         const highlightTint = cssColorToRgba(highlightBackground, GRAPHICS_OPACITY.gridLine);
@@ -261,7 +261,7 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
             + ` spacing: ${px(CARD_TEXT_SPACING_PX)}px;`
             + ` border-radius: ${px(CARD_RADIUS_PX)}px;${hoverTint}`;
         entry.textColumn.style = `spacing: ${px(TITLE_COLUMN_SPACING_PX)}px;`;
-        const titleFontPx = scaleFontSize(TITLE_FONT_SIZE_PX, scale, MIN_FONT_SIZE.label);
+        const titleFontPx = px(TITLE_FONT_SIZE_PX);
         entry.titleLabel.style = `${fontCss}font-size: ${titleFontPx}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.medium}; color: ${textColor};`
             + ` min-height: ${Math.round(titleFontPx * TITLE_LINE_HEIGHT_RATIO * CARD_TITLE_MAX_LINES)}px;`;
@@ -455,9 +455,10 @@ export function createTopStoriesNode(config, width, height, xPosition, yPosition
             return;
         }
         scale = clampWidgetScale(Math.min(currentWidth / REF_WIDTH_PX, currentHeight / REF_HEIGHT_PX));
+        ({ px } = createWidgetMetrics(scale));
         const headerIconPx = px(HEADER_ICON_SIZE_PX);
         headerBox.style = `padding: ${px(HEADER_PADDING_V_PX)}px ${px(CONTENT_INSET_PX)}px ${px(HEADER_PADDING_BOTTOM_PX)}px;`;
-        headerLabel.style = `${fontCss}font-size: ${scaleFontSize(HEADER_FONT_SIZE_PX, scale, MIN_FONT_SIZE.subtitle)}px;`
+        headerLabel.style = `${fontCss}font-size: ${px(HEADER_FONT_SIZE_PX)}px;`
             + `font-weight: ${TYPOGRAPHY_WEIGHT.bold}; color: ${accentColor};`;
         headerIcon.style = `color: ${accentColor}; width: ${headerIconPx}px; height: ${headerIconPx}px;`;
         cardList.style = `padding: ${px(LIST_PADDING_PX)}px; spacing: ${px(CARD_SPACING_PX)}px;`;
