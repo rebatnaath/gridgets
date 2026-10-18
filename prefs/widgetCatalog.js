@@ -5,7 +5,7 @@ export const STORE_WIDGETS = Object.freeze({
         title: 'Weather Standard',
         description: 'A clean weather widget with current conditions and temperature.',
         gridSize: '3x3',
-        thumbnail: 'weathers/test.svg',
+        thumbnail: 'weathers/weather-standard.svg',
         fallbackIconName: 'weather-few-clouds-symbolic',
     },
     weatherMinimal: {
@@ -152,7 +152,7 @@ export const STORE_WIDGETS = Object.freeze({
         title: 'Calendar Events',
         description: 'A month grid beside the selected date and its events.',
         gridSize: '7x4',
-        thumbnail: 'calendar/month-calendar.svg',
+        thumbnail: 'calendar/month-calendar-events.svg',
         fallbackIconName: 'x-office-calendar-symbolic',
     },
     todoWidget: {
@@ -187,6 +187,7 @@ export const STORE_WIDGETS = Object.freeze({
         title: 'News',
         description: 'A scrolling list of headlines from many publishers, each with its thumbnail.',
         gridSize: '12x10',
+        thumbnail: 'rss/news.svg',
         fallbackIconName: 'application-rss+xml-symbolic',
     },
     moodWidget: {
