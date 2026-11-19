@@ -120,7 +120,7 @@ function createPermissionsSection(file, fileInfo) {
     const mode = fileInfo.get_attribute_uint32('unix::mode');
 
     const section = new St.BoxLayout({
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         style: `spacing: ${ROW_SPACING_PX}px;`,
     });
 
@@ -228,7 +228,7 @@ export function showPropertiesDialog(file) {
         x_align: Clutter.ActorAlign.START,
     });
     const headerText = new St.BoxLayout({
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         y_align: Clutter.ActorAlign.CENTER,
         x_expand: true,
         style: `spacing: ${ROW_SPACING_PX * 0.5}px;`,

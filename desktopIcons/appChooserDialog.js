@@ -214,7 +214,7 @@ export function showAppChooserDialog({ file, onChosen }) {
     // Escaped rather than trusted: the name is set in bold markup. The length argument is
     // required too; -1 means the string ends at its NUL.
     const panel = new St.BoxLayout({
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         style: `spacing: ${ROW_SPACING_PX}px; padding: ${CONTAINER_PADDING_PX}px; border-radius: ${CONTAINER_RADIUS_PX}px; background-color: ${CONTAINER_BACKGROUND};`,
     });
     content.add_child(panel);
@@ -238,11 +238,11 @@ export function showAppChooserDialog({ file, onChosen }) {
         vscrollbar_policy: St.PolicyType.AUTOMATIC,
     });
     const listFrame = new St.BoxLayout({
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         style: `padding: ${LIST_PADDING_PX}px; border: 1px solid ${LIST_BORDER}; border-radius: ${LIST_RADIUS_PX}px; background-color: ${LIST_BACKGROUND};`,
     });
     const rowBox = new St.BoxLayout({
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         style: `spacing: ${ROW_SPACING_PX / 2}px;`,
     });
     listFrame.add_child(rowBox);

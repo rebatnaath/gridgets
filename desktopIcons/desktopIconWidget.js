@@ -150,7 +150,7 @@ export function createDesktopIconNode(widgetData, width, height, xPosition, yPos
     rootContainer.set_clip_to_allocation(true);
 
     const box = new St.BoxLayout({
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
         x_expand: true,

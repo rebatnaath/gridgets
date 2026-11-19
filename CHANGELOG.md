@@ -6,6 +6,10 @@ All notable changes to Gridgets are recorded here.
 
 Since `v0.9.5-beta`.
 
+### Compatibility
+
+- Added GNOME Shell 51 support while retaining support for GNOME Shell 45 through 50.
+
 ### Breaking changes
 
 Read these before upgrading. Some of them change saved settings, or the size a widget

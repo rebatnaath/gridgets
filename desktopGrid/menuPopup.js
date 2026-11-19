@@ -6,6 +6,7 @@
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
@@ -73,7 +74,11 @@ export function removeContextMenu(grid) {
 
 export function presentMenu(menu) {
     Main.uiGroup.add_child(menu.actor);
-    menu.open(BoxPointer.PopupAnimation.FULL);
+    const shellMajorVersion = Number.parseInt(Config.PACKAGE_VERSION.split('.')[0], 10);
+    if (shellMajorVersion >= 51)
+        menu.open({ animate: true });
+    else
+        menu.open(BoxPointer.PopupAnimation.FULL);
 }
 
 export function openPreferences(grid, targetWidgetId = null) {

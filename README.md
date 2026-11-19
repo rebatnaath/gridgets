@@ -8,7 +8,7 @@
 
 Gridgets is a GNOME Shell extension that puts widgets on your desktop on a responsive
 grid. Add a clock, weather, notes, music, a system monitor or an image, then move, resize
-and style each one on its own. It runs on GNOME Shell 45 to 50.
+and style each one on its own. It runs on GNOME Shell 45 to 51.
 
 <!-- ## User Guide
 
@@ -128,7 +128,9 @@ the current code from this repository, so they may have bugs a release does not.
    ```bash
    gnome-extensions pack \
      --extra-source=assets \
+     --extra-source=components \
      --extra-source=desktopGrid \
+     --extra-source=desktopIcons \
      --extra-source=shell \
      --extra-source=schemas \
      --extra-source=utils \
